@@ -1,9 +1,13 @@
 package com.teacherhub.auth.service;
 
+import com.teacherhub.auth.dto.LoginRequest;
+import com.teacherhub.auth.dto.LoginResponse;
 import com.teacherhub.auth.dto.SignupRequest;
 import com.teacherhub.auth.dto.SignupResponse;
+import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.parent.entity.Parent;
 import com.teacherhub.parent.repository.ParentRepository;
+import com.teacherhub.security.JwtTokenProvider;
 import com.teacherhub.teacher.entity.Teacher;
 import com.teacherhub.teacher.repository.TeacherRepository;
 import com.teacherhub.user.entity.User;
@@ -22,6 +26,7 @@ public class AuthService {
     private final ParentRepository parentRepository;
     private final TeacherRepository teacherRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtTokenProvider jwtTokenProvider;
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
@@ -67,6 +72,37 @@ public class AuthService {
                 savedUser.getName(),
                 savedUser.getRole(),
                 savedUser.getCreatedAt()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public LoginResponse login(LoginRequest request) {
+
+        User user = userRepository.findByEmail(request.email())
+        .orElseThrow(() ->
+                new UnauthorizedException(
+                        "이메일 또는 비밀번호가 올바르지 않습니다."
+                )
+        );
+
+if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+    throw new UnauthorizedException(
+            "이메일 또는 비밀번호가 올바르지 않습니다."
+    );
+}
+
+        String accessToken = jwtTokenProvider.createAccessToken(user);
+
+        return new LoginResponse(
+                accessToken,
+                "Bearer",
+                jwtTokenProvider.getExpirationSeconds(),
+                new LoginResponse.UserInfo(
+                        user.getId(),
+                        user.getEmail(),
+                        user.getName(),
+                        user.getRole()
+                )
         );
     }
 }
