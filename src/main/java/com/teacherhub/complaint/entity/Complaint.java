@@ -26,14 +26,14 @@ public class Complaint {
     private Parent parent;
 
     // 학생
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "student_id", nullable = false)
-    private Student student;
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "student_id", nullable = false)
+//    private Student student;
 
-    // 학급
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "class_id", nullable = false)
-    private SchoolClass schoolClass;
+//    // 학급
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "class_id", nullable = false)
+//    private SchoolClass schoolClass;
 
     // 교사
     @ManyToOne(fetch = FetchType.LAZY)
@@ -63,15 +63,15 @@ public class Complaint {
 
     public Complaint(
             Parent parent,
-            Student student,
-            SchoolClass schoolClass,
+            //Student student,
+            //SchoolClass schoolClass,
             Teacher teacher,
             String submittedContent,
             String idempotencyKey
     ) {
         this.parent = parent;
-        this.student = student;
-        this.schoolClass = schoolClass;
+        //this.student = student;
+        //this.schoolClass = schoolClass;
         this.teacher = teacher;
         this.submittedContent = submittedContent;
         this.idempotencyKey = idempotencyKey;

@@ -21,8 +21,8 @@ public class ComplaintService {
     private final ComplaintRepository complaintRepository;
 
     private final ParentRepository parentRepository;
-    private final ParentStudentRepository parentStudentRepository;
-    private final StudentClassRepository studentClassRepository;
+//    private final ParentStudentRepository parentStudentRepository;
+//    private final StudentClassRepository studentClassRepository;
 
 
     @Transactional
@@ -50,39 +50,39 @@ public class ComplaintService {
                 );
 
 
-        // 3. 학부모와 연결된 학생 조회
-        ParentStudent parentStudent = parentStudentRepository.findByParent_Id(parentId)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "연결된 학생을 찾을 수 없습니다."
-                                )
-                        );
-
-        Student student = parentStudent.getStudent();
-
-
-        // 4. 학생의 현재 학급 조회
-        StudentClass studentClass = studentClassRepository
-                        .findTopByStudent_IdOrderBySchoolClass_AcademicYearDesc(
-                                student.getId()
-                        )
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "학생의 학급 정보를 찾을 수 없습니다."
-                                )
-                        );
-
-        SchoolClass schoolClass = studentClass.getSchoolClass();
-
-
-        // 5. 담임교사 조회
-        Teacher teacher = schoolClass.getHomeroomTeacher();
-
-        if (teacher == null) {
-            throw new IllegalStateException(
-                    "담임교사가 등록되어 있지 않습니다."
-            );
-        }
+//        // 3. 학부모와 연결된 학생 조회
+//        ParentStudent parentStudent = parentStudentRepository.findByParent_Id(parentId)
+//                        .orElseThrow(() ->
+//                                new IllegalArgumentException(
+//                                        "연결된 학생을 찾을 수 없습니다."
+//                                )
+//                        );
+//
+//        Student student = parentStudent.getStudent();
+//
+//
+//        // 4. 학생의 현재 학급 조회
+//        StudentClass studentClass = studentClassRepository
+//                        .findTopByStudent_IdOrderBySchoolClass_AcademicYearDesc(
+//                                student.getId()
+//                        )
+//                        .orElseThrow(() ->
+//                                new IllegalArgumentException(
+//                                        "학생의 학급 정보를 찾을 수 없습니다."
+//                                )
+//                        );
+//
+//        SchoolClass schoolClass = studentClass.getSchoolClass();
+//
+//
+//        // 5. 담임교사 조회
+//        Teacher teacher = schoolClass.getHomeroomTeacher();
+//
+//        if (teacher == null) {
+//            throw new IllegalStateException(
+//                    "담임교사가 등록되어 있지 않습니다."
+//            );
+//        }
 
 
         // 6. 학부모가 최종 선택한 문장
@@ -92,8 +92,8 @@ public class ComplaintService {
         // 8. Complaint 생성
         Complaint complaint = new Complaint(
                 parent,
-                student,
-                schoolClass,
+                //student,
+                //schoolClass,
                 teacher,
                 submittedContent,
                 idempotencyKey
