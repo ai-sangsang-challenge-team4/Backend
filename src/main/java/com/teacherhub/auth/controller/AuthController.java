@@ -2,6 +2,8 @@ package com.teacherhub.auth.controller;
 
 import com.teacherhub.auth.dto.SignupRequest;
 import com.teacherhub.auth.dto.SignupResponse;
+import com.teacherhub.auth.dto.LoginRequest;
+import com.teacherhub.auth.dto.LoginResponse;
 import com.teacherhub.auth.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -57,4 +59,32 @@ public class AuthController {
                 .status(HttpStatus.CREATED)
                 .body(response);
     }
+    @Operation(
+        summary = "로그인",
+        description = "이메일과 비밀번호를 확인하고 인증 토큰과 사용자 정보를 반환합니다."
+)
+@ApiResponses({
+        @ApiResponse(
+                responseCode = "200",
+                description = "로그인 성공"
+        ),
+        @ApiResponse(
+                responseCode = "400",
+                description = "이메일 또는 비밀번호 형식 오류"
+        ),
+        @ApiResponse(
+                responseCode = "401",
+                description = "이메일 또는 비밀번호 불일치"
+        ),
+        @ApiResponse(
+                responseCode = "403",
+                description = "비활성화되거나 이용할 수 없는 계정"
+        )
+})
+@PostMapping("/login")
+public ResponseEntity<LoginResponse> login(
+        @Valid @RequestBody LoginRequest request
+) {
+    return ResponseEntity.ok(authService.login(request));
+}
 }
