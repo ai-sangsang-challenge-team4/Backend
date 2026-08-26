@@ -2,10 +2,16 @@ package com.teacherhub.complaint.service;
 
 import com.teacherhub.complaint.dto.ComplaintRequest;
 import com.teacherhub.complaint.entity.Complaint;
-import com.teacherhub.privacy.PiiMaskingService;
+import com.teacherhub.complaint.repository.ComplaintRepository;
+import com.teacherhub.parent.entity.Parent;
+import com.teacherhub.parent.repository.ParentRepository;
+import com.teacherhub.teacher.entity.Teacher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Optional;
+
 
 @Service
 @RequiredArgsConstructor
@@ -18,19 +24,20 @@ public class ComplaintService {
     private final ParentStudentRepository parentStudentRepository;
     private final StudentClassRepository studentClassRepository;
 
-    private final PiiMaskingService piiMaskingService;
-
 
     @Transactional
-    public void submitComplaint(
+    public Complaint submitComplaint(
             Long parentId,
             ComplaintRequest request,
             String idempotencyKey
     ) {
 
         // 1. 중복 전송 확인
-        if (complaintRepository.existsByIdempotencyKey(idempotencyKey)) {
-            return;
+        Optional<Complaint> existingComplaint =
+                complaintRepository.findByIdempotencyKey(idempotencyKey);
+
+        if (existingComplaint.isPresent()) {
+            return existingComplaint.get();
         }
 
 
@@ -44,8 +51,7 @@ public class ComplaintService {
 
 
         // 3. 학부모와 연결된 학생 조회
-        ParentStudent parentStudent =
-                parentStudentRepository.findByParent_Id(parentId)
+        ParentStudent parentStudent = parentStudentRepository.findByParent_Id(parentId)
                         .orElseThrow(() ->
                                 new IllegalArgumentException(
                                         "연결된 학생을 찾을 수 없습니다."
@@ -56,8 +62,7 @@ public class ComplaintService {
 
 
         // 4. 학생의 현재 학급 조회
-        StudentClass studentClass =
-                studentClassRepository
+        StudentClass studentClass = studentClassRepository
                         .findTopByStudent_IdOrderBySchoolClass_AcademicYearDesc(
                                 student.getId()
                         )
@@ -67,13 +72,11 @@ public class ComplaintService {
                                 )
                         );
 
-        SchoolClass schoolClass =
-                studentClass.getSchoolClass();
+        SchoolClass schoolClass = studentClass.getSchoolClass();
 
 
         // 5. 담임교사 조회
-        Teacher teacher =
-                schoolClass.getHomeroomTeacher();
+        Teacher teacher = schoolClass.getHomeroomTeacher();
 
         if (teacher == null) {
             throw new IllegalStateException(
@@ -86,10 +89,6 @@ public class ComplaintService {
         String submittedContent = request.getContent();
 
 
-        // 7. 개인정보 마스킹
-        String maskedContent = piiMaskingService.mask(submittedContent);
-
-
         // 8. Complaint 생성
         Complaint complaint = new Complaint(
                 parent,
@@ -97,12 +96,11 @@ public class ComplaintService {
                 schoolClass,
                 teacher,
                 submittedContent,
-                maskedContent,
                 idempotencyKey
         );
 
 
-        // 9. DB 저장
-        complaintRepository.save(complaint);
+        // 9. 저장
+        return complaintRepository.save(complaint);
     }
 }

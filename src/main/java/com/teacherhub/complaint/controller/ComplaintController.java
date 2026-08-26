@@ -50,4 +50,7 @@ public class ComplaintController {
                 .status(HttpStatus.CREATED)
                 .build();
     }
+
+    // 민원 조회
+
 }

@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import com.teacherhub.parent.entity.Parent;
+import com.teacherhub.teacher.entity.Teacher;
 
 import java.time.LocalDateTime;
 
@@ -42,10 +44,6 @@ public class Complaint {
     @Column(name = "submitted_content", nullable = false, columnDefinition = "TEXT")
     private String submittedContent;
 
-    // 마스킹된 내용
-    @Column(name = "masked_content", nullable = false, columnDefinition = "TEXT")
-    private String maskedContent;
-
     // 진행 상태
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -69,7 +67,6 @@ public class Complaint {
             SchoolClass schoolClass,
             Teacher teacher,
             String submittedContent,
-            String maskedContent,
             String idempotencyKey
     ) {
         this.parent = parent;
@@ -77,7 +74,6 @@ public class Complaint {
         this.schoolClass = schoolClass;
         this.teacher = teacher;
         this.submittedContent = submittedContent;
-        this.maskedContent = maskedContent;
         this.idempotencyKey = idempotencyKey;
         this.status = ComplaintStatus.RECEIVED;
     }
