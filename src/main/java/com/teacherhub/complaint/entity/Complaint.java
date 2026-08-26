@@ -1,4 +1,4 @@
-package com.teacherhub.complaint.controller;
+package com.teacherhub.complaint.entity;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -80,6 +80,10 @@ public class Complaint {
         this.maskedContent = maskedContent;
         this.idempotencyKey = idempotencyKey;
         this.status = ComplaintStatus.RECEIVED;
+    }
+
+    public void updateStatus(ComplaintStatus status) {
+        this.status = status;
     }
 }
 

@@ -1,4 +1,4 @@
-package com.teacherhub.complaint.controller;
+package com.teacherhub.complaint.entity;
 
 public enum ComplaintStatus {
     // 접수
