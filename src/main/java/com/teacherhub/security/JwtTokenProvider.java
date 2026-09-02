@@ -39,4 +39,16 @@ public class JwtTokenProvider {
     public long getExpirationSeconds() {
         return EXPIRATION_TIME / 1000;
     }
+
+    public Long getUserId(String token) {
+
+    return Long.valueOf(
+            Jwts.parser()
+                    .verifyWith(key)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload()
+                    .getSubject()
+    );
+}
 }
