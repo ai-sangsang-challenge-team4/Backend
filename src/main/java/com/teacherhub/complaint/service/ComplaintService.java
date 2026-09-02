@@ -12,7 +12,7 @@ import com.teacherhub.user.entity.Parent;
 import com.teacherhub.user.entity.ParentStudent;
 import com.teacherhub.user.entity.Student;
 import com.teacherhub.user.repository.ParentRepository;
-import com.teacherhub.user.repository.ParentStudentReposotory;
+import com.teacherhub.user.repository.ParentStudentRepository;
 import com.teacherhub.user.entity.Teacher;
 import com.teacherhub.user.repository.StudentRepository;
 import lombok.RequiredArgsConstructor;
