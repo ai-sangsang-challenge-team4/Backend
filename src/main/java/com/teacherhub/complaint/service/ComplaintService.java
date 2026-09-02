@@ -6,6 +6,7 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.parent.entity.Parent;
 import com.teacherhub.parent.repository.ParentRepository;
 import com.teacherhub.teacher.entity.Teacher;
+import com.teacherhub.teacher.repository.TeacherRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,7 @@ public class ComplaintService {
     private final ComplaintRepository complaintRepository;
 
     private final ParentRepository parentRepository;
+    private final TeacherRepository teacherRepository;
 //    private final ParentStudentRepository parentStudentRepository;
 //    private final StudentClassRepository studentClassRepository;
 
@@ -75,14 +77,14 @@ public class ComplaintService {
 //        SchoolClass schoolClass = studentClass.getSchoolClass();
 //
 //
-//        // 5. 담임교사 조회
-//        Teacher teacher = schoolClass.getHomeroomTeacher();
-//
-//        if (teacher == null) {
-//            throw new IllegalStateException(
-//                    "담임교사가 등록되어 있지 않습니다."
-//            );
-//        }
+        //5. 담임교사 조회
+        Teacher teacher = teacherRepository.findById(teacherId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "교사 정보를 찾을 수 없습니다."
+                        )
+                );
+
 
 
         // 6. 학부모가 최종 선택한 문장

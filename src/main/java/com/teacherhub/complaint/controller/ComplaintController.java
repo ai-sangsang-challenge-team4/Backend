@@ -7,6 +7,7 @@ import com.teacherhub.complaint.service.ComplaintService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 
@@ -35,11 +36,12 @@ public class ComplaintController {
     // 최종 민원 접수
     @PostMapping
     public ResponseEntity<Void> submitComplaint(
-            @RequestHeader("X-Parent-Id") Long parentId,
+            Authentication authentication,
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody ComplaintRequest request
     ) {
-
+        Long parentId = (Long) authentication.getPrincipal();
+        
         complaintService.submitComplaint(
                 parentId,
                 request,
