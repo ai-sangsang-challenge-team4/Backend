@@ -83,15 +83,13 @@ public class ComplaintService {
 
 
         // Complaint 생성
-        Complaint complaint = Complaint.builder()
-                .parent(parent)
-                .student(student)
-                .content(request.getContent())
-                .build();
-
+        Complaint complaint = new Complaint(
+                parent,
+                student,
+                request.getContent()
+        );
 
         complaintRepository.save(complaint);
-
 
         return ComplaintResponse.builder()
                 .complaintId(complaint.getId())
