@@ -1,6 +1,6 @@
-package com.teacherhub.parent.repository;
+package com.teacherhub.user.repository;
 
-import com.teacherhub.parent.entity.Parent;
+import com.teacherhub.user.entity.Parent;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

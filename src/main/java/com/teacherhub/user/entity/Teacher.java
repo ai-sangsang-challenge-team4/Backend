@@ -1,6 +1,5 @@
-package com.teacherhub.teacher.entity;
+package com.teacherhub.user.entity;
 
-import com.teacherhub.user.entity.User;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
