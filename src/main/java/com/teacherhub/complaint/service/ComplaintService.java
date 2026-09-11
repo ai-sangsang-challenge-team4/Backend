@@ -9,7 +9,6 @@ import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.school.entity.StudentClass;
 import com.teacherhub.school.repository.StudentClassRepository;
 import com.teacherhub.user.entity.Parent;
-import com.teacherhub.user.entity.ParentStudent;
 import com.teacherhub.user.entity.Student;
 import com.teacherhub.user.repository.ParentRepository;
 import com.teacherhub.user.repository.ParentStudentRepository;
@@ -18,8 +17,6 @@ import com.teacherhub.user.repository.StudentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -33,9 +30,7 @@ public class ComplaintService {
     private final StudentClassRepository studentClassRepository;
 
 
-    /**
-     * 1. 민원 초안 작성
-     */
+    // 민원 초안 작성
     @Transactional
     public ComplaintResponse createDraft(
             Long userId,
@@ -98,9 +93,7 @@ public class ComplaintService {
     }
 
 
-    /**
-     * 3. 민원 내용 수정
-     */
+    // 민원 내용 수정
     @Transactional
     public void updateDraft(
             Long userId,
@@ -117,11 +110,7 @@ public class ComplaintService {
 
 
         // 본인의 민원인지 확인
-        validateOwner(
-                userId,
-                complaint
-        );
-
+        validateOwner(userId, complaint);
 
         // DRAFT 상태만 수정 가능
         if (complaint.getStatus() != ComplaintStatus.DRAFT) {
@@ -138,9 +127,7 @@ public class ComplaintService {
     }
 
 
-    /**
-     * 4. 민원 최종 제출
-     */
+    //4. 민원 최종 제출
     @Transactional
     public void submitComplaint(
             Long userId,
@@ -181,10 +168,8 @@ public class ComplaintService {
 
         Student student = complaint.getStudent();
 
-
         // 학생의 가장 최근 학급 조회
-        StudentClass studentClass =
-                studentClassRepository
+        StudentClass studentClass = studentClassRepository
                         .findTopByStudentOrderBySchoolClass_AcademicYearDesc(student)
                         .orElseThrow(() ->
                                 new IllegalArgumentException(
@@ -193,20 +178,14 @@ public class ComplaintService {
                         );
 
 
-        SchoolClass schoolClass =
-                studentClass.getSchoolClass();
-
-
-        Teacher teacher =
-                schoolClass.getHomeroomTeacher();
-
+        SchoolClass schoolClass = studentClass.getSchoolClass();
+        Teacher teacher = schoolClass.getHomeroomTeacher();
 
         if (teacher == null) {
             throw new IllegalStateException(
                     "담임교사가 등록되어 있지 않습니다."
             );
         }
-
 
         // 최종 제출
         complaint.submit(

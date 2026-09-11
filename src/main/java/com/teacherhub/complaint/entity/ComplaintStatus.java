@@ -1,6 +1,8 @@
 package com.teacherhub.complaint.entity;
 
 public enum ComplaintStatus {
+    // 작성 중
+    DRAFT,
     // 접수
     RECEIVED,
     // AI 분석 완료
@@ -12,5 +14,5 @@ public enum ComplaintStatus {
     // 관리자 공유
     ESCALATED,
     // 민원 처리 종료
-    CLOSED;
+    CLOSED
 }

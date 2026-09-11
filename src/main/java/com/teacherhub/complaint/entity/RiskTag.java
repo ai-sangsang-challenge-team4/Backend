@@ -8,5 +8,5 @@ public enum RiskTag {
     EXPOSURE,
     REPEAT,
     UNFAIR_REQUEST,
-    PRIVACY;
+    PRIVACY
 }

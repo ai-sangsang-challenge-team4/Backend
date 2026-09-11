@@ -7,6 +7,8 @@ import java.util.Optional;
 
 public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
 
-    Optional<Complaint> findByIdempotencyKey(String idempotencyKey);
+    boolean existsByIdempotencyKey(
+            String idempotencyKey
+    );
 
 }

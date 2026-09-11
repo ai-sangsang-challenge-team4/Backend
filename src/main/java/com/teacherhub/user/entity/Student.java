@@ -32,5 +32,7 @@ public class Student {
     public Student(String name, String studentNo) {
         this.name = name;
         this.studentNo = studentNo;
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
     }
 }

@@ -162,7 +162,7 @@ public class ComplaintFlowIntegrationTest {
 
 
     @Test
-    public void 민원_작성_review_수정_제출_성공() {
+    public void complaintTest() {
 
         // =========================
         // 1. 민원 작성
@@ -182,12 +182,10 @@ public class ComplaintFlowIntegrationTest {
                 );
 
 
-        Long complaintId =
-                createResponse.getComplaintId();
+        Long complaintId = createResponse.getComplaintId();
 
 
-        Complaint draft =
-                complaintRepository.findById(complaintId)
+        Complaint draft = complaintRepository.findById(complaintId)
                         .orElseThrow();
 
 
