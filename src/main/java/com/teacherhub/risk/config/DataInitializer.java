@@ -21,51 +21,51 @@ public class DataInitializer implements CommandLineRunner {
         }
 
         riskTagRepository.save(new RiskTag(
-                RiskTagCode.EMOTIONAL_EXPRESSION,
-                "감정적 표현",
-                0
-        ));
+        RiskTagCode.PROFANITY,
+        "욕설",
+        15
+));
 
-        riskTagRepository.save(new RiskTag(
-                RiskTagCode.PERSONAL_ATTACK,
-                "인격적 공격",
-                0
-        ));
+riskTagRepository.save(new RiskTag(
+        RiskTagCode.INSULT,
+        "인격 모욕",
+        15
+));
 
-        riskTagRepository.save(new RiskTag(
-                RiskTagCode.THREAT,
-                "위협",
-                0
-        ));
+riskTagRepository.save(new RiskTag(
+        RiskTagCode.THREAT,
+        "위험·협박",
+        30
+));
 
-        riskTagRepository.save(new RiskTag(
-                RiskTagCode.LEGAL_ADMINISTRATIVE_ACTION,
-                "법적·행정적 조치 언급",
-                0
-        ));
+riskTagRepository.save(new RiskTag(
+        RiskTagCode.LEGAL,
+        "법적 조치 언급",
+        10
+));
 
-        riskTagRepository.save(new RiskTag(
-                RiskTagCode.PUBLIC_DISCLOSURE_THREAT,
-                "공개·유포 위협",
-                0
-        ));
+riskTagRepository.save(new RiskTag(
+        RiskTagCode.EXPOSURE,
+        "공개·유포 위험",
+        20
+));
 
-        riskTagRepository.save(new RiskTag(
-                RiskTagCode.REPETITION,
-                "반복 민원",
-                0
-        ));
+riskTagRepository.save(new RiskTag(
+        RiskTagCode.REPEAT,
+        "반복 민원",
+        10
+));
 
-        riskTagRepository.save(new RiskTag(
-                RiskTagCode.UNREASONABLE_DEMAND,
-                "부당 요구",
-                0
-        ));
+riskTagRepository.save(new RiskTag(
+        RiskTagCode.UNFAIR_REQUEST,
+        "부당 요구",
+        15
+));
 
-        riskTagRepository.save(new RiskTag(
-                RiskTagCode.PERSONAL_INFORMATION_RISK,
-                "개인정보 위험",
-                0
-        ));
+riskTagRepository.save(new RiskTag(
+        RiskTagCode.PRIVACY,
+        "개인정보 위험",
+        20
+));
     }
 }
