@@ -1,5 +1,6 @@
 package com.teacherhub.risk.entity;
 
+import com.teacherhub.complaint.entity.Complaint;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -19,6 +20,10 @@ public class ComplaintRiskTag {
     @JoinColumn(name = "risk_tag_id", nullable = false)
     private RiskTag riskTag;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "risk_analysis_id", nullable = false)
+    private RiskAnalysis riskAnalysis;
+
     @Column(nullable = false)
     private boolean ruleDetected;
 
@@ -34,8 +39,11 @@ public class ComplaintRiskTag {
     @Column(columnDefinition = "TEXT")
     private String evidence;
 
+
+
     public ComplaintRiskTag(
             RiskTag riskTag,
+            RiskAnalysis riskAnalysis,
             boolean ruleDetected,
             boolean llmDetected,
             boolean finalDetected,
@@ -43,6 +51,7 @@ public class ComplaintRiskTag {
             String evidence
     ) {
         this.riskTag = riskTag;
+        this.riskAnalysis = riskAnalysis;
         this.ruleDetected = ruleDetected;
         this.llmDetected = llmDetected;
         this.finalDetected = finalDetected;
