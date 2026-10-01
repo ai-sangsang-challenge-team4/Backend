@@ -2,8 +2,6 @@ package com.teacherhub.complaint.controller;
 
 import com.teacherhub.complaint.dto.ComplaintRequest;
 import com.teacherhub.complaint.dto.ComplaintResponse;
-import com.teacherhub.complaint.dto.ComplaintReviewResponse;
-import com.teacherhub.complaint.service.ComplaintReviewService;
 import com.teacherhub.complaint.service.ComplaintService;
 import com.teacherhub.user.repository.UserRepository;
 import com.teacherhub.user.entity.User;
@@ -20,11 +18,10 @@ import jakarta.validation.Valid;
 public class ComplaintController {
 
     private final ComplaintService complaintService;
-    private final ComplaintReviewService complaintReviewService;
     private final UserRepository userRepository;
 
 
-    //1. 민원 작성 DRAFT 상태로 저장
+    //민원 작성 DRAFT 상태로 저장
     @PostMapping
     public ResponseEntity<ComplaintResponse> createComplaint(
                 Authentication authentication,
@@ -44,29 +41,7 @@ public class ComplaintController {
     }
 
 
-    //2. AI 검토
-    @PostMapping("/{complaintId}/review")
-    public ResponseEntity<ComplaintReviewResponse> reviewComplaint(
-                Authentication authentication,
-            @PathVariable Long complaintId
-    ) {
-
-            String email = authentication.getName();
-            Long userId = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new IllegalArgumentException("사용자 정보를 찾을 수 없습니다."))
-                    .getId();
-
-        ComplaintReviewResponse response =
-                complaintReviewService.review(
-                        userId,
-                        complaintId
-                );
-
-        return ResponseEntity.ok(response);
-    }
-
-
-    //3. 민원 내용 수정 (DRAFT 상태에서만 가능)
+    //민원 내용 수정 (DRAFT 상태에서만 가능)
     @PatchMapping("/{complaintId}")
     public ResponseEntity<Void> updateComplaint(
                 Authentication authentication,
@@ -79,22 +54,17 @@ public class ComplaintController {
                     .orElseThrow(() -> new IllegalArgumentException("사용자 정보를 찾을 수 없습니다."))
                     .getId();
 
-        complaintService.updateDraft(
-                userId,
-                complaintId,
-                request
-        );
+        complaintService.updateDraft(userId, complaintId, request);
 
         return ResponseEntity.noContent().build();
     }
 
 
-    //4. 최종 민원 제출
+    //최종 민원 제출
     @PostMapping("/{complaintId}/send")
     public ResponseEntity<Void> submitComplaint(
                 Authentication authentication,
-            @PathVariable Long complaintId,
-            @RequestHeader("Idempotency-Key") String idempotencyKey
+            @PathVariable Long complaintId
     ) {
 
             String email = authentication.getName();
@@ -102,11 +72,7 @@ public class ComplaintController {
                     .orElseThrow(() -> new IllegalArgumentException("사용자 정보를 찾을 수 없습니다."))
                     .getId();
 
-        complaintService.submitComplaint(
-                userId,
-                complaintId,
-                idempotencyKey
-        );
+        complaintService.submitComplaint(userId, complaintId);
 
         return ResponseEntity.ok().build();
     }

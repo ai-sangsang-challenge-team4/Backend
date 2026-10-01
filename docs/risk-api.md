@@ -11,10 +11,19 @@
 | POST | `/complaints/{complaintId}/mask` | 원문의 규칙 기반 개인정보 마스킹 결과 저장·반환 | 200 |
 | POST | `/complaints/{complaintId}/risk-analysis` | 마스킹 → 룰·LLM 탐지 → 병합 → 점수 계산·저장 → 수정안 생성 | 200 |
 | GET | `/risk-analyses/{analysisId}` | 저장된 분석의 점수·등급·태그·근거 조회 | 200 |
-| POST | `/complaints/{complaintId}/review` | 기존 호환용 전체 분석 API, risk-analysis와 같은 처리 | 200 |
 | GET | `/risk-tags` | 위험 태그 기준 목록 조회, 민원 분석과 별개 | 200 |
 
 ## 마스킹 응답 예시
+
+분석 요청은 `/complaints/{complaintId}/risk-analysis`로 통일하며 기존 `/review` 경로는 제공하지 않는다.
+
+서비스는 `risk.service`에 세 개만 둔다.
+
+- `RiskAnalysisService`: 전체 분석 실행·저장·조회. 태그 병합과 점수 계산은 내부 private 메서드로 처리한다.
+- `ComplaintMaskingService`: 마스킹 API의 민원 조회·권한/상태 검증·마스킹 결과 저장.
+- `RiskTagService`: 위험 태그 기준 목록 조회.
+
+룰 탐지기·LLM 분석기·수정안 생성기 인터페이스 및 `risk.masking`의 마스킹 구현은 별도로 유지한다.
 
 ```json
 {
@@ -58,7 +67,20 @@
 
 예시는 구조 설명용이다. 실제 tags에는 미탐지 항목을 포함한 모든 위험 코드가 들어간다. riskyExpressions와 aiReason은 LLM 탐지 단계의 결과이며, revisionReason은 최종 병합 결과에 대한 수정 이유다. 수정안 생성기는 마스킹된 원문과 최종 분석을 받는다.
 
-GET 응답은 위의 riskAnalysis 객체다. 수정안은 현재 저장하지 않아 GET으로 조회하지 않는다. 재분석할 때마다 새로운 analysisId가 생성되며, 과거 ID 조회는 해당 분석 시점의 결과를 반환한다. 처리 경로·반복 이력 가산·권장 조치는 아직 구현되지 않아 명세에서 제외했다.
+GET 응답은 위의 riskAnalysis 객체다. 위험 표현·수정 이유·수정안도 분석 이력에 저장하며, 같은 내용 버전으로 POST 분석을 다시 요청하면 기존 전체 응답을 반환한다. GET 분석 조회는 위험도·태그·근거만 반환한다. 과거 ID 조회는 해당 분석 시점의 결과다. 처리 경로·반복 이력 가산·권장 조치는 아직 구현되지 않았다.
+
+## 재분석 및 최종 제출
+
+- 최초 분석 1회 + 재분석 1회, 민원별 성공한 분석 최대 2회.
+- 최초 분석은 수정안을 생성하고, 전송 시 분석은 위험도만 확정한다. 처리 중에는 DRAFT이며 실패 시 제출 전체가 롤백된다.
+- 동일 내용 저장은 contentVersion을 올리지 않는다. 같은 버전 분석 재요청은 저장 결과를 반환하고 AI 호출/횟수를 추가하지 않는다.
+- PATCH 후 바로 POST send를 호출한다. 서버는 최종 문장이 분석 원문과 같으면 재사용하고, 다르면 한 번 재분석한다. 수정했다가 원문으로 되돌린 경우도 재사용한다.
+- 수정 후 POST risk-analysis 호출은 409 FINAL_ANALYSIS_ON_SUBMIT. 최종 재분석은 send 내부에서만 실행하고 새 수정안을 생성하지 않는다. 최대 성공 분석 2회 제한은 유지한다.
+- POST `/complaints/{complaintId}/send`: Bearer 인증 필요, 본문 없음. 최초 분석이 없으면 409 ANALYSIS_REQUIRED. 변경된 내용의 최종 분석은 서버가 자동 처리하며 성공 후에만 교사가 지정된다.
+- 최종 제출 성공 시 200이며 상태 및 이력은 DRAFT → ANALYZED. 최초 분석 후 수정하지 않은 경우에도 바로 제출할 수 있다.
+- 분석·수정·제출은 동일 민원 행의 비관적 쓰기 잠금으로 동시 실행을 직렬화한다. 현재 동기 처리이므로 AI 호출 동안 잠금이 유지된다.
+
+DB에는 risk_analyses의 original_content/completed/revision_reason/ai_revision 컬럼과 risk_analysis_expressions 테이블이 추가된다. 기존 분석에는 전체 재사용 응답이 없으므로 completed 기본값은 false이며 재사용·완료 횟수에서 제외된다. 기존 데이터를 유지하는 배포에서는 이 정책을 고려해 스키마를 반영해야 한다.
 
 ## 오류
 

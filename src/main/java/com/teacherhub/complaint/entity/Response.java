@@ -13,20 +13,27 @@ import java.time.LocalDateTime;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Response {
+
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "complaint_id", nullable = false)
     private Complaint complaint;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "teacher_id", nullable = false)
     private Teacher teacher;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ai_draft_id")
     private AiDraft aiDraft;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
+
     private LocalDateTime sentAt;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

@@ -12,6 +12,20 @@ import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(FinalAnalysisOnSubmitException.class)
+    public ResponseEntity<ErrorResponse> handleFinalAnalysisOnSubmit(FinalAnalysisOnSubmitException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, "FINAL_ANALYSIS_ON_SUBMIT", e, request);
+    }
+
+    @ExceptionHandler(AnalysisRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleAnalysisRequired(AnalysisRequiredException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, "ANALYSIS_REQUIRED", e, request);
+    }
+
+    @ExceptionHandler(ReanalysisLimitException.class)
+    public ResponseEntity<ErrorResponse> handleReanalysisLimit(ReanalysisLimitException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, "REANALYSIS_LIMIT_REACHED", e, request);
+    }
     @ExceptionHandler(ComplaintNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleComplaintNotFound(ComplaintNotFoundException e, HttpServletRequest request) {
         return error(HttpStatus.NOT_FOUND, "COMPLAINT_NOT_FOUND", e, request);

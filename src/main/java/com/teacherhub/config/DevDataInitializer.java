@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 @Profile("dev")
 @RequiredArgsConstructor
+// 테스트용 데이터
 public class DevDataInitializer implements ApplicationRunner {
 
     private final UserRepository userRepository;

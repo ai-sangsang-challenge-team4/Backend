@@ -13,7 +13,7 @@ erDiagram
 
 - `complaints`: parent_id, student_id, teacher_id, original_content, masked_content,
   status, created_at, updated_at. 기존 API의 content는 original_content 컬럼에 매핑한다.
-  작성 기능을 위해 DRAFT와 idempotency_key를 유지하고 content_version을 추가한다.
+  작성 기능을 위해 DRAFT를 유지하고 content_version을 추가한다.
 - `risk_tags`: code, name, default_score. 기존 기준 정보 조회 기능을 유지한다.
 - `risk_analyses`: complaint_id, risk_score, risk_level, model_name, temperature,
   ai_reason, analyzed_at. 추가한 content_version으로 분석 대상 원문 버전을 구분한다.

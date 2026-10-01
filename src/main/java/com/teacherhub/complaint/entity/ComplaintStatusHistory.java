@@ -12,18 +12,24 @@ import java.time.LocalDateTime;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ComplaintStatusHistory {
+
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "complaint_id", nullable = false)
     private Complaint complaint;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "changed_by")
     private User changedBy;
+
     @Enumerated(EnumType.STRING)
     private ComplaintStatus previousStatus;
+
     @Enumerated(EnumType.STRING) @Column(nullable = false)
     private ComplaintStatus newStatus;
+
     @Column(nullable = false)
     private LocalDateTime changedAt;
 

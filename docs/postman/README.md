@@ -88,7 +88,7 @@ Body는 raw / JSON을 사용합니다.
 
 `POST {{baseUrl}}/complaints/{{complaintId}}/send` (Body 없음)
 
-헤더: `Idempotency-Key: {{$guid}}`
+인증: Bearer 토큰만 필요. 요청 본문 없음.
 
 예상: `200 OK`, 응답 본문 없음. 서버에서 담임교사를 지정하고 상태를 `RECEIVED`로 변경합니다.
 컬렉션은 요청마다 UUID를 생성합니다. 이미 제출된 동일 민원은 새 키로도 다시 제출할 수 없습니다.

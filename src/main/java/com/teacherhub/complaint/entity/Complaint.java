@@ -1,6 +1,5 @@
 package com.teacherhub.complaint.entity;
 
-import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.user.entity.Student;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -68,10 +67,6 @@ public class Complaint {
     private ComplaintStatus status;
 
 
-    @Column(unique = true)
-    private String idempotencyKey;
-
-
     public Complaint(
             Parent parent,
             Student student,
@@ -86,10 +81,7 @@ public class Complaint {
         this.status = ComplaintStatus.DRAFT;
     }
 
-
-    /**
-     * 민원 내용 수정
-     */
+    // 민원 내용 수정
     public void updateContent(String content) {
 
         if (this.status != ComplaintStatus.DRAFT) {
@@ -98,18 +90,18 @@ public class Complaint {
             );
         }
 
+        if (java.util.Objects.equals(this.content, content)) {
+            return;
+        }
         this.content = content;
         this.maskedContent = null;
         this.contentVersion++;
     }
 
 
-    /**
-     * 최종 제출
-     */
+    // 최종 민원 제출
     public void submit(
-            Teacher teacher,
-            String idempotencyKey
+            Teacher teacher
     ) {
 
         if (this.status != ComplaintStatus.DRAFT) {
@@ -119,7 +111,6 @@ public class Complaint {
         }
 
         this.teacher = teacher;
-        this.idempotencyKey = idempotencyKey;
-        this.status = ComplaintStatus.RECEIVED;
+        this.status = ComplaintStatus.ANALYZED;
     }
 }

@@ -12,6 +12,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+// 위험 태그 조회
 public class RiskTagService {
 
     private final RiskTagRepository riskTagRepository;

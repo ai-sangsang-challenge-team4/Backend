@@ -42,8 +42,7 @@ public class SecurityConfig {
                         ).permitAll()
                         .requestMatchers(
                                 HttpMethod.POST,
-                                "/complaints",
-                                "/complaints/review"
+                                "/complaints"
                         ).hasRole("PARENT")
                         .anyRequest().authenticated()
                 )

@@ -1,8 +1,8 @@
 package com.teacherhub.risk.controller;
 
-import com.teacherhub.complaint.service.ComplaintReviewService;
+import com.teacherhub.risk.service.RiskAnalysisService;
 import com.teacherhub.risk.dto.MaskingResponse;
-import com.teacherhub.risk.service.RiskApiService;
+import com.teacherhub.risk.service.ComplaintMaskingService;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -20,8 +20,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class RiskAnalysisControllerTest {
-    private final RiskApiService api = mock(RiskApiService.class);
-    private final ComplaintReviewService review = mock(ComplaintReviewService.class);
+    private final ComplaintMaskingService api = mock(ComplaintMaskingService.class);
+    private final RiskAnalysisService review = mock(RiskAnalysisService.class);
     private final UserRepository users = mock(UserRepository.class);
     private final MockMvc mvc = MockMvcBuilders.standaloneSetup(new RiskAnalysisController(api, review, users))
             .setControllerAdvice(new GlobalExceptionHandler()).build();
@@ -42,8 +42,8 @@ class RiskAnalysisControllerTest {
                 .andExpect(jsonPath("$.maskedContent").value("[전화번호]"));
         mvc.perform(post("/complaints/10/risk-analysis").principal(auth)).andExpect(status().isOk());
         mvc.perform(get("/risk-analyses/20").principal(auth)).andExpect(status().isOk());
-        verify(review).review(7L, 10L);
-        verify(api).findAnalysis(7L, 20L);
+        verify(review).analyze(7L, 10L);
+        verify(review).findAnalysis(7L, 20L);
     }
 
     @Test
@@ -66,7 +66,7 @@ class RiskAnalysisControllerTest {
                     .andExpect(jsonPath("$.path").value("/complaints/10/mask"))
                     .andExpect(jsonPath("$.timestamp").isNotEmpty());
         }
-        doThrow(new RiskAnalysisNotFoundException("분석 결과가 없습니다.")).when(api).findAnalysis(7L, 20L);
+        doThrow(new RiskAnalysisNotFoundException("분석 결과가 없습니다.")).when(review).findAnalysis(7L, 20L);
         mvc.perform(get("/risk-analyses/20").principal(auth)).andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RISK_ANALYSIS_NOT_FOUND"));
     }

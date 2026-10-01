@@ -1,10 +1,10 @@
 package com.teacherhub.risk.controller;
 
 import com.teacherhub.complaint.dto.ComplaintReviewResponse;
-import com.teacherhub.complaint.service.ComplaintReviewService;
+import com.teacherhub.risk.service.RiskAnalysisService;
 import com.teacherhub.risk.dto.FinalRiskResult;
 import com.teacherhub.risk.dto.MaskingResponse;
-import com.teacherhub.risk.service.RiskApiService;
+import com.teacherhub.risk.service.ComplaintMaskingService;
 import com.teacherhub.user.repository.UserRepository;
 import com.teacherhub.common.exception.UnauthorizedException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,8 +22,8 @@ import org.springframework.web.bind.annotation.*;
 @SecurityRequirement(name = "bearerAuth")
 public class RiskAnalysisController {
 
-    private final RiskApiService riskApiService;
-    private final ComplaintReviewService reviewService;
+    private final ComplaintMaskingService maskingService;
+    private final RiskAnalysisService analysisService;
     private final UserRepository users;
 
     @PostMapping("/complaints/{complaintId}/mask")
@@ -31,7 +31,7 @@ public class RiskAnalysisController {
 
     public MaskingResponse mask(Authentication authentication,
                                 @PathVariable Long complaintId) {
-        return riskApiService.mask(userId(authentication), complaintId);
+        return maskingService.mask(userId(authentication), complaintId);
     }
 
     @PostMapping("/complaints/{complaintId}/risk-analysis")
@@ -39,7 +39,7 @@ public class RiskAnalysisController {
 
     public ComplaintReviewResponse analyze(Authentication authentication,
                                            @PathVariable Long complaintId) {
-        return reviewService.review(userId(authentication), complaintId);
+        return analysisService.analyze(userId(authentication), complaintId);
     }
 
     @GetMapping("/risk-analyses/{analysisId}")
@@ -47,7 +47,7 @@ public class RiskAnalysisController {
 
     public FinalRiskResult findAnalysis(Authentication authentication,
                                         @PathVariable Long analysisId) {
-        return riskApiService.findAnalysis(userId(authentication), analysisId);
+        return analysisService.findAnalysis(userId(authentication), analysisId);
     }
 
     private Long userId(Authentication authentication) {

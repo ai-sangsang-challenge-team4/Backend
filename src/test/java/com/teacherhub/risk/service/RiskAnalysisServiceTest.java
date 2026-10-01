@@ -1,4 +1,4 @@
-package com.teacherhub.complaint.service;
+package com.teacherhub.risk.service;
 
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.repository.ComplaintRepository;
@@ -10,7 +10,6 @@ import com.teacherhub.risk.analyzer.MockLlmRiskAnalyzer;
 import com.teacherhub.risk.analyzer.RuleBasedRiskDetector;
 import com.teacherhub.risk.dto.RiskDetectionResult;
 import com.teacherhub.risk.service.RiskAnalysisService;
-import com.teacherhub.risk.service.RiskScoreCalculator;
 import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.repository.RiskTagRepository;
@@ -18,7 +17,6 @@ import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import org.springframework.test.util.ReflectionTestUtils;
 import com.teacherhub.risk.enums.RiskLevel;
-import com.teacherhub.risk.service.RiskResultMerger;
 import com.teacherhub.user.entity.Parent;
 import com.teacherhub.user.entity.User;
 import org.junit.jupiter.api.Test;
@@ -30,7 +28,7 @@ import static com.teacherhub.risk.enums.RiskTagCode.PROFANITY;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class ComplaintReviewServiceTest {
+class RiskAnalysisServiceTest {
     private final ComplaintRepository repository = mock(ComplaintRepository.class);
     private final PiiMaskingService masking = mock(PiiMaskingService.class);
     private final RuleBasedRiskDetector rules = mock(RuleBasedRiskDetector.class);
@@ -39,16 +37,16 @@ class ComplaintReviewServiceTest {
     private final RiskAnalysisRepository analyses = mock(RiskAnalysisRepository.class);
     private final ComplaintRiskTagRepository detections = mock(ComplaintRiskTagRepository.class);
     private final ComplaintRevisionGenerator revisions = mock(ComplaintRevisionGenerator.class);
-    private final ComplaintReviewService service = new ComplaintReviewService(
-            repository, masking, rules, llm, new RiskResultMerger(),
-            new RiskAnalysisService(new RiskScoreCalculator(), tags, analyses, detections), revisions);
+    private final RiskEvaluator evaluator = new RiskEvaluator();
+    private final RiskAnalysisService service = new RiskAnalysisService(
+            repository, masking, rules, llm, tags, analyses, detections, revisions, evaluator);
 
     private Complaint draft() {
         User user = mock(User.class);
         when(user.getId()).thenReturn(1L);
         Complaint complaint = new Complaint(new Parent(user), null, "original private content");
         ReflectionTestUtils.setField(complaint, "id", 42L);
-        when(repository.findById(42L)).thenReturn(Optional.of(complaint));
+        when(repository.findForUpdate(42L)).thenReturn(Optional.of(complaint));
         return complaint;
     }
 
@@ -68,7 +66,7 @@ class ComplaintReviewServiceTest {
         var revision = new ComplaintRevisionResult(42L, "final risk reason", "revised content");
         when(revisions.generate(eq("masked"), any())).thenReturn(revision);
 
-        var response = service.review(1L, 42L);
+        var response = service.analyze(1L, 42L);
 
         var order = inOrder(rules, masking, llm, analyses, detections, revisions);
         order.verify(rules).detect("original private content");
@@ -99,17 +97,27 @@ class ComplaintReviewServiceTest {
     }
 
     @Test
+    void rejectsThirdNewAnalysisBeforeCallingDetectors() {
+        draft();
+        when(analyses.countByComplaintIdAndCompletedTrue(42L)).thenReturn(2L);
+        assertThatThrownBy(() -> service.analyzeForSubmission(1L, 42L))
+                .isInstanceOf(com.teacherhub.complaint.exception.ReanalysisLimitException.class);
+        verifyNoInteractions(rules, masking, llm, revisions);
+        verify(analyses, never()).save(any());
+    }
+
+    @Test
     void rejectsOtherUsersBeforeAnalysis() {
         draft();
-        assertThatThrownBy(() -> service.review(2L, 42L))
+        assertThatThrownBy(() -> service.analyze(2L, 42L))
                 .isInstanceOf(com.teacherhub.complaint.exception.ComplaintAccessDeniedException.class);
         verifyNoInteractions(rules, masking, llm, revisions);
     }
 
     @Test
     void rejectsSubmittedComplaintsBeforeAnalysis() {
-        draft().submit(null, "key");
-        assertThatThrownBy(() -> service.review(1L, 42L))
+        draft().submit(null);
+        assertThatThrownBy(() -> service.analyze(1L, 42L))
                 .isInstanceOf(com.teacherhub.complaint.exception.ComplaintNotDraftException.class);
         verifyNoInteractions(rules, masking, llm, revisions);
     }
