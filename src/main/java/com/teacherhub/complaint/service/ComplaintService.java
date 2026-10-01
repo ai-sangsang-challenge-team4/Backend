@@ -5,6 +5,8 @@ import com.teacherhub.complaint.dto.ComplaintResponse;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintStatus;
 import com.teacherhub.complaint.repository.ComplaintRepository;
+import com.teacherhub.complaint.repository.ComplaintStatusHistoryRepository;
+import com.teacherhub.complaint.entity.ComplaintStatusHistory;
 import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.school.entity.StudentClass;
 import com.teacherhub.school.repository.StudentClassRepository;
@@ -24,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ComplaintService {
 
     private final ComplaintRepository complaintRepository;
+    private final ComplaintStatusHistoryRepository statusHistoryRepository;
     private final ParentRepository parentRepository;
     private final StudentRepository studentRepository;
     private final ParentStudentRepository parentStudentRepository;
@@ -85,6 +88,8 @@ public class ComplaintService {
         );
 
         complaintRepository.save(complaint);
+        statusHistoryRepository.save(new ComplaintStatusHistory(
+                complaint, parent.getUser(), null, ComplaintStatus.DRAFT));
 
         return ComplaintResponse.builder()
                 .complaintId(complaint.getId())
@@ -192,6 +197,8 @@ public class ComplaintService {
                 teacher,
                 idempotencyKey
         );
+        statusHistoryRepository.save(new ComplaintStatusHistory(
+                complaint, complaint.getParent().getUser(), ComplaintStatus.DRAFT, ComplaintStatus.RECEIVED));
     }
 
 

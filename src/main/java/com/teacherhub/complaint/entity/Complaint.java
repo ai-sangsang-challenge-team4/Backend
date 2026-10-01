@@ -14,6 +14,7 @@ import com.teacherhub.user.entity.Teacher;
 import java.time.LocalDateTime;
 
 @Entity
+@Table(name = "complaints")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Complaint {
@@ -39,8 +40,27 @@ public class Complaint {
     private Teacher teacher;
 
 
-    @Column(nullable = false, columnDefinition = "TEXT")
+    @Column(name = "original_content", nullable = false, columnDefinition = "TEXT")
     private String content;
+
+    @Column(columnDefinition = "TEXT")
+    private String maskedContent;
+
+    @CreationTimestamp
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(nullable = false)
+    private LocalDateTime updatedAt;
+
+    // 재분석 결과가 어느 원문 버전에 대한 것인지 구분합니다.
+    @Column(nullable = false)
+    private long contentVersion = 1;
+
+    public void updateMaskedContent(String maskedContent) {
+        this.maskedContent = maskedContent;
+    }
 
 
     @Enumerated(EnumType.STRING)
@@ -79,6 +99,8 @@ public class Complaint {
         }
 
         this.content = content;
+        this.maskedContent = null;
+        this.contentVersion++;
     }
 
 

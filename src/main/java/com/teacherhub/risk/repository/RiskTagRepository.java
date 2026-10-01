@@ -6,8 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
-public interface RiskTagRepository
-        extends JpaRepository<RiskTag, Long> {
+public interface RiskTagRepository extends JpaRepository<RiskTag, Long> {
 
     Optional<RiskTag> findByCode(RiskTagCode code);
 }

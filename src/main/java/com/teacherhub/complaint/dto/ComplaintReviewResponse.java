@@ -1,5 +1,7 @@
 package com.teacherhub.complaint.dto;
 
+import com.teacherhub.risk.dto.FinalRiskResult;
+import com.teacherhub.risk.dto.ComplaintRevisionResult;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -14,8 +16,8 @@ public class ComplaintReviewResponse {
 
     private List<RiskyExpressionResponse> riskyExpressions;
 
-    private String partialRevision;
+    private ComplaintRevisionResult revision;
 
-    private String aiRevision;
+    private FinalRiskResult riskAnalysis;
 
 }

@@ -9,6 +9,7 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 
 import com.teacherhub.complaint.service.ComplaintReviewService;
 import com.teacherhub.complaint.service.ComplaintService;
+import com.teacherhub.risk.dto.FinalRiskTagResponse;
 import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.school.entity.StudentClass;
 import com.teacherhub.school.repository.SchoolClassRepository;
@@ -41,6 +42,44 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @Transactional
 public class ComplaintFlowIntegrationTest {
+    @Autowired
+    private com.teacherhub.risk.service.RiskApiService riskApiService;
+
+    @Test
+    void masksAndRetrievesAnalysisWithOwnershipChecks() {
+        var created = complaintService.createDraft(parentUser.getId(),
+                new ComplaintRequest(student.getId(), "전화 010-1234-5678로 연락 부탁드립니다."));
+        Long id = created.getComplaintId();
+        var masked = riskApiService.mask(parentUser.getId(), id);
+        assertThat(masked.maskedContent()).isEqualTo("전화 [전화번호]로 연락 부탁드립니다.");
+        assertThat(complaintRepository.findById(id).orElseThrow().getContent()).contains("010-1234-5678");
+        var review = complaintReviewService.review(parentUser.getId(), id);
+        assertThat(review.getRiskAnalysis().analysisId()).isNotNull();
+        assertThat(riskApiService.findAnalysis(parentUser.getId(), review.getRiskAnalysis().analysisId()))
+                .isEqualTo(review.getRiskAnalysis());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> riskApiService.findAnalysis(
+                teacherUser.getId(), review.getRiskAnalysis().analysisId()))
+                .isInstanceOf(com.teacherhub.complaint.exception.ComplaintAccessDeniedException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> riskApiService.mask(teacherUser.getId(), id))
+                .isInstanceOf(com.teacherhub.complaint.exception.ComplaintAccessDeniedException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> riskApiService.findAnalysis(parentUser.getId(), Long.MAX_VALUE))
+                .isInstanceOf(com.teacherhub.risk.exception.RiskAnalysisNotFoundException.class);
+        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "새 내용"));
+        assertThat(complaintRepository.findById(id).orElseThrow().getMaskedContent()).isNull();
+    }
+
+    @Autowired
+    private com.teacherhub.risk.repository.RiskAnalysisRepository riskAnalysisRepository;
+    @Autowired
+    private com.teacherhub.risk.repository.ComplaintRiskTagRepository complaintRiskTagRepository;
+    @Autowired
+    private com.teacherhub.complaint.repository.ComplaintStatusHistoryRepository historyRepository;
+    @Autowired
+    private com.teacherhub.complaint.repository.AiDraftRepository aiDraftRepository;
+    @Autowired
+    private com.teacherhub.complaint.repository.ResponseRepository responseRepository;
+    @Autowired
+    private jakarta.persistence.EntityManager entityManager;
 
     @Autowired
     private ComplaintService complaintService;
@@ -215,10 +254,45 @@ public class ComplaintFlowIntegrationTest {
         assertThat(reviewResponse)
                 .isNotNull();
 
+        assertThat(reviewResponse.getRiskAnalysis().complaintId()).isEqualTo(complaintId);
+        assertThat(reviewResponse.getRiskAnalysis().riskScore()).isEqualTo(60);
+        assertThat(reviewResponse.getRiskAnalysis().riskLevel())
+                .isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
+        assertThat(reviewResponse.getRevision().revisionReason()).isNotBlank();
+        assertThat(reviewResponse.getRevision().aiRevision()).isNotBlank();
+        assertThat(reviewResponse.getRevision().complaintId())
+                .isEqualTo(reviewResponse.getRiskAnalysis().complaintId());
+        assertThat(draft.getContent()).isEqualTo(createRequest.getContent());
+        assertThat(reviewResponse.getRiskAnalysis().tags())
+                .hasSize(com.teacherhub.risk.enums.RiskTagCode.values().length);
+        assertThat(reviewResponse.getRiskAnalysis().tags())
+                .filteredOn(FinalRiskTagResponse::detected)
+                .extracting(FinalRiskTagResponse::code)
+                .containsExactly(
+                        com.teacherhub.risk.enums.RiskTagCode.PROFANITY,
+                        com.teacherhub.risk.enums.RiskTagCode.THREAT,
+                        com.teacherhub.risk.enums.RiskTagCode.UNFAIR_REQUEST);
+
         assertThat(reviewResponse.getOriginalContent())
                 .isEqualTo(
                         "계속 이런 식이면 교육청에 신고하겠습니다."
                 );
+
+        entityManager.flush();
+        var savedAnalyses = riskAnalysisRepository.findByComplaintIdOrderByIdAsc(complaintId);
+        assertThat(savedAnalyses).hasSize(1);
+        var firstAnalysis = savedAnalyses.get(0);
+        assertThat(firstAnalysis.getRiskScore()).isEqualTo(60);
+        assertThat(firstAnalysis.getModelName()).isEqualTo("mock-llm");
+        assertThat(firstAnalysis.getTemperature()).isEqualTo(0.0);
+        assertThat(firstAnalysis.getContentVersion()).isEqualTo(1);
+        assertThat(firstAnalysis.getAnalyzedAt()).isNotNull();
+        assertThat(complaintRiskTagRepository.findByRiskAnalysisId(firstAnalysis.getId()))
+                .hasSize(8).filteredOn(com.teacherhub.risk.entity.ComplaintRiskTag::isFinalDetected)
+                .hasSize(3);
+        assertThat(draft.getMaskedContent()).isNotNull();
+        assertThat(draft.getStatus()).isEqualTo(ComplaintStatus.DRAFT);
+        assertThat(draft.getCreatedAt()).isNotNull();
 
 
         // =========================
@@ -251,6 +325,14 @@ public class ComplaintFlowIntegrationTest {
 
         assertThat(updated.getStatus())
                 .isEqualTo(ComplaintStatus.DRAFT);
+
+        assertThat(updated.getMaskedContent()).isNull();
+        assertThat(updated.getContentVersion()).isEqualTo(2);
+        complaintReviewService.review(parentUser.getId(), complaintId);
+        entityManager.flush();
+        assertThat(riskAnalysisRepository.findByComplaintIdOrderByIdAsc(complaintId))
+                .extracting(com.teacherhub.risk.entity.RiskAnalysis::getContentVersion)
+                .containsExactly(1L, 2L);
 
 
         // =========================
@@ -290,5 +372,23 @@ public class ComplaintFlowIntegrationTest {
                 .isEqualTo(
                         "test-idempotency-key-001"
                 );
+
+        var aiDraft = aiDraftRepository.save(new com.teacherhub.complaint.entity.AiDraft(
+                submitted, "Teacher reply draft", "Summary", "mock-reply-model"));
+        var sentAt = java.time.LocalDateTime.now();
+        responseRepository.save(new com.teacherhub.complaint.entity.Response(
+                submitted, teacher, aiDraft, "Edited reply", sentAt));
+        responseRepository.save(new com.teacherhub.complaint.entity.Response(
+                submitted, teacher, null, "Direct reply", sentAt));
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(responseRepository.findByComplaintIdOrderByIdAsc(complaintId))
+                .hasSize(2).extracting(com.teacherhub.complaint.entity.Response::getContent)
+                .containsExactly("Edited reply", "Direct reply");
+        assertThat(aiDraftRepository.findByComplaintIdOrderByIdAsc(complaintId)).hasSize(1);
+        assertThat(historyRepository.findByComplaintIdOrderByIdAsc(complaintId))
+                .extracting(com.teacherhub.complaint.entity.ComplaintStatusHistory::getNewStatus)
+                .containsExactly(ComplaintStatus.DRAFT, ComplaintStatus.RECEIVED);
+        assertThat(complaintRepository.findById(complaintId).orElseThrow().getMaskedContent()).isNotNull();
     }
 }

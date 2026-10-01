@@ -1,6 +1,6 @@
 package com.teacherhub.risk.controller;
 
-import com.teacherhub.risk.dto.RiskTagListResponse;
+import com.teacherhub.risk.dto.RiskTagList;
 import com.teacherhub.risk.service.RiskTagService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -21,7 +21,7 @@ import java.util.List;
 )
 @SecurityRequirement(name = "bearerAuth")
 @RestController
-@RequestMapping("/api/v1/risk-tags")
+@RequestMapping("/risk-tags")
 @RequiredArgsConstructor
 public class RiskTagController {
 
@@ -38,7 +38,7 @@ public class RiskTagController {
             )
     })
     @GetMapping
-    public ResponseEntity<List<RiskTagListResponse>> getRiskTags() {
+    public ResponseEntity<List<RiskTagList>> getRiskTags() {
         return ResponseEntity.ok(
                 riskTagService.getAllRiskTags()
         );
