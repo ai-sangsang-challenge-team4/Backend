@@ -10,7 +10,9 @@
 |---|---|---|---|
 | POST | `/complaints/{complaintId}/mask` | 원문의 규칙 기반 개인정보 마스킹 결과 저장·반환 | 200 |
 | POST | `/complaints/{complaintId}/risk-analysis` | 마스킹 → 룰·LLM 탐지 → 병합 → 점수 계산·저장 → 수정안 생성 | 200 |
-| GET | `/risk-analyses/{analysisId}` | 저장된 분석의 점수·등급·태그·근거 조회 | 200 |
+| GET | `/risk-analyses/{analysisId}` | 저장된 분석의 점수·등급 조회 | 200 |
+| GET | `/risk-analyses/{analysisId}/findings` | 최종 감지 태그·근거·태그별 수정 제안·최종 수정본 조회 | 200 |
+| GET | `/risk-analyses/{analysisId}/detector-results` | 전체 태그의 Rule·LLM 감지 여부·출처별 근거·LLM 신뢰도 조회 | 200 |
 | GET | `/risk-tags` | 위험 태그 기준 목록 조회, 민원 분석과 별개 | 200 |
 
 ## 마스킹 응답 예시
@@ -19,7 +21,7 @@
 
 서비스는 `risk.service`에 세 개만 둔다.
 
-- `RiskAnalysisService`: 전체 분석 실행·저장·조회. 태그 병합과 점수 계산은 내부 private 메서드로 처리한다.
+- `RiskAnalysisService`: 전체 분석 실행·저장·조회. 태그 병합과 점수 계산은 RiskEvaluator로 처리한다.
 - `ComplaintMaskingService`: 마스킹 API의 민원 조회·권한/상태 검증·마스킹 결과 저장.
 - `RiskTagService`: 위험 태그 기준 목록 조회.
 
@@ -37,37 +39,27 @@
 
 원문은 변경하지 않는다. 민원 수정 시 기존 maskedContent는 초기화된다. 전체 분석 API는 항상 현재 원문을 다시 마스킹하므로 mask API의 선행 호출은 선택 사항이다. 룰의 탐지 근거도 마스킹 후 저장·수정안 생성에 사용한다.
 
-## 전체 분석 응답
+## 분석 실행 응답
+
+POST `/complaints/{complaintId}/risk-analysis`와 GET `/risk-analyses/{analysisId}`는
+동일한 `FinalRiskResult`를 반환한다.
 
 ```json
 {
-  "originalContent": "원본 민원",
-  "riskyExpressionCount": 1,
-  "riskyExpressions": [
-    {"expression": "위험 표현", "reason": "판단 이유"}
-  ],
-  "revision": {
-    "complaintId": 42,
-    "revisionReason": "최종 위험 요소를 반영한 수정 이유",
-    "aiRevision": "수정 제안 문장"
-  },
-  "riskAnalysis": {
-    "analysisId": 10,
-    "complaintId": 42,
-    "tags": [
-      {"code": "THREAT", "detected": true, "ruleDetected": true,
-       "llmDetected": false, "confidence": null, "evidence": "마스킹된 근거"}
-    ],
-    "riskScore": 5,
-    "riskLevel": "HIGH",
-    "aiReason": "LLM 분석 설명"
-  }
+  "analysisId": 10,
+  "complaintId": 42,
+  "riskScore": 5,
+  "riskLevel": "HIGH"
 }
 ```
 
-예시는 구조 설명용이다. 실제 tags에는 미탐지 항목을 포함한 모든 위험 코드가 들어간다. riskyExpressions와 aiReason은 LLM 탐지 단계의 결과이며, revisionReason은 최종 병합 결과에 대한 수정 이유다. 수정안 생성기는 마스킹된 원문과 최종 분석을 받는다.
-
-GET 응답은 위의 riskAnalysis 객체다. 위험 표현·수정 이유·수정안도 분석 이력에 저장하며, 같은 내용 버전으로 POST 분석을 다시 요청하면 기존 전체 응답을 반환한다. GET 분석 조회는 위험도·태그·근거만 반환한다. 과거 ID 조회는 해당 분석 시점의 결과다. 처리 경로·반복 이력 가산·권장 조치는 아직 구현되지 않았다.
+POST는 마스킹, Rule·LLM 탐지, 병합, 점수 계산과 수정안 생성·저장을 수행한다.
+응답에는 요약만 포함하며, 근거와 태그별 수정 제안 및 전체 수정본은
+`GET /risk-analyses/{analysisId}/findings`로 조회한다.
+Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회한다.
+같은 내용 버전으로 분석을 다시 요청하면 기존 분석의 요약을 반환하며 AI를 다시 호출하지 않는다.
+과거 ID 조회는 해당 분석 시점의 결과다. `ComplaintReviewResponse`는 삭제했다.
+처리 경로·반복 이력 가산·권장 조치는 아직 구현되지 않았다.
 
 ## 재분석 및 최종 제출
 
@@ -112,3 +104,61 @@ DB에는 risk_analyses의 original_content/completed/revision_reason/ai_revision
 ```
 
 마스킹은 실제 백엔드 규칙 처리다. 룰 탐지기·LLM 분석기·수정안 생성기는 여전히 Mock이므로 실제 위험 판단/문맥 수정은 하지 않는다. 점수 계산과 분석 결과 저장·조회는 구현되어 있다. 외부 LLM 연동 전에 이름 등 미지원 개인정보 처리 정책을 별도로 정해야 한다.
+
+## 분리된 조회 응답
+
+`FinalRiskResult`는 analysisId, complaintId, riskScore, riskLevel만 반환한다.
+내부 수정안 생성 입력은 `ComplaintRevisionGenerator.RiskEvaluation`으로 분리했다. POST 응답도 이 요약 DTO다.
+수정안 생성 결과는 내부 ComplaintRevisionGenerator.RevisionResult로 받는다.
+전체 수정본은 RiskFindingsResponse.FinalRevision을 재사용하고, 태그별 제안과 함께 DB에 저장한 뒤 findings 조회로 반환한다.
+ComplaintRevisionResult.java는 삭제했으며 생성 결과에서 complaintId도 제거했다.
+
+`GET /risk-analyses/{analysisId}/findings`:
+```json
+{
+  "analysisId": 10,
+  "findings": [{
+    "code": "THREAT",
+    "evidences": ["문제 표현"],
+    "revisionSuggestions": [{
+      "originalExpression": "문제 표현",
+      "suggestedExpression": "수정 표현",
+      "reason": "수정 이유"
+    }]
+  }],
+  "finalRevision": {"reason": "전체 수정 이유", "content": "전체 수정본"}
+}
+```
+
+findings는 finalDetected=true인 태그만 반환한다. 감지가 없으면 빈 배열이다.
+수정 제안은 분석 POST에서 생성·저장하며 GET에서 AI를 호출하지 않는다.
+최종 제출 재분석은 기존 정책대로 수정안을 생성하지 않아 revisionSuggestions는 빈 배열,
+finalRevision은 null이다. 최초 분석과 제출 분석은 서로 다른 분석 ID로 조회한다.
+탐지기와 수정안 생성기는 아직 Mock이므로 실제 문맥에 맞는 수정은 외부 AI 연동이 필요하다.
+
+detector-results는 results(code, finalDetected, rule, llm)와 llm(modelName, temperature, reason)을 반환한다.
+rule/llm에는 detected, confidence, evidences가 있다. 규칙 탐지 confidence는 null이다.
+모든 위험 코드(미감지 포함)를 반환한다. 기존 소유권 검증과 401/403/404 정책은 세 조회 모두 적용한다.
+미완료 분석은 조회하지 않는다.
+
+### 스키마 변경
+
+- risk_tag_revision_suggestions: id, risk_analysis_id(FK), code, original_expression,
+  suggested_expression, reason, suggestion_order. RiskAnalysis의 cascade/orphanRemoval로 함께 관리한다.
+- complaint_risk_tags: rule_evidence, llm_evidence(TEXT, nullable) 추가.
+  기존 evidence는 분석 당시 병합 근거로 유지한다. 기존 confidence는 LLM 신뢰도다.
+- risk_analyses의 revision_reason/ai_revision은 전체 수정본으로 유지한다.
+
+기존 데이터를 유지하는 배포에서는 위 스키마 변경을 반영해야 한다.
+기존 병합 evidence만으로 출처를 복원할 수 없으므로 기존 행의 출처별 근거는 빈 배열,
+태그별 수정 제안도 빈 배열로 반환한다. 과거 기록을 다시 분석하여 채우지 않는다.
+
+### 보조 DTO 파일 정리
+
+API 응답 구조를 유지하면서 보조 타입을 사용하는 클래스 안으로 통합했다.
+
+- RiskEvaluation → ComplaintRevisionGenerator.RiskEvaluation
+- FinalRiskTagResponse → RiskEvaluator.FinalRiskTagResponse
+- TagRevisionSuggestion → ComplaintRevisionGenerator.TagRevisionSuggestion
+
+위 세 타입의 별도 DTO 파일은 삭제했다. 기본 위험도·근거·탐지기 상세 응답 DTO는 각각 유지한다.

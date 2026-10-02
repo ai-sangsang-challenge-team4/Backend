@@ -1,6 +1,5 @@
 package com.teacherhub.risk.service;
 
-import com.teacherhub.risk.dto.FinalRiskTagResponse;
 import com.teacherhub.risk.dto.RiskDetectionResult;
 import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.enums.RiskLevel;
@@ -19,6 +18,16 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class RiskEvaluator {
+
+    /** Internal merged detection, used for scoring and persistence. */
+    public record FinalRiskTagResponse(
+            RiskTagCode code,
+            boolean detected,
+            boolean ruleDetected,
+            boolean llmDetected,
+            Double confidence,
+            String evidence
+    ) {}
 
     // 규칙 기반 및 LLM 위험 태그 결과 병합
     public List<FinalRiskTagResponse> merge(List<RiskDetectionResult> ruleResults, List<RiskDetectionResult> llmResults

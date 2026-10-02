@@ -1,9 +1,15 @@
 package com.teacherhub.risk.service;
 
+import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
+
+import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
+
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.risk.analyzer.*;
 import com.teacherhub.risk.dto.*;
+import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
+import com.teacherhub.risk.dto.RiskFindingsResponse.FinalRevision;
 import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.enums.*;
 import com.teacherhub.risk.masking.PiiMaskingServiceImpl;
@@ -38,7 +44,7 @@ class RiskAnalysisRulesTest {
         when(user.getId()).thenReturn(1L);
         when(complaints.findForUpdate(42L)).thenReturn(Optional.of(new Complaint(new Parent(user), null, "민원 내용")));
         when(analyses.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(revisions.generate(anyString(), any())).thenReturn(new ComplaintRevisionResult(42L, "reason", "revision"));
+        when(revisions.generate(anyString(), any())).thenReturn(new RevisionResult(new FinalRevision("reason", "revision"), List.of()));
         weights(3);
     }
 
@@ -49,10 +55,14 @@ class RiskAnalysisRulesTest {
         when(definitions.findAll()).thenReturn(configuredTags);
     }
 
-    private FinalRiskResult analyze(List<RiskDetectionResult> ruleTags, List<RiskDetectionResult> llmTags) {
+    private RiskEvaluation analyze(List<RiskDetectionResult> ruleTags, List<RiskDetectionResult> llmTags) {
         when(rules.detect(anyString())).thenReturn(ruleTags);
         when(llm.analyze(anyString())).thenReturn(new LLMRiskAnalysisResult(llmTags, "test", 0.0, "reason", List.of()));
-        return service.analyze(1L, 42L).getRiskAnalysis();
+        clearInvocations(revisions);
+        service.analyze(1L, 42L);
+        var captured = org.mockito.ArgumentCaptor.forClass(RiskEvaluation.class);
+        verify(revisions).generate(anyString(), captured.capture());
+        return captured.getValue();
     }
 
     @Test

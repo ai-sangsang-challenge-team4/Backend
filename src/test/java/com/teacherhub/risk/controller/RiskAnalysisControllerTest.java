@@ -40,8 +40,26 @@ class RiskAnalysisControllerTest {
         when(api.mask(7L, 10L)).thenReturn(new MaskingResponse(10L, 1L, "[전화번호]"));
         mvc.perform(post("/complaints/10/mask").principal(auth)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.maskedContent").value("[전화번호]"));
-        mvc.perform(post("/complaints/10/risk-analysis").principal(auth)).andExpect(status().isOk());
-        mvc.perform(get("/risk-analyses/20").principal(auth)).andExpect(status().isOk());
+        when(review.analyze(7L, 10L)).thenReturn(new com.teacherhub.risk.dto.FinalRiskResult(
+                20L, 10L, 5, com.teacherhub.risk.enums.RiskLevel.HIGH));
+        mvc.perform(post("/complaints/10/risk-analysis").principal(auth)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.analysisId").value(20))
+                .andExpect(jsonPath("$.riskScore").value(5))
+                .andExpect(jsonPath("$.riskLevel").value("HIGH"))
+                .andExpect(jsonPath("$.riskAnalysis").doesNotExist())
+                .andExpect(jsonPath("$.originalContent").doesNotExist())
+                .andExpect(jsonPath("$.riskyExpressions").doesNotExist())
+                .andExpect(jsonPath("$.revision").doesNotExist());
+        when(review.findAnalysis(7L, 20L)).thenReturn(new com.teacherhub.risk.dto.FinalRiskResult(
+                20L, 10L, 5, com.teacherhub.risk.enums.RiskLevel.HIGH));
+        mvc.perform(get("/risk-analyses/20").principal(auth)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.riskScore").value(5))
+                .andExpect(jsonPath("$.tags").doesNotExist())
+                .andExpect(jsonPath("$.aiReason").doesNotExist());
+        mvc.perform(get("/risk-analyses/20/findings").principal(auth)).andExpect(status().isOk());
+        mvc.perform(get("/risk-analyses/20/detector-results").principal(auth)).andExpect(status().isOk());
+        verify(review).findFindings(7L, 20L);
+        verify(review).findDetectorResults(7L, 20L);
         verify(review).analyze(7L, 10L);
         verify(review).findAnalysis(7L, 20L);
     }

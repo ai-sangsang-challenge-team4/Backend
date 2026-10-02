@@ -1,6 +1,5 @@
 package com.teacherhub.risk.analyzer;
 
-import com.teacherhub.complaint.dto.RiskyExpressionResponse;
 import com.teacherhub.risk.dto.LLMRiskAnalysisResult;
 import com.teacherhub.risk.dto.RiskDetectionResult;
 import com.teacherhub.risk.enums.RiskTagCode;
@@ -21,8 +20,8 @@ public class MockLlmRiskAnalyzer implements LlmRiskAnalyzer {
                 0.0,
                 "[MOCK LLM] 위험 요소 탐지 및 수정본 반환 예시입니다.",
                 List.of(
-                        new RiskyExpressionResponse("가만두지 않겠습니다", "[MOCK LLM] 협박 표현 예시"),
-                        new RiskyExpressionResponse("무조건 원하는 대로 처리하세요", "[MOCK LLM] 부당 요구 예시")
+                        new LLMRiskAnalysisResult.RiskyExpression("가만두지 않겠습니다", "[MOCK LLM] 협박 표현 예시"),
+                        new LLMRiskAnalysisResult.RiskyExpression("무조건 원하는 대로 처리하세요", "[MOCK LLM] 부당 요구 예시")
                 )
         );
     }

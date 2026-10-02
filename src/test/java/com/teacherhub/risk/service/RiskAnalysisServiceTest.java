@@ -5,7 +5,8 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.analyzer.LlmRiskAnalyzer;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator;
-import com.teacherhub.risk.dto.ComplaintRevisionResult;
+import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
+import com.teacherhub.risk.dto.RiskFindingsResponse.FinalRevision;
 import com.teacherhub.risk.analyzer.MockLlmRiskAnalyzer;
 import com.teacherhub.risk.analyzer.RuleBasedRiskDetector;
 import com.teacherhub.risk.dto.RiskDetectionResult;
@@ -63,7 +64,7 @@ class RiskAnalysisServiceTest {
         when(masking.mask(complaint.getContent())).thenReturn("masked");
         when(llm.analyze("masked")).thenReturn(llmResult);
 
-        var revision = new ComplaintRevisionResult(42L, "final risk reason", "revised content");
+        var revision = new RevisionResult(new FinalRevision("final risk reason", "revised content"), List.of());
         when(revisions.generate(eq("masked"), any())).thenReturn(revision);
 
         var response = service.analyze(1L, 42L);
@@ -74,25 +75,26 @@ class RiskAnalysisServiceTest {
         order.verify(llm).analyze("masked");
         order.verify(analyses).save(any());
         order.verify(detections).saveAll(any());
-        order.verify(revisions).generate("masked", response.getRiskAnalysis());
+        var evaluation = org.mockito.ArgumentCaptor.forClass(com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation.class);
+        order.verify(revisions).generate(eq("masked"), evaluation.capture());
         verifyNoMoreInteractions(rules, llm, revisions);
-        assertThat(response.getRiskAnalysis().complaintId()).isEqualTo(42L);
-        assertThat(response.getRiskAnalysis().riskScore()).isEqualTo(3);
-        assertThat(response.getRiskAnalysis().riskLevel()).isEqualTo(RiskLevel.MEDIUM);
-        assertThat(response.getRiskAnalysis().aiReason()).isEqualTo(llmResult.aiReason());
-        assertThat(response.getRiskAnalysis().tags()).anySatisfy(tag -> {
+        assertThat(response.complaintId()).isEqualTo(42L);
+        assertThat(response.riskScore()).isEqualTo(3);
+        assertThat(response.riskLevel()).isEqualTo(RiskLevel.MEDIUM);
+        assertThat(evaluation.getValue().aiReason()).isEqualTo(llmResult.aiReason());
+        assertThat(evaluation.getValue().tags()).anySatisfy(tag -> {
             assertThat(tag.code()).isEqualTo(PROFANITY);
             assertThat(tag.ruleDetected()).isTrue();
             assertThat(tag.llmDetected()).isFalse();
             assertThat(tag.detected()).isTrue();
         });
-        assertThat(response.getRiskyExpressions()).isEqualTo(llmResult.riskyExpressions());
-        assertThat(response.getRiskyExpressionCount()).isEqualTo(llmResult.riskyExpressions().size());
-        assertThat(response.getRevision()).isEqualTo(revision);
-        assertThat(response.getRevision().complaintId()).isEqualTo(42L);
+        var saved = org.mockito.ArgumentCaptor.forClass(com.teacherhub.risk.entity.RiskAnalysis.class);
+        verify(analyses).save(saved.capture());
+        assertThat(saved.getValue().getAiRevision()).isEqualTo(revision.finalRevision().content());
+        assertThat(saved.getValue().getRevisionReason()).isEqualTo(revision.finalRevision().reason());
+        assertThat(saved.getValue().getRiskyExpressions()).hasSize(llmResult.riskyExpressions().size());
         assertThat(complaint.getContent()).isEqualTo("original private content");
         assertThat(complaint.getMaskedContent()).isEqualTo("masked");
-        verify(analyses).save(any());
         verify(detections).saveAll(any());
     }
 

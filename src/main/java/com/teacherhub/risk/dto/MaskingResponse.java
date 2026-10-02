@@ -1,4 +1,8 @@
 package com.teacherhub.risk.dto;
 
-public record MaskingResponse(Long complaintId, long contentVersion, String maskedContent) {
+// 민감 정보 마스킹 결과
+public record MaskingResponse(
+        Long complaintId,
+        long contentVersion,
+        String maskedContent) {
 }

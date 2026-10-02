@@ -1,12 +1,14 @@
 package com.teacherhub.risk.entity;
 
 import com.teacherhub.complaint.entity.Complaint;
+import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
 import com.teacherhub.risk.enums.RiskLevel;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -29,19 +31,29 @@ public class RiskAnalysis {
     @Column(columnDefinition = "TEXT")
     private String aiRevision;
 
+    @OneToMany(mappedBy = "riskAnalysis", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderColumn(name = "suggestion_order")
+    private List<RiskTagRevisionSuggestion> tagRevisionSuggestions = new ArrayList<>();
+
     @ElementCollection
     @CollectionTable(name = "risk_analysis_expressions", joinColumns = @JoinColumn(name = "risk_analysis_id"))
     @OrderColumn(name = "expression_order")
-    private List<AnalyzedExpression> riskyExpressions = new java.util.ArrayList<>();
+    private List<AnalyzedExpression> riskyExpressions = new ArrayList<>();
 
-    public void complete(java.util.List<com.teacherhub.complaint.dto.RiskyExpressionResponse> expressions,
-                         com.teacherhub.risk.dto.ComplaintRevisionResult revision) {
+    public void complete(List<RiskyExpressionResponse> expressions,
+                         RevisionResult revision) {
         Objects.requireNonNull(revision, "수정안 생성 결과가 필요합니다.");
-        this.revisionReason = revision.revisionReason();
-        this.aiRevision = revision.aiRevision();
+
+        this.revisionReason = revision.finalRevision() == null ? null : revision.finalRevision().reason();
+        this.aiRevision = revision.finalRevision() == null ? null : revision.finalRevision().content();
+
         this.riskyExpressions = expressions.stream()
                 .map(e -> new AnalyzedExpression(e.getExpression(), e.getReason()))
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+
+        this.tagRevisionSuggestions.clear();
+        revision.tagSuggestions().forEach(suggestion ->
+                this.tagRevisionSuggestions.add(new RiskTagRevisionSuggestion(this, suggestion)));
         this.completed = true;
     }
 

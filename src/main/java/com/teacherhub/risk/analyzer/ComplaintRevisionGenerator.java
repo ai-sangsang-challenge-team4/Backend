@@ -1,9 +1,25 @@
 package com.teacherhub.risk.analyzer;
 
-import com.teacherhub.risk.dto.ComplaintRevisionResult;
-import com.teacherhub.risk.dto.FinalRiskResult;
+import com.teacherhub.risk.dto.RiskFindingsResponse.FinalRevision;
+import com.teacherhub.risk.enums.RiskTagCode;
+import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
+import java.util.List;
 
 public interface ComplaintRevisionGenerator {
-    // 마스킹된 원문과 병합 완료된 위험 분석 결과를 바탕으로 수정안을 생성합니다.
-    ComplaintRevisionResult generate(String maskedContent, FinalRiskResult riskAnalysis);
+    RevisionResult generate(String maskedContent, RiskEvaluation riskAnalysis);
+
+    record RevisionResult(FinalRevision finalRevision, List<TagRevisionSuggestion> tagSuggestions) {
+        public RevisionResult {
+            tagSuggestions = List.copyOf(tagSuggestions);
+        }
+    }
+
+    record TagRevisionSuggestion(RiskTagCode code, String originalExpression,
+            String suggestedExpression, String reason) {}
+
+    /** Internal context for generating revisions, separate from public summary responses. */
+    record RiskEvaluation(Long analysisId, Long complaintId,
+            List<FinalRiskTagResponse> tags, Integer riskScore,
+            RiskLevel riskLevel, String aiReason) {}
 }

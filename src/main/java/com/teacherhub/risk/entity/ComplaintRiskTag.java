@@ -1,6 +1,6 @@
 package com.teacherhub.risk.entity;
 
-import com.teacherhub.risk.dto.FinalRiskTagResponse;
+import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -37,6 +37,16 @@ public class ComplaintRiskTag {
 
     @Column(columnDefinition = "TEXT")
     private String evidence;
+
+    @Column(columnDefinition = "TEXT")
+    private String ruleEvidence;
+    @Column(columnDefinition = "TEXT")
+    private String llmEvidence;
+
+    public void recordSourceEvidence(String ruleEvidence, String llmEvidence) {
+        this.ruleEvidence = ruleEvidence;
+        this.llmEvidence = llmEvidence;
+    }
 
     public ComplaintRiskTag(RiskAnalysis analysis, RiskTag tag, FinalRiskTagResponse result) {
         this.riskAnalysis = analysis;

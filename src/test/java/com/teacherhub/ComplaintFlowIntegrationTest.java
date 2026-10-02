@@ -2,14 +2,13 @@ package com.teacherhub;
 
 import com.teacherhub.complaint.dto.ComplaintRequest;
 import com.teacherhub.complaint.dto.ComplaintResponse;
-import com.teacherhub.complaint.dto.ComplaintReviewResponse;
+import com.teacherhub.risk.dto.FinalRiskResult;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintStatus;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 
 import com.teacherhub.risk.service.RiskAnalysisService;
 import com.teacherhub.complaint.service.ComplaintService;
-import com.teacherhub.risk.dto.FinalRiskTagResponse;
 import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.school.entity.StudentClass;
 import com.teacherhub.school.repository.SchoolClassRepository;
@@ -107,11 +106,11 @@ public class ComplaintFlowIntegrationTest {
         assertThat(masked.maskedContent()).isEqualTo("전화 [전화번호]로 연락 부탁드립니다.");
         assertThat(complaintRepository.findById(id).orElseThrow().getContent()).contains("010-1234-5678");
         var review = riskAnalysisService.analyze(parentUser.getId(), id);
-        assertThat(review.getRiskAnalysis().analysisId()).isNotNull();
-        assertThat(riskAnalysisService.findAnalysis(parentUser.getId(), review.getRiskAnalysis().analysisId()))
-                .isEqualTo(review.getRiskAnalysis());
+        assertThat(review.analysisId()).isNotNull();
+        assertThat(riskAnalysisService.findAnalysis(parentUser.getId(), review.analysisId()))
+                .isEqualTo(review);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> riskAnalysisService.findAnalysis(
-                teacherUser.getId(), review.getRiskAnalysis().analysisId()))
+                teacherUser.getId(), review.analysisId()))
                 .isInstanceOf(com.teacherhub.complaint.exception.ComplaintAccessDeniedException.class);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> maskingService.mask(teacherUser.getId(), id))
                 .isInstanceOf(com.teacherhub.complaint.exception.ComplaintAccessDeniedException.class);
@@ -119,6 +118,42 @@ public class ComplaintFlowIntegrationTest {
                 .isInstanceOf(com.teacherhub.risk.exception.RiskAnalysisNotFoundException.class);
         complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "새 내용"));
         assertThat(complaintRepository.findById(id).orElseThrow().getMaskedContent()).isNull();
+    }
+
+    @Test
+    void persistsTagSuggestionsAndSeparatesSourceEvidence() {
+        Long complaintId = complaintService.createDraft(parentUser.getId(),
+                new ComplaintRequest(student.getId(), "확인을 요청드립니다.")).getComplaintId();
+        var review = riskAnalysisService.analyze(parentUser.getId(), complaintId);
+        Long analysisId = review.analysisId();
+        entityManager.flush();
+        entityManager.clear();
+
+        var findings = riskAnalysisService.findFindings(parentUser.getId(), analysisId);
+        assertThat(findings.findings()).hasSize(3).allSatisfy(finding -> {
+            assertThat(finding.evidences()).isNotEmpty();
+            assertThat(finding.revisionSuggestions()).hasSize(1);
+            assertThat(finding.revisionSuggestions().get(0).suggestedExpression()).isNotBlank();
+        });
+        assertThat(findings.finalRevision().content()).isEqualTo(
+                riskAnalysisRepository.findById(analysisId).orElseThrow().getAiRevision());
+        assertThat(riskAnalysisService.findFindings(parentUser.getId(), analysisId)).isEqualTo(findings);
+        var detail = riskAnalysisService.findDetectorResults(parentUser.getId(), analysisId);
+        assertThat(detail.results()).hasSize(com.teacherhub.risk.enums.RiskTagCode.values().length);
+        var threat = detail.results().stream()
+                .filter(tag -> tag.code() == com.teacherhub.risk.enums.RiskTagCode.THREAT).findFirst().orElseThrow();
+        assertThat(threat.rule().detected()).isTrue();
+        assertThat(threat.llm().detected()).isTrue();
+        assertThat(threat.rule().evidences()).containsExactly("[MOCK RULE] 협박 예시");
+        assertThat(threat.llm().evidences()).containsExactly("[MOCK LLM] 협박 문맥 예시");
+        assertThat(threat.llm().confidence()).isEqualTo(0.9);
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> riskAnalysisService.findFindings(teacherUser.getId(), analysisId))
+                .isInstanceOf(com.teacherhub.complaint.exception.ComplaintAccessDeniedException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> riskAnalysisService.findDetectorResults(teacherUser.getId(), analysisId))
+                .isInstanceOf(com.teacherhub.complaint.exception.ComplaintAccessDeniedException.class);
+        assertThat(riskAnalysisRepository.countByComplaintIdAndCompletedTrue(complaintId)).isEqualTo(1);
     }
 
     @Autowired
@@ -297,7 +332,7 @@ public class ComplaintFlowIntegrationTest {
         // 2. AI Review
         // =========================
 
-        ComplaintReviewResponse reviewResponse =
+        FinalRiskResult reviewResponse =
                 riskAnalysisService.analyze(
                         parentUser.getId(),
                         complaintId
@@ -307,29 +342,23 @@ public class ComplaintFlowIntegrationTest {
         assertThat(reviewResponse)
                 .isNotNull();
 
-        assertThat(reviewResponse.getRiskAnalysis().complaintId()).isEqualTo(complaintId);
-        assertThat(reviewResponse.getRiskAnalysis().riskScore()).isEqualTo(60);
-        assertThat(reviewResponse.getRiskAnalysis().riskLevel())
+        assertThat(reviewResponse.complaintId()).isEqualTo(complaintId);
+        assertThat(reviewResponse.riskScore()).isEqualTo(60);
+        assertThat(reviewResponse.riskLevel())
                 .isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
-        assertThat(reviewResponse.getRevision().revisionReason()).isNotBlank();
-        assertThat(reviewResponse.getRevision().aiRevision()).isNotBlank();
-        assertThat(reviewResponse.getRevision().complaintId())
-                .isEqualTo(reviewResponse.getRiskAnalysis().complaintId());
+        var findings = riskAnalysisService.findFindings(parentUser.getId(), reviewResponse.analysisId());
+        assertThat(findings.finalRevision().reason()).isNotBlank();
+        assertThat(findings.finalRevision().content()).isNotBlank();
         assertThat(draft.getContent()).isEqualTo(createRequest.getContent());
-        assertThat(reviewResponse.getRiskAnalysis().tags())
+        assertThat(riskAnalysisService.findDetectorResults(parentUser.getId(), reviewResponse.analysisId()).results())
                 .hasSize(com.teacherhub.risk.enums.RiskTagCode.values().length);
-        assertThat(reviewResponse.getRiskAnalysis().tags())
-                .filteredOn(FinalRiskTagResponse::detected)
-                .extracting(FinalRiskTagResponse::code)
+        assertThat(riskAnalysisService.findDetectorResults(parentUser.getId(), reviewResponse.analysisId()).results())
+                .filteredOn(com.teacherhub.risk.dto.RiskDetectorResultsResponse.TagResult::finalDetected)
+                .extracting(com.teacherhub.risk.dto.RiskDetectorResultsResponse.TagResult::code)
                 .containsExactly(
                         com.teacherhub.risk.enums.RiskTagCode.PROFANITY,
                         com.teacherhub.risk.enums.RiskTagCode.THREAT,
                         com.teacherhub.risk.enums.RiskTagCode.UNFAIR_REQUEST);
-
-        assertThat(reviewResponse.getOriginalContent())
-                .isEqualTo(
-                        "계속 이런 식이면 교육청에 신고하겠습니다."
-                );
 
         entityManager.flush();
         var savedAnalyses = riskAnalysisRepository.findByComplaintIdOrderByIdAsc(complaintId);

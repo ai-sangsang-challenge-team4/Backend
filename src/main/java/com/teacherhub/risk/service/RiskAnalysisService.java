@@ -1,6 +1,13 @@
 package com.teacherhub.risk.service;
 
-import com.teacherhub.complaint.dto.ComplaintReviewResponse;
+import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.TagRevisionSuggestion;
+import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
+import com.teacherhub.risk.dto.RiskFindingsResponse.FinalRevision;
+
+import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
+
+import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
+
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintStatus;
 import com.teacherhub.complaint.exception.*;
@@ -8,7 +15,6 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.risk.analyzer.*;
 import com.teacherhub.risk.dto.*;
 import com.teacherhub.risk.entity.*;
-import com.teacherhub.risk.service.RiskEvaluator.*;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.repository.*;
@@ -36,7 +42,7 @@ public class RiskAnalysisService {
     private final RiskEvaluator riskEvaluator;
 
     @Transactional
-    public ComplaintReviewResponse analyze(
+    public FinalRiskResult analyze(
             Long userId,
             Long complaintId
     ) {
@@ -45,10 +51,10 @@ public class RiskAnalysisService {
 
     @Transactional
     public FinalRiskResult analyzeForSubmission(Long userId, Long complaintId) {
-        return analyze(userId, complaintId, true).getRiskAnalysis();
+        return analyze(userId, complaintId, true);
     }
 
-    private ComplaintReviewResponse analyze(Long userId, Long complaintId, boolean submitting) {
+    private FinalRiskResult analyze(Long userId, Long complaintId, boolean submitting) {
         // 1. 민원 조회
         Complaint complaint = complaintRepository.findForUpdate(complaintId)
                 .orElseThrow(() ->
@@ -96,13 +102,7 @@ public class RiskAnalysisService {
         }
 
         if (existing.isPresent()) {
-            var saved = existing.get();
-            var expressions = saved.getRiskyExpressions().stream()
-                    .map(e -> new com.teacherhub.complaint.dto.RiskyExpressionResponse(e.getExpression(), e.getReason()))
-                    .toList();
-            return new ComplaintReviewResponse(originalContent, expressions.size(), expressions,
-                    new ComplaintRevisionResult(complaintId, saved.getRevisionReason(), saved.getAiRevision()),
-                    findAnalysis(userId, saved.getId()));
+            return summary(existing.get());
         }
 
         long completedCount = analysisRepository.countByComplaintIdAndCompletedTrue(complaintId);
@@ -133,42 +133,98 @@ public class RiskAnalysisService {
                 .toList();
 
         // 최종 점수는 룰 엔진이 계산하고 전체/태그별 분석 결과를 함께 저장
-        RiskAnalysis savedAnalysis = calculateAndSave(complaint, finalTags, result);
-        FinalRiskResult riskAnalysis = new FinalRiskResult(savedAnalysis.getId(), complaintId, finalTags,
+        RiskAnalysis savedAnalysis = calculateAndSave(complaint, finalTags, result, ruleResults);
+        RiskEvaluation evaluation = new RiskEvaluation(savedAnalysis.getId(), complaintId, finalTags,
                 savedAnalysis.getRiskScore(), savedAnalysis.getRiskLevel(), savedAnalysis.getAiReason());
 
 
         // 9. 최종 위험 요소를 바탕으로 수정안 생성
         var revision = submitting
-                ? new ComplaintRevisionResult(complaintId, null, null)
-                : complaintRevisionGenerator.generate(maskedContent, riskAnalysis);
-        savedAnalysis.complete(result.riskyExpressions(), revision);
+                ? new RevisionResult(null, List.of())
+                : complaintRevisionGenerator.generate(maskedContent, evaluation);
+        validateSuggestions(finalTags, revision);
+        var finalRevision = revision.finalRevision();
+        var safeRevision = new RevisionResult(finalRevision == null ? null : new FinalRevision(
+                maskEvidence(finalRevision.reason()), maskEvidence(finalRevision.content())),
+                revision.tagSuggestions().stream().map(suggestion -> new TagRevisionSuggestion(
+                        suggestion.code(), maskEvidence(suggestion.originalExpression()),
+                        maskEvidence(suggestion.suggestedExpression()), maskEvidence(suggestion.reason()))).toList());
+        savedAnalysis.complete(result.riskyExpressions(), safeRevision);
 
-        // 수정본은 제안으로 반환하며 사용자의 수정 요청으로만 원문을 변경
-        return new ComplaintReviewResponse(
-                originalContent,
-                result.riskyExpressions().size(),
-                result.riskyExpressions(),
-                revision,
-                riskAnalysis
-        );
+        // 상세 근거와 수정 제안은 별도 GET으로 조회합니다.
+        return summary(savedAnalysis);
     }
 
     public FinalRiskResult findAnalysis(Long userId, Long analysisId) {
+        return summary(ownedAnalysis(userId, analysisId));
+    }
 
-        var analysis = analysisRepository.findById(analysisId)
-                .orElseThrow(() -> new RiskAnalysisNotFoundException("위험 분석 결과가 없습니다."));
-
-        checkOwner(userId, analysis.getComplaint().getParent().getUser().getId());
-
-        var results = resultRepository.findByRiskAnalysisId(analysisId).stream()
-                .map(tag -> new FinalRiskTagResponse(tag.getRiskTag().getCode(), tag.isFinalDetected(),
-                        tag.isRuleDetected(), tag.isLlmDetected(), tag.getConfidence(), tag.getEvidence()))
-                .sorted(java.util.Comparator.comparing(FinalRiskTagResponse::code))
+    public RiskFindingsResponse findFindings(Long userId, Long analysisId) {
+        var analysis = ownedAnalysis(userId, analysisId);
+        var findings = resultRepository.findByRiskAnalysisId(analysisId).stream()
+                .filter(ComplaintRiskTag::isFinalDetected)
+                .sorted(Comparator.comparing(tag -> tag.getRiskTag().getCode()))
+                .map(tag -> new RiskFindingsResponse.Finding(tag.getRiskTag().getCode(),
+                        evidences(tag.getEvidence()),
+                        analysis.getTagRevisionSuggestions().stream()
+                                .filter(suggestion -> suggestion.getCode() == tag.getRiskTag().getCode())
+                                .map(suggestion -> new RiskFindingsResponse.Suggestion(
+                                        suggestion.getOriginalExpression(), suggestion.getSuggestedExpression(),
+                                        suggestion.getReason())).toList()))
                 .toList();
+        var revision = analysis.getAiRevision() == null ? null
+                : new RiskFindingsResponse.FinalRevision(analysis.getRevisionReason(), analysis.getAiRevision());
+        return new RiskFindingsResponse(analysisId, findings, revision);
+    }
 
-        return new FinalRiskResult(analysisId, analysis.getComplaint().getId(), results,
-                analysis.getRiskScore(), analysis.getRiskLevel(), analysis.getAiReason());
+    public RiskDetectorResultsResponse findDetectorResults(Long userId, Long analysisId) {
+        var analysis = ownedAnalysis(userId, analysisId);
+        var results = resultRepository.findByRiskAnalysisId(analysisId).stream()
+                .sorted(Comparator.comparing(tag -> tag.getRiskTag().getCode()))
+                .map(tag -> new RiskDetectorResultsResponse.TagResult(tag.getRiskTag().getCode(),
+                        tag.isFinalDetected(),
+                        new RiskDetectorResultsResponse.Detection(tag.isRuleDetected(), null,
+                                evidences(tag.getRuleEvidence())),
+                        new RiskDetectorResultsResponse.Detection(tag.isLlmDetected(), tag.getConfidence(),
+                                evidences(tag.getLlmEvidence())))).toList();
+        return new RiskDetectorResultsResponse(analysisId, results,
+                new RiskDetectorResultsResponse.LlmMetadata(analysis.getModelName(),
+                        analysis.getTemperature(), analysis.getAiReason()));
+    }
+
+    private RiskAnalysis ownedAnalysis(Long userId, Long analysisId) {
+        var analysis = analysisRepository.findById(analysisId)
+                .filter(RiskAnalysis::isCompleted)
+                .orElseThrow(() -> new RiskAnalysisNotFoundException("위험 분석 결과가 없습니다."));
+        checkOwner(userId, analysis.getComplaint().getParent().getUser().getId());
+        return analysis;
+    }
+
+    private FinalRiskResult summary(RiskAnalysis analysis) {
+        return new FinalRiskResult(analysis.getId(), analysis.getComplaint().getId(),
+                analysis.getRiskScore(), analysis.getRiskLevel());
+    }
+
+    private List<String> evidences(String value) {
+        return value == null || value.isBlank() ? List.of()
+                : value.lines().filter(line -> !line.isBlank()).distinct().toList();
+    }
+
+    private String maskEvidence(String value) {
+        return value == null || value.isBlank() ? value : piiMaskingService.mask(value);
+    }
+
+    private void validateSuggestions(List<FinalRiskTagResponse> tags, RevisionResult revision) {
+        var detectedCodes = tags.stream().filter(FinalRiskTagResponse::detected)
+                .map(FinalRiskTagResponse::code).collect(Collectors.toSet());
+        for (var suggestion : revision.tagSuggestions()) {
+            if (!detectedCodes.contains(suggestion.code())
+                    || suggestion.originalExpression() == null || suggestion.originalExpression().isBlank()
+                    || suggestion.suggestedExpression() == null || suggestion.suggestedExpression().isBlank()
+                    || suggestion.reason() == null || suggestion.reason().isBlank()) {
+                throw new IllegalStateException("감지된 태그에 대한 유효한 수정 제안이 필요합니다.");
+            }
+        }
     }
 
     private void checkOwner(Long userId, Long ownerId) {
@@ -178,7 +234,8 @@ public class RiskAnalysisService {
     }
 
     // 민원 위험 점수 계산 및 DB 저장
-    private RiskAnalysis calculateAndSave(Complaint complaint, List<FinalRiskTagResponse> tags, LLMRiskAnalysisResult llm) {
+    private RiskAnalysis calculateAndSave(Complaint complaint, List<FinalRiskTagResponse> tags, LLMRiskAnalysisResult llm,
+                                          List<RiskDetectionResult> ruleResults) {
 
         var definitions = tagRepository.findAll().stream()
                 .collect(Collectors.toMap(RiskTag::getCode, Function.identity()));
@@ -195,8 +252,16 @@ public class RiskAnalysisService {
         var analysis = analysisRepository.save(new RiskAnalysis(complaint, score, level,
                 llm.modelName(), llm.temperature(), llm.aiReason()));
 
-        resultRepository.saveAll(tags.stream().map(tag ->
-                new ComplaintRiskTag(analysis, definitions.get(tag.code()), tag)).toList());
+        var rules = riskEvaluator.index(ruleResults);
+        var llms = riskEvaluator.index(llm.tags());
+        resultRepository.saveAll(tags.stream().map(tag -> {
+            var saved = new ComplaintRiskTag(analysis, definitions.get(tag.code()), tag);
+            var rule = rules.get(tag.code());
+            var llmTag = llms.get(tag.code());
+            saved.recordSourceEvidence(rule == null ? null : maskEvidence(rule.evidence()),
+                    llmTag == null ? null : maskEvidence(llmTag.evidence()));
+            return saved;
+        }).toList());
 
         return analysis;
     }
