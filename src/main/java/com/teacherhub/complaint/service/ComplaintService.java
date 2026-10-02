@@ -103,6 +103,16 @@ public class ComplaintService {
     }
 
 
+    public ComplaintResponse findStatus(Long userId, Long complaintId) {
+        Complaint complaint = complaintRepository.findById(complaintId)
+                .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
+        validateOwner(userId, complaint);
+        return ComplaintResponse.builder()
+                .complaintId(complaint.getId())
+                .status(complaint.getStatus())
+                .build();
+    }
+
     // 민원 내용 수정
     @Transactional
     public void updateDraft(

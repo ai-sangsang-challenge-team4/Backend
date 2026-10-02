@@ -1,5 +1,4 @@
 package com.teacherhub.risk.entity;
-import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.TagRevisionSuggestion;
 import com.teacherhub.risk.enums.RiskTagCode;
 import jakarta.persistence.*;
 import lombok.*;
@@ -21,14 +20,15 @@ public class RiskTagRevisionSuggestion {
     private String suggestedExpression;
     @Column(nullable = false, columnDefinition = "TEXT")
     private String reason;
-    public RiskTagRevisionSuggestion(RiskAnalysis analysis, TagRevisionSuggestion suggestion) {
-        riskAnalysis = analysis;
-        code = suggestion.code();
-        originalExpression = suggestion.originalExpression();
-        suggestedExpression = suggestion.suggestedExpression();
-        reason = suggestion.reason();
+    public RiskTagRevisionSuggestion(RiskTagCode code, String originalExpression,
+                                     String suggestedExpression, String reason) {
+        this.code = code;
+        this.originalExpression = originalExpression;
+        this.suggestedExpression = suggestedExpression;
+        this.reason = reason;
     }
-    public TagRevisionSuggestion toResponse() {
-        return new TagRevisionSuggestion(code, originalExpression, suggestedExpression, reason);
+
+    void assignTo(RiskAnalysis analysis) {
+        this.riskAnalysis = analysis;
     }
 }

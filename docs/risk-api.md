@@ -19,10 +19,11 @@
 
 분석 요청은 `/complaints/{complaintId}/risk-analysis`로 통일하며 기존 `/review` 경로는 제공하지 않는다.
 
-서비스는 `risk.service`에 세 개만 둔다.
+분석 실행과 조회는 `risk.service`의 별도 서비스로 관리한다.
 
-- `RiskAnalysisService`: 전체 분석 실행·저장·조회. 태그 병합과 점수 계산은 RiskEvaluator로 처리한다.
-- `ComplaintMaskingService`: 마스킹 API의 민원 조회·권한/상태 검증·마스킹 결과 저장.
+- `RiskAnalysisService`: 분석 실행·결과 및 수정안 저장. 태그 병합과 점수 계산은 RiskEvaluator로 처리한다.
+- `RiskAnalysisQueryService`: 저장된 위험도 요약·근거 및 수정 제안·Rule/LLM 상세 조회. 읽기 전용 트랜잭션에서 완료 여부와 작성자 권한을 검증한다.
+- `risk.masking.ComplaintMaskingService`: 마스킹 API의 민원 조회·권한/상태 검증·마스킹 결과 저장.
 - `RiskTagService`: 위험 태그 기준 목록 조회.
 
 룰 탐지기·LLM 분석기·수정안 생성기 인터페이스 및 `risk.masking`의 마스킹 구현은 별도로 유지한다.
@@ -162,3 +163,22 @@ API 응답 구조를 유지하면서 보조 타입을 사용하는 클래스 안
 - TagRevisionSuggestion → ComplaintRevisionGenerator.TagRevisionSuggestion
 
 위 세 타입의 별도 DTO 파일은 삭제했다. 기본 위험도·근거·탐지기 상세 응답 DTO는 각각 유지한다.
+
+## 민원 수정·제출 응답 및 상태 조회
+
+DTO를 반환하는 기존 API의 응답은 유지한다. 빈 성공 응답을 반환하던 민원 수정·제출 API는 JSON 메시지를 반환한다.
+
+- PATCH `/complaints/{complaintId}`: 200, `{"message":"민원 내용이 수정되었습니다."}`.
+  기존 204에서 200으로 변경했다. 요청 본문은 기존 ComplaintRequest를 사용한다.
+- POST `/complaints/{complaintId}/send`: 200, `{"message":"민원이 제출되었습니다."}`.
+  요청 본문은 없다.
+- GET `/complaints/{complaintId}/status`: 200, 기존 ComplaintResponse 사용.
+
+```json
+{"complaintId":42,"status":"ANALYZED"}
+```
+
+상태 조회는 작성자만 가능하다. 인증 없음은 401, 다른 작성자의 민원은 403,
+없는 민원은 404다. 조회만 수행하며 분석이나 수정안을 생성하지 않는다.
+Postman에서는 생성 후 DRAFT, send 성공 후 ANALYZED를 조회하고,
+제출 이후 PATCH가 409 COMPLAINT_NOT_DRAFT로 차단되는지 확인한다.

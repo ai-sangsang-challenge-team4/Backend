@@ -1,11 +1,12 @@
 package com.teacherhub.risk.controller;
 
 import com.teacherhub.risk.service.RiskAnalysisService;
+import com.teacherhub.risk.service.RiskAnalysisQueryService;
 import com.teacherhub.risk.dto.FinalRiskResult;
 import com.teacherhub.risk.dto.RiskFindingsResponse;
 import com.teacherhub.risk.dto.RiskDetectorResultsResponse;
 import com.teacherhub.risk.dto.MaskingResponse;
-import com.teacherhub.risk.service.ComplaintMaskingService;
+import com.teacherhub.risk.masking.ComplaintMaskingService;
 import com.teacherhub.user.repository.UserRepository;
 import com.teacherhub.common.exception.UnauthorizedException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,6 +26,7 @@ public class RiskAnalysisController {
 
     private final ComplaintMaskingService maskingService;
     private final RiskAnalysisService analysisService;
+    private final RiskAnalysisQueryService queryService;
     private final UserRepository users;
 
     @PostMapping("/complaints/{complaintId}/mask")
@@ -45,26 +47,17 @@ public class RiskAnalysisController {
         return analysisService.analyze(userId(authentication), complaintId);
     }
 
-    @GetMapping("/risk-analyses/{analysisId}")
-    @Operation(summary = "저장된 위험 점수 및 등급 조회",
-            description = "민원 작성자만 조회할 수 있습니다. 해당 분석 시점의 결과를 반환합니다.")
-
-    public FinalRiskResult findAnalysis(Authentication authentication,
-                                        @PathVariable Long analysisId) {
-        return analysisService.findAnalysis(userId(authentication), analysisId);
-    }
-
     @GetMapping("/risk-analyses/{analysisId}/findings")
     @Operation(summary = "감지된 위험 태그의 근거 및 수정 제안 조회")
     public RiskFindingsResponse findFindings(Authentication authentication, @PathVariable Long analysisId) {
-        return analysisService.findFindings(userId(authentication), analysisId);
+        return queryService.findFindings(userId(authentication), analysisId);
     }
 
     @GetMapping("/risk-analyses/{analysisId}/detector-results")
     @Operation(summary = "태그별 Rule 및 LLM 상세 탐지 결과 조회")
     public RiskDetectorResultsResponse findDetectorResults(Authentication authentication,
                                                            @PathVariable Long analysisId) {
-        return analysisService.findDetectorResults(userId(authentication), analysisId);
+        return queryService.findDetectorResults(userId(authentication), analysisId);
     }
 
     private Long userId(Authentication authentication) {

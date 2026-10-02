@@ -1,9 +1,8 @@
-package com.teacherhub.risk.service;
+package com.teacherhub.risk.masking;
 
 import com.teacherhub.complaint.entity.ComplaintStatus;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.risk.dto.*;
-import com.teacherhub.risk.masking.PiiMaskingService;
 import lombok.RequiredArgsConstructor;
 import com.teacherhub.complaint.exception.*;
 

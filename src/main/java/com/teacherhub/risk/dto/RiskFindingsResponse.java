@@ -4,7 +4,7 @@ import com.teacherhub.risk.enums.RiskTagCode;
 
 // 위험 분석 상세 결과 (위험 태그별로 분류된 발견 사항)
 public record RiskFindingsResponse(
-        Long analysisId,
+
         List<Finding> findings,
         FinalRevision finalRevision) {
 
