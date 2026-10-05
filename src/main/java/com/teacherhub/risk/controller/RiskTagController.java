@@ -1,6 +1,6 @@
 package com.teacherhub.risk.controller;
 
-import com.teacherhub.risk.dto.RiskTagList;
+import com.teacherhub.risk.dto.response.RiskTagResponse;
 import com.teacherhub.risk.service.RiskTagService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -38,7 +38,7 @@ public class RiskTagController {
             )
     })
     @GetMapping
-    public ResponseEntity<List<RiskTagList>> getRiskTags() {
+    public ResponseEntity<List<RiskTagResponse>> getRiskTags() {
         return ResponseEntity.ok(
                 riskTagService.getAllRiskTags()
         );

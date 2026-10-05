@@ -2,6 +2,9 @@ package com.teacherhub.risk.service;
 
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
 
+import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
+import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
+import com.teacherhub.risk.dto.response.RiskSummaryResponse;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
@@ -11,7 +14,6 @@ import com.teacherhub.complaint.entity.ComplaintStatus;
 import com.teacherhub.complaint.exception.*;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.risk.analyzer.*;
-import com.teacherhub.risk.dto.*;
 import com.teacherhub.risk.entity.*;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.repository.*;
@@ -39,7 +41,7 @@ public class RiskAnalysisService {
     private final RiskEvaluator riskEvaluator;
 
     @Transactional
-    public FinalRiskResult analyze(
+    public RiskSummaryResponse analyze(
             Long userId,
             Long complaintId
     ) {
@@ -47,11 +49,11 @@ public class RiskAnalysisService {
     }
 
     @Transactional
-    public FinalRiskResult analyzeForSubmission(Long userId, Long complaintId) {
+    public RiskSummaryResponse analyzeForSubmission(Long userId, Long complaintId) {
         return analyze(userId, complaintId, true);
     }
 
-    private FinalRiskResult analyze(Long userId, Long complaintId, boolean submitting) {
+    private RiskSummaryResponse analyze(Long userId, Long complaintId, boolean submitting) {
 
         // 1. 민원 조회
         Complaint complaint = complaintRepository.findForUpdate(complaintId)
@@ -119,7 +121,7 @@ public class RiskAnalysisService {
         complaint.updateMaskedContent(maskedContent);
 
         // 7. LLM으로 위험 태그와 위험 표현 분석
-        LLMRiskAnalysisResult result = llmRiskAnalyzer.analyze(maskedContent);
+        LlmRiskAnalysisResult result = llmRiskAnalyzer.analyze(maskedContent);
 
         // 8. 규칙 기반 및 LLM 위험 태그 결과 병합
         // 룰 근거는 원문에서 추출될 수 있으므로 수정안 생성기에 전달하기 전에 마스킹
@@ -153,7 +155,7 @@ public class RiskAnalysisService {
     }
 
     private void completeAnalysis(RiskAnalysis analysis,
-                                  List<LLMRiskAnalysisResult.RiskyExpression> expressions,
+                                  List<LlmRiskAnalysisResult.RiskyExpression> expressions,
                                   RevisionResult revision) {
         var finalRevision = revision.finalRevision();
         var analyzedExpressions = expressions.stream()
@@ -184,14 +186,14 @@ public class RiskAnalysisService {
         }
     }
 
-    private FinalRiskResult summary(RiskAnalysis analysis) {
-        return new FinalRiskResult(analysis.getId(), analysis.getComplaint().getId(),
+    private RiskSummaryResponse summary(RiskAnalysis analysis) {
+        return new RiskSummaryResponse(analysis.getId(), analysis.getComplaint().getId(),
                 analysis.getRiskScore(), analysis.getRiskLevel());
     }
 
     // 민원 위험 점수 계산 및 DB 저장
-    private RiskAnalysis calculateAndSave(Complaint complaint, List<FinalRiskTagResponse> tags, LLMRiskAnalysisResult llm,
-                                          List<RiskDetectionResult> ruleResults) {
+    private RiskAnalysis calculateAndSave(Complaint complaint, List<FinalRiskTagResponse> tags, LlmRiskAnalysisResult llm,
+                                          List<RiskTagDetectionResult> ruleResults) {
 
         var definitions = tagRepository.findAll().stream()
                 .collect(Collectors.toMap(RiskTag::getCode, Function.identity()));
@@ -206,7 +208,7 @@ public class RiskAnalysisService {
         var level = riskEvaluator.levelFor(score);
 
         var analysis = analysisRepository.save(new RiskAnalysis(complaint, score, level,
-                llm.modelName(), llm.temperature(), llm.aiReason()));
+                llm.metadata().modelName(), llm.metadata().temperature(), llm.metadata().reason()));
 
         var rules = riskEvaluator.index(ruleResults);
         var llms = riskEvaluator.index(llm.tags());

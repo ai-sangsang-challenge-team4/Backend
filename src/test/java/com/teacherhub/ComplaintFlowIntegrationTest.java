@@ -2,11 +2,12 @@ package com.teacherhub;
 
 import com.teacherhub.complaint.dto.ComplaintRequest;
 import com.teacherhub.complaint.dto.ComplaintResponse;
-import com.teacherhub.risk.dto.FinalRiskResult;
+import com.teacherhub.risk.dto.response.RiskSummaryResponse;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintStatus;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 
+import com.teacherhub.risk.dto.response.RiskDetectorResponse;
 import com.teacherhub.risk.masking.ComplaintMaskingService;
 import com.teacherhub.risk.service.RiskAnalysisService;
 import com.teacherhub.risk.service.RiskAnalysisQueryService;
@@ -343,7 +344,7 @@ public class ComplaintFlowIntegrationTest {
         // 2. AI Review
         // =========================
 
-        FinalRiskResult reviewResponse =
+        RiskSummaryResponse reviewResponse =
                 riskAnalysisService.analyze(
                         parentUser.getId(),
                         complaintId
@@ -364,8 +365,8 @@ public class ComplaintFlowIntegrationTest {
         assertThat(riskAnalysisQueryService.findDetectorResults(parentUser.getId(), reviewResponse.analysisId()).results())
                 .hasSize(com.teacherhub.risk.enums.RiskTagCode.values().length);
         assertThat(riskAnalysisQueryService.findDetectorResults(parentUser.getId(), reviewResponse.analysisId()).results())
-                .filteredOn(com.teacherhub.risk.dto.RiskDetectorResultsResponse.TagResult::finalDetected)
-                .extracting(com.teacherhub.risk.dto.RiskDetectorResultsResponse.TagResult::code)
+                .filteredOn(RiskDetectorResponse.TagResult::finalDetected)
+                .extracting(RiskDetectorResponse.TagResult::code)
                 .containsExactly(
                         com.teacherhub.risk.enums.RiskTagCode.PROFANITY,
                         com.teacherhub.risk.enums.RiskTagCode.THREAT,

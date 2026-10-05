@@ -1,9 +1,8 @@
 package com.teacherhub.risk.service;
 
-import com.teacherhub.risk.dto.FinalRiskResult;
 import com.teacherhub.complaint.exception.ComplaintAccessDeniedException;
-import com.teacherhub.risk.dto.RiskDetectorResultsResponse;
-import com.teacherhub.risk.dto.RiskFindingsResponse;
+import com.teacherhub.risk.dto.response.RiskRevisionResponse;
+import com.teacherhub.risk.dto.response.RiskDetectorResponse;
 import com.teacherhub.risk.entity.ComplaintRiskTag;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
@@ -27,44 +26,45 @@ public class RiskAnalysisQueryService {
 
 
     // 민원 위험 분석 결과에서 감지된 태그별 근거와 수정 제안 조회
-    public RiskFindingsResponse findFindings(Long userId, Long analysisId) {
+    public RiskRevisionResponse findFindings(Long userId, Long analysisId) {
         var analysis = ownedAnalysis(userId, analysisId);
 
         var findings = resultRepository.findByRiskAnalysisId(analysisId).stream()
                 .filter(ComplaintRiskTag::isFinalDetected)
                 .sorted(Comparator.comparing(tag -> tag.getRiskTag().getCode()))
-                .map(tag -> new RiskFindingsResponse.Finding(tag.getRiskTag().getCode(),
+                .map(tag -> new RiskRevisionResponse.Finding(tag.getRiskTag().getCode(),
                         evidences(tag.getEvidence()),
                         analysis.getTagRevisionSuggestions().stream()
                                 .filter(suggestion -> suggestion.getCode() == tag.getRiskTag().getCode())
-                                .map(suggestion -> new RiskFindingsResponse.Suggestion(
+                                .map(suggestion -> new RiskRevisionResponse.Suggestion(
                                         suggestion.getOriginalExpression(), suggestion.getSuggestedExpression(),
                                         suggestion.getReason())).toList()))
                 .toList();
 
         var revision = analysis.getAiRevision() == null ? null
-                : new RiskFindingsResponse.FinalRevision(analysis.getRevisionReason(), analysis.getAiRevision());
+                : new RiskRevisionResponse.FinalRevision(
+                        analysis.getRevisionReason(), analysis.getAiRevision());
 
-        return new RiskFindingsResponse(findings, revision);
+        return new RiskRevisionResponse(findings, revision);
     }
 
     // 민원 위험 분석 결과에서 감지된 태그별 탐지기 결과 조회
-    public RiskDetectorResultsResponse findDetectorResults(Long userId, Long analysisId) {
+    public RiskDetectorResponse findDetectorResults(Long userId, Long analysisId) {
 
         var analysis = ownedAnalysis(userId, analysisId);
 
         var results = resultRepository.findByRiskAnalysisId(analysisId).stream()
                 .sorted(Comparator.comparing(tag -> tag.getRiskTag().getCode()))
-                .map(tag -> new RiskDetectorResultsResponse.TagResult(tag.getRiskTag().getCode(),
+                .map(tag -> new RiskDetectorResponse.TagResult(tag.getRiskTag().getCode(),
                         tag.isFinalDetected(),
-                        new RiskDetectorResultsResponse.Detection(tag.isRuleDetected(), null,
+                        new RiskDetectorResponse.Detection(tag.isRuleDetected(), null,
                                 evidences(tag.getRuleEvidence())),
-                        new RiskDetectorResultsResponse.Detection(tag.isLlmDetected(), tag.getConfidence(),
+                        new RiskDetectorResponse.Detection(tag.isLlmDetected(), tag.getConfidence(),
                                 evidences(tag.getLlmEvidence())))).toList();
 
-        return new RiskDetectorResultsResponse(analysisId, results,
+        return new RiskDetectorResponse(analysisId, results,
 
-                new RiskDetectorResultsResponse.LlmMetadata(analysis.getModelName(),
+                new RiskDetectorResponse.LlmInfo(analysis.getModelName(),
                         analysis.getTemperature(), analysis.getAiReason()));
     }
 
@@ -79,12 +79,6 @@ public class RiskAnalysisQueryService {
         }
 
         return analysis;
-    }
-
-    // 민원 위험 분석 결과 요약
-    private FinalRiskResult summary(RiskAnalysis analysis) {
-        return new FinalRiskResult(analysis.getId(), analysis.getComplaint().getId(),
-                analysis.getRiskScore(), analysis.getRiskLevel());
     }
 
     // 문자열을 줄 단위로 분리하여 공백 제거 및 중복 제거

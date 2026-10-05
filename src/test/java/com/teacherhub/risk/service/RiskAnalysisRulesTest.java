@@ -1,5 +1,8 @@
 package com.teacherhub.risk.service;
 
+import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
+import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
+import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
@@ -7,9 +10,8 @@ import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.risk.analyzer.*;
-import com.teacherhub.risk.dto.*;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
-import com.teacherhub.risk.dto.RiskFindingsResponse.FinalRevision;
+import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.FinalRevision;
 import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.enums.*;
 import com.teacherhub.risk.masking.PiiMaskingServiceImpl;
@@ -55,9 +57,12 @@ class RiskAnalysisRulesTest {
         when(definitions.findAll()).thenReturn(configuredTags);
     }
 
-    private RiskEvaluation analyze(List<RiskDetectionResult> ruleTags, List<RiskDetectionResult> llmTags) {
+    private RiskEvaluation analyze(List<RiskTagDetectionResult> ruleTags, List<RiskTagDetectionResult> llmTags) {
         when(rules.detect(anyString())).thenReturn(ruleTags);
-        when(llm.analyze(anyString())).thenReturn(new LLMRiskAnalysisResult(llmTags, "test", 0.0, "reason", List.of()));
+        when(llm.analyze(anyString())).thenReturn(new LlmRiskAnalysisResult(
+                llmTags,
+                new LlmAnalysisMetadata("test", 0.0, "reason"),
+                List.of()));
         clearInvocations(revisions);
         service.analyze(1L, 42L);
         var captured = org.mockito.ArgumentCaptor.forClass(RiskEvaluation.class);
@@ -68,12 +73,12 @@ class RiskAnalysisRulesTest {
     @Test
     void mergesSourcesCountsEachTagOnceAndPreservesEvidence() {
         var result = analyze(List.of(
-                new RiskDetectionResult(PROFANITY, true, null, "rule only"),
-                new RiskDetectionResult(THREAT, true, null, "rule evidence")
+                new RiskTagDetectionResult(PROFANITY, true, null, "rule only"),
+                new RiskTagDetectionResult(THREAT, true, null, "rule evidence")
         ), List.of(
-                new RiskDetectionResult(THREAT, true, 0.9, "llm evidence"),
-                new RiskDetectionResult(UNFAIR_REQUEST, true, 0.8, "llm only"),
-                new RiskDetectionResult(PROFANITY, false, 0.1, "not detected")
+                new RiskTagDetectionResult(THREAT, true, 0.9, "llm evidence"),
+                new RiskTagDetectionResult(UNFAIR_REQUEST, true, 0.8, "llm only"),
+                new RiskTagDetectionResult(PROFANITY, false, 0.1, "not detected")
         ));
         assertThat(result.tags()).extracting(FinalRiskTagResponse::code).containsExactly(RiskTagCode.values());
         assertThat(result.tags()).contains(
@@ -102,14 +107,14 @@ class RiskAnalysisRulesTest {
     @CsvSource({"0,LOW", "1,LOW", "2,MEDIUM", "4,MEDIUM", "5,HIGH", "60,HIGH"})
     void classifiesBoundaryScores(int score, RiskLevel expected) {
         weights(score);
-        var result = analyze(List.of(new RiskDetectionResult(THREAT, true, null, "evidence")), List.of());
+        var result = analyze(List.of(new RiskTagDetectionResult(THREAT, true, null, "evidence")), List.of());
         assertThat(result.riskScore()).isEqualTo(score);
         assertThat(result.riskLevel()).isEqualTo(expected);
     }
 
     @Test
     void rejectsMissingOrInvalidWeightsBeforeSaving() {
-        var detected = List.of(new RiskDetectionResult(THREAT, true, null, "evidence"));
+        var detected = List.of(new RiskTagDetectionResult(THREAT, true, null, "evidence"));
         when(definitions.findAll()).thenReturn(List.of());
         assertThatThrownBy(() -> analyze(detected, List.of())).isInstanceOf(IllegalStateException.class);
         weights(-1);
@@ -131,7 +136,7 @@ class RiskAnalysisRulesTest {
 
     @Test
     void masksOriginalRuleEvidenceBeforeRevisionGeneration() {
-        var result = analyze(List.of(new RiskDetectionResult(THREAT, true, null, "연락처 010-1234-5678")), List.of());
+        var result = analyze(List.of(new RiskTagDetectionResult(THREAT, true, null, "연락처 010-1234-5678")), List.of());
         assertThat(result.tags()).filteredOn(FinalRiskTagResponse::detected)
                 .extracting(FinalRiskTagResponse::evidence).containsExactly("연락처 [전화번호]");
         verify(revisions).generate("민원 내용", result);
