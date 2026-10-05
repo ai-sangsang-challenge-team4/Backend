@@ -159,12 +159,7 @@
       "name": "5. 최종 제출",
       "request": {
         "method": "POST",
-        "header": [
-          {
-            "key": "Idempotency-Key",
-            "value": "{{$guid}}"
-          }
-        ],
+        "header": [],
         "url": "{{baseUrl}}/complaints/{{complaintId}}/send"
       },
       "event": [

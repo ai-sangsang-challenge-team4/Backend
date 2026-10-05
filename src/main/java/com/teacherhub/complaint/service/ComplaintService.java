@@ -5,6 +5,8 @@ import com.teacherhub.complaint.dto.ComplaintResponse;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintStatus;
 import com.teacherhub.complaint.repository.ComplaintRepository;
+import com.teacherhub.complaint.repository.ComplaintStatusHistoryRepository;
+import com.teacherhub.complaint.entity.ComplaintStatusHistory;
 import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.school.entity.StudentClass;
 import com.teacherhub.school.repository.StudentClassRepository;
@@ -15,6 +17,9 @@ import com.teacherhub.user.repository.ParentStudentRepository;
 import com.teacherhub.user.entity.Teacher;
 import com.teacherhub.user.repository.StudentRepository;
 import lombok.RequiredArgsConstructor;
+import com.teacherhub.complaint.exception.*;
+import com.teacherhub.risk.repository.RiskAnalysisRepository;
+import com.teacherhub.risk.entity.RiskAnalysis;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +29,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class ComplaintService {
 
     private final ComplaintRepository complaintRepository;
+    private final RiskAnalysisRepository analysisRepository;
+    private final com.teacherhub.risk.service.RiskAnalysisService riskAnalysisService;
+    private final ComplaintStatusHistoryRepository statusHistoryRepository;
     private final ParentRepository parentRepository;
     private final StudentRepository studentRepository;
     private final ParentStudentRepository parentStudentRepository;
@@ -85,6 +93,8 @@ public class ComplaintService {
         );
 
         complaintRepository.save(complaint);
+        statusHistoryRepository.save(new ComplaintStatusHistory(
+                complaint, parent.getUser(), null, ComplaintStatus.DRAFT));
 
         return ComplaintResponse.builder()
                 .complaintId(complaint.getId())
@@ -92,6 +102,16 @@ public class ComplaintService {
                 .build();
     }
 
+
+    public ComplaintResponse findStatus(Long userId, Long complaintId) {
+        Complaint complaint = complaintRepository.findById(complaintId)
+                .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
+        validateOwner(userId, complaint);
+        return ComplaintResponse.builder()
+                .complaintId(complaint.getId())
+                .status(complaint.getStatus())
+                .build();
+    }
 
     // 민원 내용 수정
     @Transactional
@@ -101,10 +121,9 @@ public class ComplaintService {
             ComplaintRequest request
     ) {
 
-        Complaint complaint = complaintRepository.findById(complaintId)
+        Complaint complaint = complaintRepository.findForUpdate(complaintId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "민원을 찾을 수 없습니다."
+                        new ComplaintNotFoundException("민원을 찾을 수 없습니다."
                         )
                 );
 
@@ -114,11 +133,15 @@ public class ComplaintService {
 
         // DRAFT 상태만 수정 가능
         if (complaint.getStatus() != ComplaintStatus.DRAFT) {
-            throw new IllegalStateException(
-                    "작성 중인 민원만 수정할 수 있습니다."
+            throw new ComplaintNotDraftException("작성 중인 민원만 수정할 수 있습니다."
             );
         }
 
+
+        if (!java.util.Objects.equals(complaint.getContent(), request.getContent())
+                && analysisRepository.countByComplaintIdAndCompletedTrue(complaintId) >= RiskAnalysis.MAX_COMPLETED_ANALYSES) {
+            throw new ReanalysisLimitException();
+        }
 
         // ComplaintRequest의 content만 사용
         complaint.updateContent(
@@ -131,38 +154,23 @@ public class ComplaintService {
     @Transactional
     public void submitComplaint(
             Long userId,
-            Long complaintId,
-            String idempotencyKey
+            Long complaintId
     ) {
 
-        Complaint complaint = complaintRepository.findById(complaintId)
+        Complaint complaint = complaintRepository.findForUpdate(complaintId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "민원을 찾을 수 없습니다."
+                        new ComplaintNotFoundException("민원을 찾을 수 없습니다."
                         )
                 );
 
 
         // 본인의 민원인지 확인
-        validateOwner(
-                userId,
-                complaint
-        );
+        validateOwner(userId,complaint);
 
 
         // 이미 제출한 민원인지 검사
         if (complaint.getStatus() != ComplaintStatus.DRAFT) {
-            throw new IllegalStateException(
-                    "이미 제출된 민원입니다."
-            );
-        }
-
-
-        // 중복 제출 방지
-        if (complaintRepository.existsByIdempotencyKey(idempotencyKey)) {
-            throw new IllegalStateException(
-                    "이미 처리된 요청입니다."
-            );
+            throw new ComplaintNotDraftException("이미 제출된 민원입니다.");
         }
 
 
@@ -187,17 +195,18 @@ public class ComplaintService {
             );
         }
 
+        // 전송 요청의 최종 내용을 분석한 후에만 교사를 지정하고 제출을 확정
+        riskAnalysisService.analyzeForSubmission(userId, complaintId);
+
         // 최종 제출
-        complaint.submit(
-                teacher,
-                idempotencyKey
-        );
+        complaint.submit(teacher);
+
+        statusHistoryRepository.save(new ComplaintStatusHistory(
+                complaint, complaint.getParent().getUser(), ComplaintStatus.DRAFT, ComplaintStatus.ANALYZED));
     }
 
 
-    /**
-     * 민원 작성자 검사
-     */
+    // 민원 소유자 확인
     private void validateOwner(
             Long userId,
             Complaint complaint
@@ -211,8 +220,7 @@ public class ComplaintService {
 
         if (!complaintUserId.equals(userId)) {
 
-            throw new IllegalArgumentException(
-                    "해당 민원에 접근할 권한이 없습니다."
+            throw new ComplaintAccessDeniedException("해당 민원에 접근할 권한이 없습니다."
             );
         }
     }

@@ -1,6 +1,5 @@
 package com.teacherhub.complaint.entity;
 
-import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.user.entity.Student;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -14,6 +13,7 @@ import com.teacherhub.user.entity.Teacher;
 import java.time.LocalDateTime;
 
 @Entity
+@Table(name = "complaints")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Complaint {
@@ -39,17 +39,32 @@ public class Complaint {
     private Teacher teacher;
 
 
-    @Column(nullable = false, columnDefinition = "TEXT")
+    @Column(name = "original_content", nullable = false, columnDefinition = "TEXT")
     private String content;
+
+    @Column(columnDefinition = "TEXT")
+    private String maskedContent;
+
+    @CreationTimestamp
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(nullable = false)
+    private LocalDateTime updatedAt;
+
+    // 재분석 결과가 어느 원문 버전에 대한 것인지 구분합니다.
+    @Column(nullable = false)
+    private long contentVersion = 1;
+
+    public void updateMaskedContent(String maskedContent) {
+        this.maskedContent = maskedContent;
+    }
 
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ComplaintStatus status;
-
-
-    @Column(unique = true)
-    private String idempotencyKey;
 
 
     public Complaint(
@@ -66,10 +81,7 @@ public class Complaint {
         this.status = ComplaintStatus.DRAFT;
     }
 
-
-    /**
-     * 민원 내용 수정
-     */
+    // 민원 내용 수정
     public void updateContent(String content) {
 
         if (this.status != ComplaintStatus.DRAFT) {
@@ -78,16 +90,18 @@ public class Complaint {
             );
         }
 
+        if (java.util.Objects.equals(this.content, content)) {
+            return;
+        }
         this.content = content;
+        this.maskedContent = null;
+        this.contentVersion++;
     }
 
 
-    /**
-     * 최종 제출
-     */
+    // 최종 민원 제출
     public void submit(
-            Teacher teacher,
-            String idempotencyKey
+            Teacher teacher
     ) {
 
         if (this.status != ComplaintStatus.DRAFT) {
@@ -97,7 +111,6 @@ public class Complaint {
         }
 
         this.teacher = teacher;
-        this.idempotencyKey = idempotencyKey;
-        this.status = ComplaintStatus.RECEIVED;
+        this.status = ComplaintStatus.ANALYZED;
     }
 }
