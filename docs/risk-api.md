@@ -43,7 +43,7 @@
 ## 분석 실행 응답
 
 POST `/complaints/{complaintId}/risk-analysis`와 GET `/risk-analyses/{analysisId}`는
-동일한 `FinalRiskResult`를 반환한다.
+동일한 `RiskAnalysisSummaryResponse`를 반환한다.
 
 ```json
 {
@@ -108,10 +108,10 @@ DB에는 risk_analyses의 original_content/completed/revision_reason/ai_revision
 
 ## 분리된 조회 응답
 
-`FinalRiskResult`는 analysisId, complaintId, riskScore, riskLevel만 반환한다.
+`RiskAnalysisSummaryResponse`는 analysisId, complaintId, riskScore, riskLevel만 반환한다.
 내부 수정안 생성 입력은 `ComplaintRevisionGenerator.RiskEvaluation`으로 분리했다. POST 응답도 이 요약 DTO다.
 수정안 생성 결과는 내부 ComplaintRevisionGenerator.RevisionResult로 받는다.
-전체 수정본은 RiskFindingsResponse.FinalRevision을 재사용하고, 태그별 제안과 함께 DB에 저장한 뒤 findings 조회로 반환한다.
+전체 수정본과 태그별 제안은 내부 수정 결과 타입으로 생성해 DB에 저장한 뒤 `ComplaintRiskReviewResponse`로 변환하여 반환한다.
 ComplaintRevisionResult.java는 삭제했으며 생성 결과에서 complaintId도 제거했다.
 
 `GET /risk-analyses/{analysisId}/findings`:

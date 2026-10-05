@@ -1,6 +1,6 @@
 package com.teacherhub.risk.service;
 
-import com.teacherhub.risk.dto.RiskDetectionResult;
+import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskTagCode;
@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -19,7 +20,6 @@ import java.util.stream.Stream;
 @Transactional(readOnly = true)
 public class RiskEvaluator {
 
-    /** Internal merged detection, used for scoring and persistence. */
     public record FinalRiskTagResponse(
             RiskTagCode code,
             boolean detected,
@@ -30,16 +30,16 @@ public class RiskEvaluator {
     ) {}
 
     // 규칙 기반 및 LLM 위험 태그 결과 병합
-    public List<FinalRiskTagResponse> merge(List<RiskDetectionResult> ruleResults, List<RiskDetectionResult> llmResults
+    public List<FinalRiskTagResponse> merge(List<RiskTagDetectionResult> ruleResults, List<RiskTagDetectionResult> llmResults
     ) {
 
-        Map<RiskTagCode, RiskDetectionResult> rules = index(ruleResults);
-        Map<RiskTagCode, RiskDetectionResult> llms = index(llmResults);
+        Map<RiskTagCode, RiskTagDetectionResult> rules = index(ruleResults);
+        Map<RiskTagCode, RiskTagDetectionResult> llms = index(llmResults);
 
         return Arrays.stream(RiskTagCode.values())
                 .map(code -> {
-                    RiskDetectionResult rule = rules.get(code);
-                    RiskDetectionResult llm = llms.get(code);
+                    RiskTagDetectionResult rule = rules.get(code);
+                    RiskTagDetectionResult llm = llms.get(code);
 
                     boolean ruleDetected = rule != null && rule.detected();
 
@@ -49,7 +49,7 @@ public class RiskEvaluator {
                             .filter(result ->
                                     result != null && result.detected()
                             )
-                            .map(RiskDetectionResult::evidence)
+                            .map(RiskTagDetectionResult::evidence)
                             .filter(value ->
                                     value != null && !value.isBlank()
                             )
@@ -69,15 +69,48 @@ public class RiskEvaluator {
     }
 
     // 위험 태그 결과를 코드별로 인덱싱
-    public Map<RiskTagCode, RiskDetectionResult> index( List<RiskDetectionResult> results
+    public Map<RiskTagCode, RiskTagDetectionResult> index(
+            List<RiskTagDetectionResult> results
     ) {
+        Objects.requireNonNull(results, "탐지 결과 목록이 필요합니다.");
+
         return results.stream()
-                .collect(
-                        Collectors.toMap(
-                                RiskDetectionResult::code,
-                                Function.identity()
-                        )
-                );
+                .collect(Collectors.toMap(
+                        RiskTagDetectionResult::code,
+                        Function.identity(),
+                        this::mergeDuplicate
+                ));
+    }
+
+    private RiskTagDetectionResult mergeDuplicate(
+            RiskTagDetectionResult left,
+            RiskTagDetectionResult right
+    ) {
+        boolean detected = left.detected() || right.detected();
+
+        // 하나라도 감지됐다면 감지된 결과만 우선 사용
+        var preferred = Stream.of(left, right)
+                .filter(result -> result.detected() == detected)
+                .toList();
+
+        Double confidence = preferred.stream()
+                .map(RiskTagDetectionResult::confidence)
+                .filter(Objects::nonNull)
+                .max(Double::compareTo)
+                .orElse(null);
+
+        String evidence = preferred.stream()
+                .map(RiskTagDetectionResult::evidence)
+                .filter(value -> value != null && !value.isBlank())
+                .distinct()
+                .collect(Collectors.joining("\n"));
+
+        return new RiskTagDetectionResult(
+                left.code(),
+                detected,
+                confidence,
+                evidence.isBlank() ? null : evidence
+        );
     }
 
     // 위험 태그 결과를 기반으로 점수 계산
@@ -118,4 +151,3 @@ public class RiskEvaluator {
     }
 
 }
-

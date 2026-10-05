@@ -46,9 +46,9 @@ masked_content를 비우고 content_version을 증가시킨다. 생성/제출 �
 
 ## risk DTO: 5개
 
-RiskDetectionResult(탐지기별 태그), LLMRiskAnalysisResult(태그/모델 정보/설명/수정본),
-FinalRiskTagResponse(병합 태그), FinalRiskResult(룰 엔진 위험도와 병합 결과),
-RiskTagList(태그 기준 정보). 규칙 탐지기는 List<RiskDetectionResult>를 직접 반환한다.
+RiskTagDetectionResult(탐지기별 태그), LlmRiskAnalysisResult(태그/모델 정보/설명/수정본),
+FinalRiskTagResponse(병합 태그), RiskAnalysisSummaryResponse(룰 엔진 위험도와 병합 결과),
+RiskTagResponse(태그 기준 정보). 규칙 탐지기는 List<RiskTagDetectionResult>를 직접 반환한다.
 
 ## 스키마 적용
 

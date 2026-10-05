@@ -1,26 +1,31 @@
-package com.teacherhub.risk.dto;
-import java.util.List;
+package com.teacherhub.risk.dto.response;
+
 import com.teacherhub.risk.enums.RiskTagCode;
 
-// 위험 탐지 결과를 합산 (Rule 기반 + LLM 기반)
-public record RiskDetectorResultsResponse(
+import java.util.List;
+
+// 태그별 Rule 및 LLM 탐지 결과 응답
+public record RiskDetectorResponse(
         Long analysisId,
         List<TagResult> results,
-        LlmMetadata llm)
-{
+        LlmInfo llm
+) {
     public record TagResult(
             RiskTagCode code,
             boolean finalDetected,
             Detection rule,
-            Detection llm) {}
+            Detection llm
+    ) {}
 
     public record Detection(
             boolean detected,
             Double confidence,
-            List<String> evidences) {}
+            List<String> evidences
+    ) {}
 
-    public record LlmMetadata(
+    public record LlmInfo(
             String modelName,
             Double temperature,
-            String reason) {}
+            String reason
+    ) {}
 }

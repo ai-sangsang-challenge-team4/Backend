@@ -1,6 +1,6 @@
 package com.teacherhub.risk.analyzer;
 
-import com.teacherhub.risk.dto.RiskFindingsResponse.FinalRevision;
+import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.FinalRevision;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.TagRevisionSuggestion;

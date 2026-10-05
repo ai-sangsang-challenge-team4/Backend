@@ -2,7 +2,8 @@ package com.teacherhub.risk.controller;
 
 import com.teacherhub.risk.service.RiskAnalysisService;
 import com.teacherhub.risk.service.RiskAnalysisQueryService;
-import com.teacherhub.risk.dto.MaskingResponse;
+import com.teacherhub.risk.dto.response.MaskingResponse;
+import com.teacherhub.risk.dto.response.RiskSummaryResponse;
 import com.teacherhub.risk.masking.ComplaintMaskingService;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
@@ -42,7 +43,7 @@ class RiskAnalysisControllerTest {
         when(api.mask(7L, 10L)).thenReturn(new MaskingResponse(10L, 1L, "[전화번호]"));
         mvc.perform(post("/complaints/10/mask").principal(auth)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.maskedContent").value("[전화번호]"));
-        when(review.analyze(7L, 10L)).thenReturn(new com.teacherhub.risk.dto.FinalRiskResult(
+        when(review.analyze(7L, 10L)).thenReturn(new RiskSummaryResponse(
                 20L, 10L, 5, com.teacherhub.risk.enums.RiskLevel.HIGH));
         mvc.perform(post("/complaints/10/risk-analysis").principal(auth)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.analysisId").value(20))

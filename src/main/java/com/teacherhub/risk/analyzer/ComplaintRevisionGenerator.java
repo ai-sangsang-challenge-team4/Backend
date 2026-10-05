@@ -1,6 +1,5 @@
 package com.teacherhub.risk.analyzer;
 
-import com.teacherhub.risk.dto.RiskFindingsResponse.FinalRevision;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
@@ -14,6 +13,8 @@ public interface ComplaintRevisionGenerator {
             tagSuggestions = List.copyOf(tagSuggestions);
         }
     }
+
+    record FinalRevision(String reason, String content) {}
 
     record TagRevisionSuggestion(RiskTagCode code, String originalExpression,
             String suggestedExpression, String reason) {}

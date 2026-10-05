@@ -6,11 +6,10 @@ import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.analyzer.LlmRiskAnalyzer;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
-import com.teacherhub.risk.dto.RiskFindingsResponse.FinalRevision;
+import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.FinalRevision;
 import com.teacherhub.risk.analyzer.MockLlmRiskAnalyzer;
 import com.teacherhub.risk.analyzer.RuleBasedRiskDetector;
-import com.teacherhub.risk.dto.RiskDetectionResult;
-import com.teacherhub.risk.service.RiskAnalysisService;
+import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.repository.RiskTagRepository;
@@ -56,7 +55,7 @@ class RiskAnalysisServiceTest {
         Complaint complaint = draft();
         var llmResult = new MockLlmRiskAnalyzer().analyze("masked");
         when(rules.detect(complaint.getContent())).thenReturn(List.of(
-                new RiskDetectionResult(PROFANITY, true, null, "rule evidence")));
+                new RiskTagDetectionResult(PROFANITY, true, null, "rule evidence")));
         when(tags.findAll()).thenReturn(java.util.Arrays.stream(RiskTagCode.values())
                 .map(code -> new RiskTag(code, code.name(), 1)).toList());
         when(analyses.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -81,7 +80,7 @@ class RiskAnalysisServiceTest {
         assertThat(response.complaintId()).isEqualTo(42L);
         assertThat(response.riskScore()).isEqualTo(3);
         assertThat(response.riskLevel()).isEqualTo(RiskLevel.MEDIUM);
-        assertThat(evaluation.getValue().aiReason()).isEqualTo(llmResult.aiReason());
+        assertThat(evaluation.getValue().aiReason()).isEqualTo(llmResult.metadata().reason());
         assertThat(evaluation.getValue().tags()).anySatisfy(tag -> {
             assertThat(tag.code()).isEqualTo(PROFANITY);
             assertThat(tag.ruleDetected()).isTrue();

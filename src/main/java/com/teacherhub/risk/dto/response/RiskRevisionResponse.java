@@ -1,22 +1,25 @@
-package com.teacherhub.risk.dto;
-import java.util.List;
+package com.teacherhub.risk.dto.response;
+
 import com.teacherhub.risk.enums.RiskTagCode;
 
-// 위험 분석 상세 결과 (위험 태그별로 분류된 발견 사항)
-public record RiskFindingsResponse(
+import java.util.List;
 
+// 민원의 위험 근거, 수정 제안 및 최종 수정본 응답
+public record RiskRevisionResponse(
         List<Finding> findings,
-        FinalRevision finalRevision) {
-
+        FinalRevision finalRevision
+) {
     public record Finding(
             RiskTagCode code,
             List<String> evidences,
-            List<Suggestion> revisionSuggestions) {}
+            List<Suggestion> revisionSuggestions
+    ) {}
 
     public record Suggestion(
             String originalExpression,
             String suggestedExpression,
-            String reason) {}
+            String reason
+    ) {}
 
     public record FinalRevision(String reason, String content) {}
 }

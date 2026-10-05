@@ -1,6 +1,6 @@
 package com.teacherhub.risk.service;
 
-import com.teacherhub.risk.dto.RiskTagList;
+import com.teacherhub.risk.dto.response.RiskTagResponse;
 import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.repository.RiskTagRepository;
@@ -18,14 +18,14 @@ public class RiskTagService {
     private final RiskTagRepository riskTagRepository;
 
     @Transactional(readOnly = true)
-    public List<RiskTagList> getRiskTags(List<RiskTagCode> codes) {
+    public List<RiskTagResponse> getRiskTags(List<RiskTagCode> codes) {
 
         return codes.stream()
                 .map(this::getRiskTagResponse)
                 .toList();
     }
 
-    private RiskTagList getRiskTagResponse(RiskTagCode code) {
+    private RiskTagResponse getRiskTagResponse(RiskTagCode code) {
 
         RiskTag riskTag = riskTagRepository.findByCode(code)
                 .orElseThrow(() ->
@@ -34,7 +34,7 @@ public class RiskTagService {
                         )
                 );
 
-        return new RiskTagList(
+        return new RiskTagResponse(
                 riskTag.getId(),
                 riskTag.getCode(),
                 riskTag.getName(),
@@ -43,10 +43,10 @@ public class RiskTagService {
     }
 
     @Transactional(readOnly = true)
-    public List<RiskTagList> getAllRiskTags() {
+    public List<RiskTagResponse> getAllRiskTags() {
         return riskTagRepository.findAll()
                 .stream()
-                .map(riskTag -> new RiskTagList(
+                .map(riskTag -> new RiskTagResponse(
                         riskTag.getId(),
                         riskTag.getCode(),
                         riskTag.getName(),
