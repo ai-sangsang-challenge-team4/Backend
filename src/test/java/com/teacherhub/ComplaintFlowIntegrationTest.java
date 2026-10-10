@@ -1,7 +1,7 @@
 package com.teacherhub;
 
-import com.teacherhub.complaint.dto.ComplaintRequest;
-import com.teacherhub.complaint.dto.ComplaintResponse;
+import com.teacherhub.complaint.parent.dto.ComplaintRequest;
+import com.teacherhub.complaint.parent.dto.ComplaintResponse;
 import com.teacherhub.risk.dto.response.RiskSummaryResponse;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintStatus;
@@ -11,7 +11,7 @@ import com.teacherhub.risk.dto.response.RiskDetectorResponse;
 import com.teacherhub.risk.masking.ComplaintMaskingService;
 import com.teacherhub.risk.service.RiskAnalysisService;
 import com.teacherhub.risk.service.RiskAnalysisQueryService;
-import com.teacherhub.complaint.service.ComplaintService;
+import com.teacherhub.complaint.parent.service.ComplaintService;
 import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.school.entity.StudentClass;
 import com.teacherhub.school.repository.SchoolClassRepository;

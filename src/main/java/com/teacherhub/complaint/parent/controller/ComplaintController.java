@@ -1,8 +1,8 @@
-package com.teacherhub.complaint.controller;
+package com.teacherhub.complaint.parent.controller;
 
-import com.teacherhub.complaint.dto.ComplaintRequest;
-import com.teacherhub.complaint.dto.ComplaintResponse;
-import com.teacherhub.complaint.service.ComplaintService;
+import com.teacherhub.complaint.parent.dto.ComplaintRequest;
+import com.teacherhub.complaint.parent.dto.ComplaintResponse;
+import com.teacherhub.complaint.parent.service.ComplaintService;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.user.repository.UserRepository;
 import jakarta.validation.Valid;
@@ -21,6 +21,7 @@ public class ComplaintController {
     private final ComplaintService complaintService;
     private final UserRepository userRepository;
 
+    // 민원 작성
     @PostMapping
     public ResponseEntity<ComplaintResponse> createComplaint(
             Authentication authentication, @Valid @RequestBody ComplaintRequest request) {
@@ -28,7 +29,7 @@ public class ComplaintController {
                 .body(complaintService.createDraft(userId(authentication), request));
     }
 
-    // 민원 내용 수정은 DRAFT 상태에서만 가능합니다.
+    // 민원 내용 수정
     @PatchMapping("/{complaintId}")
     public ResponseEntity<Map<String, String>> updateComplaint(
             Authentication authentication, @PathVariable Long complaintId,
@@ -37,6 +38,7 @@ public class ComplaintController {
         return ResponseEntity.ok(Map.of("message", "민원 내용이 수정되었습니다."));
     }
 
+    // 민원 제출
     @PostMapping("/{complaintId}/send")
     public ResponseEntity<Map<String, String>> submitComplaint(
             Authentication authentication, @PathVariable Long complaintId) {
@@ -44,6 +46,7 @@ public class ComplaintController {
         return ResponseEntity.ok(Map.of("message", "민원이 제출되었습니다."));
     }
 
+    // 민원 상태 조회
     @GetMapping("/{complaintId}/status")
     public ResponseEntity<ComplaintResponse> findStatus(
             Authentication authentication, @PathVariable Long complaintId) {

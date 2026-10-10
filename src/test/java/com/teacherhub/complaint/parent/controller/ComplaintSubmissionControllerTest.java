@@ -1,6 +1,6 @@
-package com.teacherhub.complaint.controller;
+package com.teacherhub.complaint.parent.controller;
 
-import com.teacherhub.complaint.service.ComplaintService;
+import com.teacherhub.complaint.parent.service.ComplaintService;
 import com.teacherhub.complaint.exception.ComplaintNotDraftException;
 import com.teacherhub.common.exception.GlobalExceptionHandler;
 import com.teacherhub.user.entity.User;
