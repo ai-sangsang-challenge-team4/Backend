@@ -9,6 +9,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
 
+// 이력 탭
 public record TeacherHistoryResponse(
         Long complaintId,
         List<HistoryEvent> events

@@ -8,9 +8,9 @@ import com.teacherhub.risk.enums.RiskTagCode;
 import java.time.LocalDateTime;
 import java.util.List;
 
+// 위험 요소 탭
 public record TeacherRiskResponse(
         Long complaintId,
-        boolean analysisAvailable,
         Long riskAnalysisId,
         Integer riskScore,
         RiskLevel riskLevel,
@@ -18,19 +18,6 @@ public record TeacherRiskResponse(
         LocalDateTime analyzedAt,
         List<DetectedFactor> detectedFactors
 ) {
-    public static TeacherRiskResponse withoutAnalysis(Long complaintId) {
-        return new TeacherRiskResponse(
-                complaintId,
-                false,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of()
-        );
-    }
-
     public static TeacherRiskResponse from(
             RiskAnalysis analysis,
             List<ComplaintRiskTag> riskTags
@@ -42,7 +29,6 @@ public record TeacherRiskResponse(
 
         return new TeacherRiskResponse(
                 analysis.getComplaint().getId(),
-                true,
                 analysis.getId(),
                 analysis.getRiskScore(),
                 analysis.getRiskLevel(),
@@ -55,13 +41,15 @@ public record TeacherRiskResponse(
     public record DetectedFactor(
             RiskTagCode code,
             String name,
-            String evidence
+            String evidence,
+            String reason
     ) {
         private static DetectedFactor from(ComplaintRiskTag riskTag) {
             return new DetectedFactor(
                     riskTag.getRiskTag().getCode(),
                     riskTag.getRiskTag().getName(),
-                    riskTag.getEvidence()
+                    riskTag.getEvidence(),
+                    riskTag.getReason()
             );
         }
     }

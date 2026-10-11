@@ -54,8 +54,7 @@ public class ComplaintQueryController {
     // 교사 화면의 대화 탭 조회
     @GetMapping("/{complaintId}/conversation")
     public ResponseEntity<TeacherConversationResponse> findTeacherConversation(
-            Authentication authentication,
-            @PathVariable Long complaintId
+            Authentication authentication, @PathVariable Long complaintId
     ) {
         return ResponseEntity.ok(
                 teacherComplaintQueryService.findConversation(userId(authentication), complaintId)
@@ -65,22 +64,18 @@ public class ComplaintQueryController {
     // 교사가 원문 보기를 요청한 시점에 원문을 반환하고 열람 기록 생성
     @PostMapping("/{complaintId}/original-views")
     public ResponseEntity<TeacherOriginalViewResponse> viewOriginal(
-            Authentication authentication,
-            @PathVariable Long complaintId
+            Authentication authentication, @PathVariable Long complaintId
     ) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
-                .body(teacherComplaintQueryService.viewOriginal(
-                        userId(authentication),
-                        complaintId
+                .body(teacherComplaintQueryService.viewOriginal(userId(authentication),complaintId
                 ));
     }
 
     // 교사 화면의 위험 요소 탭 조회
     @GetMapping("/{complaintId}/risk")
     public ResponseEntity<TeacherRiskResponse> findTeacherRisk(
-            Authentication authentication,
-            @PathVariable Long complaintId
+            Authentication authentication, @PathVariable Long complaintId
     ) {
         return ResponseEntity.ok(
                 teacherComplaintQueryService.findRisk(userId(authentication), complaintId)
@@ -90,8 +85,7 @@ public class ComplaintQueryController {
     // 교사 화면의 처리 기록 탭 조회
     @GetMapping("/{complaintId}/history")
     public ResponseEntity<TeacherHistoryResponse> findTeacherHistory(
-            Authentication authentication,
-            @PathVariable Long complaintId
+            Authentication authentication, @PathVariable Long complaintId
     ) {
         return ResponseEntity.ok(
                 teacherComplaintQueryService.findHistory(userId(authentication), complaintId)

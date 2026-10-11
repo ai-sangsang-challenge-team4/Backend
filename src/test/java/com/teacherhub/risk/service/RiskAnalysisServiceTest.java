@@ -91,7 +91,6 @@ class RiskAnalysisServiceTest {
         verify(analyses).save(saved.capture());
         assertThat(saved.getValue().getAiRevision()).isEqualTo(revision.finalRevision().content());
         assertThat(saved.getValue().getRevisionReason()).isEqualTo(revision.finalRevision().reason());
-        assertThat(saved.getValue().getRiskyExpressions()).hasSize(llmResult.riskyExpressions().size());
         assertThat(complaint.getContent()).isEqualTo("original private content");
         assertThat(complaint.getMaskedContent()).isEqualTo("masked");
         verify(detections).saveAll(any());

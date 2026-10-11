@@ -6,6 +6,7 @@ import com.teacherhub.complaint.entity.Response;
 import java.time.LocalDateTime;
 import java.util.List;
 
+// 대화탭 (완충요약, 답변내용)
 public record TeacherConversationResponse(
         Long complaintId,
         String bufferedSummary,
@@ -26,6 +27,7 @@ public record TeacherConversationResponse(
         );
     }
 
+    // 답변 내용
     public record TeacherReply(
             Long responseId,
             String teacherName,

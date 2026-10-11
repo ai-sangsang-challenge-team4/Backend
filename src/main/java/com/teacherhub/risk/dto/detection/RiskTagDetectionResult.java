@@ -7,5 +7,15 @@ public record RiskTagDetectionResult(
         RiskTagCode code,
         boolean detected,
         Double confidence,
-        String evidence
-) {}
+        String evidence,
+        String reason
+) {
+    public RiskTagDetectionResult(
+            RiskTagCode code,
+            boolean detected,
+            Double confidence,
+            String evidence
+    ) {
+        this(code, detected, confidence, evidence, null);
+    }
+}

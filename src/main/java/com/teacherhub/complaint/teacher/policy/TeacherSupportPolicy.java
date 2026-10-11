@@ -11,10 +11,6 @@ public class TeacherSupportPolicy {
 
     // 민원의 위험 수준에 따른 허용된 행동을 결정하는 정책
     public List<AllowedAction> allowedActions(RiskAnalysis analysis) {
-        if (analysis == null) {
-            return List.of(AllowedAction.REQUEST_MANUAL_REVIEW);
-        }
-
         return switch (analysis.getRiskLevel()) {
             case LOW, MEDIUM -> List.of(AllowedAction.USE_RESPONSE_TEMPLATE);
             case HIGH -> List.of(

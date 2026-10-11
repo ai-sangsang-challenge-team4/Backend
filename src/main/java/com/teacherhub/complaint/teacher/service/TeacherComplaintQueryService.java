@@ -15,6 +15,7 @@ import com.teacherhub.complaint.teacher.dto.TeacherRiskResponse;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.user.entity.User;
@@ -41,7 +42,7 @@ public class TeacherComplaintQueryService {
     public TeacherConversationResponse findConversation(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findTeacherComplaint(user, complaintId);
-        RiskAnalysis analysis = latestAnalysis(complaint);
+        RiskAnalysis analysis = requiredAnalysis(complaint);
 
         return TeacherConversationResponse.from(
                 complaint,
@@ -69,15 +70,9 @@ public class TeacherComplaintQueryService {
     public TeacherRiskResponse findRisk(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findTeacherComplaint(user, complaintId);
-        RiskAnalysis analysis = latestAnalysis(complaint);
+        RiskAnalysis analysis = requiredAnalysis(complaint);
 
-        if (analysis == null) {
-            return TeacherRiskResponse.withoutAnalysis(complaintId);
-        }
-
-        return TeacherRiskResponse.from(
-                analysis,
-                complaintRiskTagRepository.findByRiskAnalysisId(analysis.getId())
+        return TeacherRiskResponse.from(analysis, complaintRiskTagRepository.findByRiskAnalysisId(analysis.getId())
         );
     }
 
@@ -104,12 +99,14 @@ public class TeacherComplaintQueryService {
                 .orElseThrow(() -> new UnauthorizedException("사용자를 찾을 수 없습니다."));
     }
 
-    private RiskAnalysis latestAnalysis(Complaint complaint) {
+    private RiskAnalysis requiredAnalysis(Complaint complaint) {
         return riskAnalysisRepository
                 .findFirstByComplaintIdAndContentVersionAndCompletedTrueOrderByIdDesc(
                         complaint.getId(),
                         complaint.getContentVersion()
                 )
-                .orElse(null);
+                .orElseThrow(() -> new RiskAnalysisNotFoundException(
+                        "완료된 위험 분석 결과를 찾을 수 없습니다."
+                ));
     }
 }

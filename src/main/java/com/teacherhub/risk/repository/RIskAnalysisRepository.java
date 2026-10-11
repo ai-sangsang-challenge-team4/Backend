@@ -7,11 +7,6 @@ import java.util.List;
 import java.util.Optional;
 
 public interface RiskAnalysisRepository extends JpaRepository<RiskAnalysis, Long> {
-    Optional<RiskAnalysis> findFirstByComplaintIdAndOriginalContentAndCompletedTrueOrderByIdDesc(
-            Long complaintId,
-            String originalContent
-    );
-
     long countByComplaintIdAndCompletedTrue(Long complaintId);
 
     Optional<RiskAnalysis> findFirstByComplaintIdAndContentVersionAndCompletedTrueOrderByIdDesc(
