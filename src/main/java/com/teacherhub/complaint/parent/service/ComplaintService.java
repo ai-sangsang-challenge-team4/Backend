@@ -23,8 +23,6 @@ import com.teacherhub.user.repository.StudentRepository;
 import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import com.teacherhub.complaint.exception.*;
-import com.teacherhub.risk.repository.RiskAnalysisRepository;
-import com.teacherhub.risk.entity.RiskAnalysis;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,7 +33,6 @@ public class ComplaintService {
 
     private final UserRepository userRepository;
     private final ComplaintRepository complaintRepository;
-    private final RiskAnalysisRepository analysisRepository;
     private final RiskAnalysisService riskAnalysisService;
     private final ComplaintStatusHistoryRepository statusHistoryRepository;
     private final ParentRepository parentRepository;
@@ -151,8 +148,8 @@ public class ComplaintService {
 
 
         if (!java.util.Objects.equals(complaint.getContent(), request.getContent())
-                && analysisRepository.countByComplaintIdAndCompletedTrue(complaintId) >= RiskAnalysis.MAX_COMPLETED_ANALYSES) {
-            throw new ReanalysisLimitException();
+                && complaint.getContentVersion() >= 2) {
+            throw new ComplaintEditLimitException();
         }
 
         // ComplaintRequest의 content만 사용

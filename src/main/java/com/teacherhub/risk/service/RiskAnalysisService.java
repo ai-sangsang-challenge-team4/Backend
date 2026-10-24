@@ -94,15 +94,6 @@ public class RiskAnalysisService {
         var existing = analysisRepository.findFirstByComplaintIdAndContentVersionAndCompletedTrueOrderByIdDesc(
                 complaintId, complaint.getContentVersion());
 
-        // 제출 시 현재 원문이 과거에 이미 분석된 원문과 같다면 버전이 달라도 결과를 재사용합니다.
-        if (existing.isEmpty() && submitting) {
-            existing = analysisRepository
-                    .findFirstByComplaintIdAndOriginalContentAndCompletedTrueOrderByIdDesc(
-                            complaintId,
-                            originalContent
-                    );
-        }
-
         if (existing.isPresent()) {
             return summary(existing.get());
         }

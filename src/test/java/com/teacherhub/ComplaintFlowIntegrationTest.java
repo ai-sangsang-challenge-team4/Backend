@@ -45,14 +45,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Transactional
 public class ComplaintFlowIntegrationTest {
     @Test
-    void submittingOriginalTextAgainReusesFirstAnalysis() {
+    void allowsOnlyOneContentChange() {
         Long id = complaintService.createDraft(parentUser.getId(),
                 new ComplaintRequest(student.getId(), "최초 원문")).getComplaintId();
         riskAnalysisService.analyze(parentUser.getId(), id);
         complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "수정했다가"));
-        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "최초 원문"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> complaintService.updateDraft(
+                                parentUser.getId(),
+                                id,
+                                new ComplaintRequest(null, "최초 원문")
+                        ))
+                .isInstanceOf(com.teacherhub.complaint.exception.ComplaintEditLimitException.class);
+
+        Complaint complaint = complaintRepository.findById(id).orElseThrow();
+        assertThat(complaint.getContent()).isEqualTo("수정했다가");
+        assertThat(complaint.getContentVersion()).isEqualTo(2);
+
         complaintService.submitComplaint(parentUser.getId(), id);
-        assertThat(riskAnalysisRepository.countByComplaintIdAndCompletedTrue(id)).isEqualTo(1);
+        assertThat(riskAnalysisRepository.countByComplaintIdAndCompletedTrue(id)).isEqualTo(2);
         assertThat(complaintRepository.findById(id).orElseThrow().getStatus()).isEqualTo(ComplaintStatus.ANALYZED);
     }
     @Test
