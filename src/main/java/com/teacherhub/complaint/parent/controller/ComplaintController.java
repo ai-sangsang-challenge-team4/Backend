@@ -4,6 +4,9 @@ import com.teacherhub.complaint.parent.dto.ComplaintRequest;
 import com.teacherhub.complaint.parent.dto.ComplaintResponse;
 import com.teacherhub.complaint.parent.service.ComplaintService;
 import com.teacherhub.common.exception.UnauthorizedException;
+import com.teacherhub.complaint.query.dto.ComplaintDetailResponse;
+import com.teacherhub.complaint.query.dto.ComplaintListResponse;
+import com.teacherhub.complaint.query.service.ComplaintQueryService;
 import com.teacherhub.user.repository.UserRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -12,12 +15,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/complaints")
 public class ComplaintController {
+
+    private final ComplaintQueryService complaintQueryService;
     private final ComplaintService complaintService;
     private final UserRepository userRepository;
 
@@ -51,6 +57,26 @@ public class ComplaintController {
     public ResponseEntity<ComplaintResponse> findStatus(
             Authentication authentication, @PathVariable Long complaintId) {
         return ResponseEntity.ok(complaintService.findStatus(userId(authentication), complaintId));
+    }
+
+    // 학부모가 작성한 민원 목록 조회
+    @GetMapping
+    public ResponseEntity<List<ComplaintListResponse>> findComplaints(
+            Authentication authentication
+    ) {
+        return ResponseEntity.ok(
+                complaintQueryService.findComplaints(userId(authentication))
+        );
+    }
+
+    // 학부모가 작성한 민원 상세 조회
+    @GetMapping("/{complaintId}")
+    public ResponseEntity<ComplaintDetailResponse> findComplaint(
+            Authentication authentication, @PathVariable Long complaintId
+    ) {
+        return ResponseEntity.ok(
+                complaintQueryService.findComplaint(userId(authentication), complaintId)
+        );
     }
 
     private Long userId(Authentication authentication) {

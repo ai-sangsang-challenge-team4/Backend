@@ -38,9 +38,6 @@ public class RiskAnalysis {
 
     private Double temperature;
 
-    @Column(columnDefinition = "TEXT")
-    private String aiReason;
-
     @Column(nullable = false)
     private LocalDateTime analyzedAt;
 
@@ -81,7 +78,7 @@ public class RiskAnalysis {
     }
 
     public RiskAnalysis(Complaint complaint, int riskScore, RiskLevel riskLevel,
-                        String modelName, Double temperature, String aiReason) {
+                        String modelName, Double temperature) {
         this.complaint = complaint;
         this.contentVersion = complaint.getContentVersion();
         this.originalContent = complaint.getContent();
@@ -89,7 +86,6 @@ public class RiskAnalysis {
         this.riskLevel = riskLevel;
         this.modelName = modelName;
         this.temperature = temperature;
-        this.aiReason = aiReason;
         this.analyzedAt = LocalDateTime.now();
     }
 }

@@ -3,13 +3,17 @@ package com.teacherhub.complaint.query.service;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.access.ComplaintAccessPolicy;
 import com.teacherhub.complaint.entity.Complaint;
+import com.teacherhub.complaint.entity.ComplaintStatus;
 import com.teacherhub.complaint.exception.ComplaintAccessDeniedException;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.query.dto.ComplaintDetailResponse;
 import com.teacherhub.complaint.query.dto.ComplaintListResponse;
 import com.teacherhub.complaint.repository.ComplaintRepository;
+import com.teacherhub.complaint.repository.ComplaintStatusHistoryRepository;
+import com.teacherhub.complaint.teacher.provider.ComplaintSummaryProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
+import com.teacherhub.school.repository.StudentClassRepository;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.enums.UserRole;
 import com.teacherhub.user.repository.UserRepository;
@@ -25,9 +29,12 @@ import java.util.List;
 public class ComplaintQueryService {
 
     private final ComplaintRepository complaintRepository;
+    private final ComplaintStatusHistoryRepository statusHistoryRepository;
     private final RiskAnalysisRepository riskAnalysisRepository;
+    private final StudentClassRepository studentClassRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
+    private final ComplaintSummaryProvider complaintSummaryProvider;
 
 
     // 민원 목록 조회
@@ -35,20 +42,15 @@ public class ComplaintQueryService {
         User user = findUser(userId);
 
         List<Complaint> complaints = switch (user.getRole()) {
-            case PARENT -> complaintRepository
-                    .findByParentUserIdOrderByCreatedAtDesc(user.getId());
-            case TEACHER -> complaintRepository
-                    .findByTeacherUserIdOrderByCreatedAtDesc(user.getId());
+            case PARENT -> complaintRepository.findByParentUserIdOrderByCreatedAtDesc(user.getId());
+            case TEACHER -> complaintRepository.findByTeacherUserIdOrderByCreatedAtDesc(user.getId());
             case ADMIN -> throw new ComplaintAccessDeniedException(
-                    "관리자 민원 조회 기능은 아직 지원하지 않습니다."
+                    "관리자 민원 목록 조회 기능은 아직 지원하지 않습니다."
             );
         };
 
         return complaints.stream()
-                .map(complaint -> ComplaintListResponse.from(
-                        complaint,
-                        latestAnalysis(complaint)
-                ))
+                .map(complaint -> listResponse(complaint, user.getRole()))
                 .toList();
     }
 
@@ -63,13 +65,13 @@ public class ComplaintQueryService {
                         "민원을 찾을 수 없습니다."
                 ));
 
-        complaintAccessPolicy.validateCanRead(user, complaint);
+        complaintAccessPolicy.validateParentOwner(user, complaint);
 
         RiskAnalysis analysis = latestAnalysis(complaint);
         return ComplaintDetailResponse.from(
                 complaint,
                 analysis,
-                user.getRole() == UserRole.PARENT
+                true
         );
     }
 
@@ -87,6 +89,33 @@ public class ComplaintQueryService {
                         complaint.getContentVersion()
                 )
                 .orElse(null);
+    }
+
+    private ComplaintListResponse listResponse(Complaint complaint, UserRole viewerRole) {
+        var schoolClass = studentClassRepository
+                .findTopByStudent_IdOrderBySchoolClass_AcademicYearDesc(complaint.getStudent().getId())
+                .map(studentClass -> studentClass.getSchoolClass())
+                .orElse(null);
+        var latestReceivedAt = statusHistoryRepository
+                .findFirstByComplaintIdAndNewStatusOrderByChangedAtDesc(
+                        complaint.getId(),
+                        ComplaintStatus.ANALYZED
+                )
+                .map(history -> history.getChangedAt())
+                .orElse(null);
+
+        return ComplaintListResponse.from(
+                complaint,
+                latestAnalysis(complaint),
+                schoolClass,
+                complaintSummaryProvider.createSummary(
+                        complaint.getMaskedContent() == null
+                                ? complaint.getContent()
+                                : complaint.getMaskedContent()
+                ),
+                latestReceivedAt,
+                viewerRole
+        );
     }
 
 }

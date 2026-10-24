@@ -14,7 +14,6 @@ public record TeacherRiskResponse(
         Long riskAnalysisId,
         Integer riskScore,
         RiskLevel riskLevel,
-        String judgmentBasis,
         LocalDateTime analyzedAt,
         List<DetectedFactor> detectedFactors
 ) {
@@ -32,7 +31,6 @@ public record TeacherRiskResponse(
                 analysis.getId(),
                 analysis.getRiskScore(),
                 analysis.getRiskLevel(),
-                analysis.getAiReason(),
                 analysis.getAnalyzedAt(),
                 detectedFactors
         );

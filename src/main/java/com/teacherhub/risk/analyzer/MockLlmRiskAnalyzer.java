@@ -21,8 +21,7 @@ public class MockLlmRiskAnalyzer implements LlmRiskAnalyzer {
                 ),
                 new LlmAnalysisMetadata(
                         "mock-llm",
-                        0.0,
-                        "[MOCK LLM] 위험 요소 탐지 및 수정본 반환 예시입니다."
+                        0.0
                 )
         );
     }

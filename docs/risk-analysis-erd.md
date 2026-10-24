@@ -16,7 +16,7 @@ erDiagram
   작성 기능을 위해 DRAFT를 유지하고 content_version을 추가한다.
 - `risk_tags`: code, name, default_score. 기존 기준 정보 조회 기능을 유지한다.
 - `risk_analyses`: complaint_id, risk_score, risk_level, model_name, temperature,
-  ai_reason, analyzed_at. 추가한 content_version으로 분석 대상 원문 버전을 구분한다.
+  analyzed_at. 추가한 content_version으로 분석 대상 원문 버전을 구분한다.
 - `complaint_risk_tags`: risk_analysis_id, risk_tag_id, rule_detected, llm_detected,
   final_detected, confidence, evidence. 분석 1건에 전체 8개 태그를 저장한다.
   분석 ID와 태그 ID 조합은 유일하다.

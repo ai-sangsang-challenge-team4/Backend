@@ -4,42 +4,60 @@ import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.Response;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 
-// 대화탭 (완충요약, 답변내용)
+import com.teacherhub.user.enums.UserRole;
+
+// 교사용 대화 탭 읽기 응답
 public record TeacherConversationResponse(
         Long complaintId,
-        String bufferedSummary,
         List<AllowedAction> allowedActions,
-        List<TeacherReply> responses
+        List<Message> messages
 ) {
     public static TeacherConversationResponse from(
             Complaint complaint,
             String bufferedSummary,
             List<AllowedAction> allowedActions,
+            LocalDateTime submittedAt,
             List<Response> responses
     ) {
-        return new TeacherConversationResponse(
-                complaint.getId(),
+        Message initialComplaint = new Message(
+                "complaint:" + complaint.getId(),
+                UserRole.PARENT,
+                complaint.getParent().getUser().getName(),
                 bufferedSummary,
-                allowedActions,
-                responses.stream().map(TeacherReply::from).toList()
+                submittedAt,
+                true
         );
+
+        List<Message> messages = Stream.concat(
+                        Stream.of(initialComplaint),
+                        responses.stream().map(Message::from)
+                )
+                .sorted(Comparator.comparing(Message::sentAt))
+                .toList();
+
+        return new TeacherConversationResponse(complaint.getId(), allowedActions, messages);
     }
 
-    // 답변 내용
-    public record TeacherReply(
-            Long responseId,
-            String teacherName,
+    public record Message(
+            String messageId,
+            UserRole senderRole,
+            String senderName,
             String content,
-            LocalDateTime sentAt
+            LocalDateTime sentAt,
+            boolean summarized
     ) {
-        private static TeacherReply from(Response response) {
-            return new TeacherReply(
-                    response.getId(),
+        private static Message from(Response response) {
+            return new Message(
+                    "response:" + response.getId(),
+                    UserRole.TEACHER,
                     response.getTeacher().getUser().getName(),
                     response.getContent(),
-                    response.getSentAt() == null ? response.getCreatedAt() : response.getSentAt()
+                    response.getSentAt() == null ? response.getCreatedAt() : response.getSentAt(),
+                    false
             );
         }
     }

@@ -61,7 +61,7 @@ class RiskAnalysisRulesTest {
         when(rules.detect(anyString())).thenReturn(ruleTags);
         when(llm.analyze(anyString())).thenReturn(new LlmRiskAnalysisResult(
                 llmTags,
-                new LlmAnalysisMetadata("test", 0.0, "reason")));
+                new LlmAnalysisMetadata("test", 0.0)));
         clearInvocations(revisions);
         service.analyze(1L, 42L);
         var captured = org.mockito.ArgumentCaptor.forClass(RiskEvaluation.class);

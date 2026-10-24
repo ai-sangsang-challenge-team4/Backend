@@ -5,6 +5,7 @@ import com.teacherhub.complaint.entity.ComplaintStatus;
 import com.teacherhub.complaint.exception.ComplaintAccessDeniedException;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.parent.service.ComplaintService;
+import com.teacherhub.complaint.query.service.ComplaintQueryService;
 import com.teacherhub.common.exception.GlobalExceptionHandler;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
@@ -22,11 +23,12 @@ class ComplaintStatusControllerTest {
     @Test
     void returnsStatusAndUpdateMessageWithAuthenticationAndErrorHandling() throws Exception {
         var service = mock(ComplaintService.class);
+        var queryService = mock(ComplaintQueryService.class);
         var users = mock(UserRepository.class);
         var user = mock(User.class);
         when(user.getId()).thenReturn(7L);
         when(users.findByEmail("parent@test.com")).thenReturn(Optional.of(user));
-        var mvc = MockMvcBuilders.standaloneSetup(new ComplaintController(service, users))
+        var mvc = MockMvcBuilders.standaloneSetup(new ComplaintController(queryService, service, users))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         var auth = new UsernamePasswordAuthenticationToken("parent@test.com", null, List.of());
         when(service.findStatus(7L, 42L)).thenReturn(ComplaintResponse.builder()
@@ -42,7 +44,8 @@ class ComplaintStatusControllerTest {
         mvc.perform(get("/complaints/42/status")).andExpect(status().isUnauthorized());
         when(service.findStatus(7L, 42L)).thenThrow(new ComplaintAccessDeniedException("denied"));
         mvc.perform(get("/complaints/42/status").principal(auth)).andExpect(status().isForbidden());
-        when(service.findStatus(7L, 42L)).thenThrow(new ComplaintNotFoundException("missing"));
+        doThrow(new ComplaintNotFoundException("missing"))
+                .when(service).findStatus(7L, 42L);
         mvc.perform(get("/complaints/42/status").principal(auth)).andExpect(status().isNotFound());
     }
 }

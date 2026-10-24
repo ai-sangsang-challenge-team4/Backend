@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ComplaintAccessPolicy {
 
+    // 접근권한
     public void validateParentOwner(User user, Complaint complaint) {
         if (user.getRole() != UserRole.PARENT || !isParentOwner(user, complaint)) {
             throw denied();

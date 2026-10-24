@@ -80,7 +80,6 @@ class RiskAnalysisServiceTest {
         assertThat(response.complaintId()).isEqualTo(42L);
         assertThat(response.riskScore()).isEqualTo(3);
         assertThat(response.riskLevel()).isEqualTo(RiskLevel.MEDIUM);
-        assertThat(evaluation.getValue().aiReason()).isEqualTo(llmResult.metadata().reason());
         assertThat(evaluation.getValue().tags()).anySatisfy(tag -> {
             assertThat(tag.code()).isEqualTo(PROFANITY);
             assertThat(tag.ruleDetected()).isTrue();

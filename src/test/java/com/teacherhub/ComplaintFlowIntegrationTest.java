@@ -188,6 +188,12 @@ public class ComplaintFlowIntegrationTest {
     private RiskAnalysisQueryService riskAnalysisQueryService;
 
     @Autowired
+    private com.teacherhub.complaint.teacher.service.TeacherComplaintQueryService teacherComplaintQueryService;
+
+    @Autowired
+    private com.teacherhub.complaint.query.service.ComplaintQueryService complaintQueryService;
+
+    @Autowired
     private ComplaintRepository complaintRepository;
 
     @Autowired
@@ -472,5 +478,54 @@ public class ComplaintFlowIntegrationTest {
                 .extracting(com.teacherhub.complaint.entity.ComplaintStatusHistory::getNewStatus)
                 .containsExactly(ComplaintStatus.DRAFT, ComplaintStatus.ANALYZED);
         assertThat(complaintRepository.findById(complaintId).orElseThrow().getMaskedContent()).isNotNull();
+
+        var teacherDetail = teacherComplaintQueryService.findDetail(teacherUser.getId(), complaintId);
+        assertThat(teacherDetail.studentName()).isEqualTo(student.getName());
+        assertThat(teacherDetail.parentName()).isEqualTo(parentUser.getName());
+        assertThat(teacherDetail.academicYear()).isEqualTo(2026);
+        assertThat(teacherDetail.grade()).isEqualTo(3);
+        assertThat(teacherDetail.classNo()).isEqualTo(2);
+        assertThat(teacherDetail.submittedAt()).isNotNull();
+        assertThat(teacherDetail.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
+
+        var teacherListItem = complaintQueryService.findComplaints(teacherUser.getId()).stream()
+                .filter(item -> item.complaintId().equals(complaintId))
+                .findFirst().orElseThrow();
+        assertThat(teacherListItem.counterpartName()).isEqualTo(parentUser.getName());
+        assertThat(teacherListItem.counterpartRole()).isEqualTo(UserRole.PARENT);
+        assertThat(teacherListItem.grade()).isEqualTo(3);
+        assertThat(teacherListItem.classNo()).isEqualTo(2);
+        assertThat(teacherListItem.aiSummary()).isNotBlank();
+        assertThat(teacherListItem.latestReceivedAt()).isEqualTo(teacherDetail.submittedAt());
+
+        var parentListItem = complaintQueryService.findComplaints(parentUser.getId()).stream()
+                .filter(item -> item.complaintId().equals(complaintId))
+                .findFirst().orElseThrow();
+        assertThat(parentListItem.counterpartName()).isEqualTo(teacherUser.getName());
+        assertThat(parentListItem.counterpartRole()).isEqualTo(UserRole.TEACHER);
+
+        var conversation = teacherComplaintQueryService.findConversation(teacherUser.getId(), complaintId);
+        assertThat(conversation.messages()).hasSize(3);
+        assertThat(conversation.messages().get(0).senderRole()).isEqualTo(UserRole.PARENT);
+        assertThat(conversation.messages().get(0).summarized()).isTrue();
+        assertThat(conversation.messages().subList(1, 3))
+                .extracting(com.teacherhub.complaint.teacher.dto.TeacherConversationResponse.Message::senderRole)
+                .containsOnly(UserRole.TEACHER);
+
+        teacherComplaintQueryService.viewOriginal(teacherUser.getId(), complaintId);
+        var history = teacherComplaintQueryService.findHistory(teacherUser.getId(), complaintId);
+        assertThat(history.events())
+                .extracting(com.teacherhub.complaint.teacher.dto.TeacherHistoryResponse.HistoryEvent::type)
+                .contains(
+                        com.teacherhub.complaint.teacher.dto.EventType.STATUS_CHANGED,
+                        com.teacherhub.complaint.teacher.dto.EventType.RISK_ANALYZED,
+                        com.teacherhub.complaint.teacher.dto.EventType.ORIGINAL_VIEWED,
+                        com.teacherhub.complaint.teacher.dto.EventType.AI_DRAFT_CREATED,
+                        com.teacherhub.complaint.teacher.dto.EventType.RESPONSE_SENT
+                );
+        assertThat(history.events())
+                .filteredOn(event -> event.type() == com.teacherhub.complaint.teacher.dto.EventType.STATUS_CHANGED)
+                .extracting(com.teacherhub.complaint.teacher.dto.TeacherHistoryResponse.HistoryEvent::newStatus)
+                .contains(ComplaintStatus.DRAFT, ComplaintStatus.ANALYZED);
     }
 }

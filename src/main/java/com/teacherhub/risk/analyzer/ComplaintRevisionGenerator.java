@@ -22,5 +22,5 @@ public interface ComplaintRevisionGenerator {
     /** Internal context for generating revisions, separate from public summary responses. */
     record RiskEvaluation(Long analysisId, Long complaintId,
             List<FinalRiskTagResponse> tags, Integer riskScore,
-            RiskLevel riskLevel, String aiReason) {}
+            RiskLevel riskLevel) {}
 }
