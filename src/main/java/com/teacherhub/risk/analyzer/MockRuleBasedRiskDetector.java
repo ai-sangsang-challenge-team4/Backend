@@ -13,8 +13,10 @@ public class MockRuleBasedRiskDetector implements RuleBasedRiskDetector {
     public List<RiskTagDetectionResult> detect(String content) {
         // 연결 확인용 고정 결과. 실제 내용은 분석하지 않습니다.
         return List.of(
-                new RiskTagDetectionResult(RiskTagCode.PROFANITY, true, null, "[MOCK RULE] 욕설 예시"),
-                new RiskTagDetectionResult(RiskTagCode.THREAT, true, null, "[MOCK RULE] 협박 예시")
+                new RiskTagDetectionResult(RiskTagCode.PROFANITY, true, null,
+                        "[MOCK RULE] 욕설 예시", "[MOCK RULE] 욕설 패턴이 확인되었습니다."),
+                new RiskTagDetectionResult(RiskTagCode.THREAT, true, null,
+                        "[MOCK RULE] 협박 예시", "[MOCK RULE] 위협을 나타내는 패턴이 확인되었습니다.")
         );
     }
 }

@@ -25,7 +25,6 @@ public record RiskDetectorResponse(
 
     public record LlmInfo(
             String modelName,
-            Double temperature,
-            String reason
+            Double temperature
     ) {}
 }

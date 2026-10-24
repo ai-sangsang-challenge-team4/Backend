@@ -94,13 +94,6 @@ public class RiskAnalysisService {
         var existing = analysisRepository.findFirstByComplaintIdAndContentVersionAndCompletedTrueOrderByIdDesc(
                 complaintId, complaint.getContentVersion());
 
-        if (existing.isEmpty() && submitting) {
-
-            existing = analysisRepository.findFirstByComplaintIdAndOriginalContentAndCompletedTrueOrderByIdDesc(
-                    complaintId, originalContent)
-                    .filter(saved -> Objects.equals(saved.getOriginalContent(), originalContent));
-        }
-
         if (existing.isPresent()) {
             return summary(existing.get());
         }
@@ -129,13 +122,15 @@ public class RiskAnalysisService {
                 .map(tag -> new FinalRiskTagResponse(tag.code(), tag.detected(), tag.ruleDetected(),
                         tag.llmDetected(), tag.confidence(),
                         tag.evidence() == null || tag.evidence().isBlank() ? tag.evidence()
-                                : piiMaskingService.mask(tag.evidence())))
+                                : piiMaskingService.mask(tag.evidence()),
+                        tag.reason() == null || tag.reason().isBlank() ? tag.reason()
+                                : piiMaskingService.mask(tag.reason())))
                 .toList();
 
         // 최종 점수는 룰 엔진이 계산하고 전체/태그별 분석 결과를 함께 저장
         RiskAnalysis savedAnalysis = calculateAndSave(complaint, finalTags, result, ruleResults);
         RiskEvaluation evaluation = new RiskEvaluation(savedAnalysis.getId(), complaintId, finalTags,
-                savedAnalysis.getRiskScore(), savedAnalysis.getRiskLevel(), savedAnalysis.getAiReason());
+                savedAnalysis.getRiskScore(), savedAnalysis.getRiskLevel());
 
 
         // 9. 최종 위험 요소를 바탕으로 수정안 생성
@@ -143,7 +138,7 @@ public class RiskAnalysisService {
                 ? new RevisionResult(null, List.of())
                 : complaintRevisionGenerator.generate(maskedContent, evaluation);
         validateSuggestions(finalTags, revision);
-        completeAnalysis(savedAnalysis, result.riskyExpressions(), revision);
+        completeAnalysis(savedAnalysis, revision);
 
         // 상세 근거와 수정 제안은 별도 GET으로 조회합니다.
         return summary(savedAnalysis);
@@ -154,13 +149,8 @@ public class RiskAnalysisService {
         return value == null || value.isBlank() ? value : piiMaskingService.mask(value);
     }
 
-    private void completeAnalysis(RiskAnalysis analysis,
-                                  List<LlmRiskAnalysisResult.RiskyExpression> expressions,
-                                  RevisionResult revision) {
+    private void completeAnalysis(RiskAnalysis analysis, RevisionResult revision) {
         var finalRevision = revision.finalRevision();
-        var analyzedExpressions = expressions.stream()
-                .map(expression -> new AnalyzedExpression(expression.expression(), expression.reason()))
-                .toList();
         var suggestions = revision.tagSuggestions().stream()
                 .map(suggestion -> new RiskTagRevisionSuggestion(suggestion.code(),
                         maskEvidence(suggestion.originalExpression()),
@@ -170,7 +160,7 @@ public class RiskAnalysisService {
         analysis.complete(
                 finalRevision == null ? null : maskEvidence(finalRevision.reason()),
                 finalRevision == null ? null : maskEvidence(finalRevision.content()),
-                analyzedExpressions, suggestions);
+                suggestions);
     }
 
     private void validateSuggestions(List<FinalRiskTagResponse> tags, RevisionResult revision) {
@@ -208,7 +198,7 @@ public class RiskAnalysisService {
         var level = riskEvaluator.levelFor(score);
 
         var analysis = analysisRepository.save(new RiskAnalysis(complaint, score, level,
-                llm.metadata().modelName(), llm.metadata().temperature(), llm.metadata().reason()));
+                llm.metadata().modelName(), llm.metadata().temperature()));
 
         var rules = riskEvaluator.index(ruleResults);
         var llms = riskEvaluator.index(llm.tags());

@@ -1,4 +1,4 @@
-package com.teacherhub.complaint.dto;
+package com.teacherhub.complaint.parent.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;

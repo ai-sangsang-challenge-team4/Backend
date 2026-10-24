@@ -80,7 +80,6 @@ class RiskAnalysisServiceTest {
         assertThat(response.complaintId()).isEqualTo(42L);
         assertThat(response.riskScore()).isEqualTo(3);
         assertThat(response.riskLevel()).isEqualTo(RiskLevel.MEDIUM);
-        assertThat(evaluation.getValue().aiReason()).isEqualTo(llmResult.metadata().reason());
         assertThat(evaluation.getValue().tags()).anySatisfy(tag -> {
             assertThat(tag.code()).isEqualTo(PROFANITY);
             assertThat(tag.ruleDetected()).isTrue();
@@ -91,7 +90,6 @@ class RiskAnalysisServiceTest {
         verify(analyses).save(saved.capture());
         assertThat(saved.getValue().getAiRevision()).isEqualTo(revision.finalRevision().content());
         assertThat(saved.getValue().getRevisionReason()).isEqualTo(revision.finalRevision().reason());
-        assertThat(saved.getValue().getRiskyExpressions()).hasSize(llmResult.riskyExpressions().size());
         assertThat(complaint.getContent()).isEqualTo("original private content");
         assertThat(complaint.getMaskedContent()).isEqualTo("masked");
         verify(detections).saveAll(any());

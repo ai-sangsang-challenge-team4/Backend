@@ -26,8 +26,20 @@ public class RiskEvaluator {
             boolean ruleDetected,
             boolean llmDetected,
             Double confidence,
-            String evidence
-    ) {}
+            String evidence,
+            String reason
+    ) {
+        public FinalRiskTagResponse(
+                RiskTagCode code,
+                boolean detected,
+                boolean ruleDetected,
+                boolean llmDetected,
+                Double confidence,
+                String evidence
+        ) {
+            this(code, detected, ruleDetected, llmDetected, confidence, evidence, null);
+        }
+    }
 
     // 규칙 기반 및 LLM 위험 태그 결과 병합
     public List<FinalRiskTagResponse> merge(List<RiskTagDetectionResult> ruleResults, List<RiskTagDetectionResult> llmResults
@@ -56,13 +68,21 @@ public class RiskEvaluator {
                             .distinct()
                             .collect(Collectors.joining("\n"));
 
+                    String reason = Stream.of(rule, llm)
+                            .filter(result -> result != null && result.detected())
+                            .map(RiskTagDetectionResult::reason)
+                            .filter(value -> value != null && !value.isBlank())
+                            .distinct()
+                            .collect(Collectors.joining("\n"));
+
                     return new FinalRiskTagResponse(
                             code,
                             ruleDetected || llmDetected,
                             ruleDetected,
                             llmDetected,
                             llm == null ? null : llm.confidence(),
-                            evidence.isEmpty() ? null : evidence
+                            evidence.isEmpty() ? null : evidence,
+                            reason.isEmpty() ? null : reason
                     );
                 })
                 .toList();
@@ -105,11 +125,18 @@ public class RiskEvaluator {
                 .distinct()
                 .collect(Collectors.joining("\n"));
 
+        String reason = preferred.stream()
+                .map(RiskTagDetectionResult::reason)
+                .filter(value -> value != null && !value.isBlank())
+                .distinct()
+                .collect(Collectors.joining("\n"));
+
         return new RiskTagDetectionResult(
                 left.code(),
                 detected,
                 confidence,
-                evidence.isBlank() ? null : evidence
+                evidence.isBlank() ? null : evidence,
+                reason.isBlank() ? null : reason
         );
     }
 

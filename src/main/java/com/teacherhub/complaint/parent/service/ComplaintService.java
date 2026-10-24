@@ -1,25 +1,28 @@
-package com.teacherhub.complaint.service;
+package com.teacherhub.complaint.parent.service;
 
-import com.teacherhub.complaint.dto.ComplaintRequest;
-import com.teacherhub.complaint.dto.ComplaintResponse;
+import com.teacherhub.common.exception.UnauthorizedException;
+import com.teacherhub.complaint.access.ComplaintAccessPolicy;
+import com.teacherhub.complaint.parent.dto.ComplaintRequest;
+import com.teacherhub.complaint.parent.dto.ComplaintResponse;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintStatus;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintStatusHistoryRepository;
 import com.teacherhub.complaint.entity.ComplaintStatusHistory;
+import com.teacherhub.risk.service.RiskAnalysisService;
 import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.school.entity.StudentClass;
 import com.teacherhub.school.repository.StudentClassRepository;
 import com.teacherhub.user.entity.Parent;
 import com.teacherhub.user.entity.Student;
+import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.ParentRepository;
 import com.teacherhub.user.repository.ParentStudentRepository;
 import com.teacherhub.user.entity.Teacher;
 import com.teacherhub.user.repository.StudentRepository;
+import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import com.teacherhub.complaint.exception.*;
-import com.teacherhub.risk.repository.RiskAnalysisRepository;
-import com.teacherhub.risk.entity.RiskAnalysis;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,14 +31,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class ComplaintService {
 
+    private final UserRepository userRepository;
     private final ComplaintRepository complaintRepository;
-    private final RiskAnalysisRepository analysisRepository;
-    private final com.teacherhub.risk.service.RiskAnalysisService riskAnalysisService;
+    private final RiskAnalysisService riskAnalysisService;
     private final ComplaintStatusHistoryRepository statusHistoryRepository;
     private final ParentRepository parentRepository;
     private final StudentRepository studentRepository;
     private final ParentStudentRepository parentStudentRepository;
     private final StudentClassRepository studentClassRepository;
+    private final ComplaintAccessPolicy complaintAccessPolicy;
 
 
     // 민원 초안 작성
@@ -106,7 +110,10 @@ public class ComplaintService {
     public ComplaintResponse findStatus(Long userId, Long complaintId) {
         Complaint complaint = complaintRepository.findById(complaintId)
                 .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
-        validateOwner(userId, complaint);
+
+        User user = findUser(userId);
+
+        complaintAccessPolicy.validateParentOwner(user, complaint);
         return ComplaintResponse.builder()
                 .complaintId(complaint.getId())
                 .status(complaint.getStatus())
@@ -129,7 +136,9 @@ public class ComplaintService {
 
 
         // 본인의 민원인지 확인
-        validateOwner(userId, complaint);
+        User user = findUser(userId);
+
+        complaintAccessPolicy.validateParentOwner(user, complaint);
 
         // DRAFT 상태만 수정 가능
         if (complaint.getStatus() != ComplaintStatus.DRAFT) {
@@ -139,8 +148,8 @@ public class ComplaintService {
 
 
         if (!java.util.Objects.equals(complaint.getContent(), request.getContent())
-                && analysisRepository.countByComplaintIdAndCompletedTrue(complaintId) >= RiskAnalysis.MAX_COMPLETED_ANALYSES) {
-            throw new ReanalysisLimitException();
+                && complaint.getContentVersion() >= 2) {
+            throw new ComplaintEditLimitException();
         }
 
         // ComplaintRequest의 content만 사용
@@ -165,7 +174,8 @@ public class ComplaintService {
 
 
         // 본인의 민원인지 확인
-        validateOwner(userId,complaint);
+        User user = findUser(userId);
+        complaintAccessPolicy.validateParentOwner(user, complaint);
 
 
         // 이미 제출한 민원인지 검사
@@ -205,23 +215,12 @@ public class ComplaintService {
                 complaint, complaint.getParent().getUser(), ComplaintStatus.DRAFT, ComplaintStatus.ANALYZED));
     }
 
-
-    // 민원 소유자 확인
-    private void validateOwner(
-            Long userId,
-            Complaint complaint
-    ) {
-
-        Long complaintUserId =
-                complaint.getParent()
-                        .getUser()
-                        .getId();
-
-
-        if (!complaintUserId.equals(userId)) {
-
-            throw new ComplaintAccessDeniedException("해당 민원에 접근할 권한이 없습니다."
-            );
-        }
+    private User findUser(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() ->
+                        new UnauthorizedException("사용자를 찾을 수 없습니다.")
+                );
     }
+
+
 }

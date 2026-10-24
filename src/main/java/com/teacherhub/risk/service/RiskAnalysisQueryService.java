@@ -65,7 +65,7 @@ public class RiskAnalysisQueryService {
         return new RiskDetectorResponse(analysisId, results,
 
                 new RiskDetectorResponse.LlmInfo(analysis.getModelName(),
-                        analysis.getTemperature(), analysis.getAiReason()));
+                        analysis.getTemperature()));
     }
 
     // 민원 위험 분석 조회 권한

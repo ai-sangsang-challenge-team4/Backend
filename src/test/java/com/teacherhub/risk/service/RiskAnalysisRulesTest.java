@@ -61,8 +61,7 @@ class RiskAnalysisRulesTest {
         when(rules.detect(anyString())).thenReturn(ruleTags);
         when(llm.analyze(anyString())).thenReturn(new LlmRiskAnalysisResult(
                 llmTags,
-                new LlmAnalysisMetadata("test", 0.0, "reason"),
-                List.of()));
+                new LlmAnalysisMetadata("test", 0.0)));
         clearInvocations(revisions);
         service.analyze(1L, 42L);
         var captured = org.mockito.ArgumentCaptor.forClass(RiskEvaluation.class);
@@ -74,16 +73,19 @@ class RiskAnalysisRulesTest {
     void mergesSourcesCountsEachTagOnceAndPreservesEvidence() {
         var result = analyze(List.of(
                 new RiskTagDetectionResult(PROFANITY, true, null, "rule only"),
-                new RiskTagDetectionResult(THREAT, true, null, "rule evidence")
+                new RiskTagDetectionResult(THREAT, true, null,
+                        "rule evidence", "rule reason")
         ), List.of(
-                new RiskTagDetectionResult(THREAT, true, 0.9, "llm evidence"),
+                new RiskTagDetectionResult(THREAT, true, 0.9,
+                        "llm evidence", "llm reason"),
                 new RiskTagDetectionResult(UNFAIR_REQUEST, true, 0.8, "llm only"),
                 new RiskTagDetectionResult(PROFANITY, false, 0.1, "not detected")
         ));
         assertThat(result.tags()).extracting(FinalRiskTagResponse::code).containsExactly(RiskTagCode.values());
         assertThat(result.tags()).contains(
                 new FinalRiskTagResponse(PROFANITY, true, true, false, 0.1, "rule only"),
-                new FinalRiskTagResponse(THREAT, true, true, true, 0.9, "rule evidence\nllm evidence"),
+                new FinalRiskTagResponse(THREAT, true, true, true, 0.9,
+                        "rule evidence\nllm evidence", "rule reason\nllm reason"),
                 new FinalRiskTagResponse(UNFAIR_REQUEST, true, false, true, 0.8, "llm only"),
                 new FinalRiskTagResponse(PRIVACY, false, false, false, null, null));
         assertThat(result.riskScore()).isEqualTo(5);
@@ -100,6 +102,7 @@ class RiskAnalysisRulesTest {
             assertThat(tag.llmDetected()).isFalse();
             assertThat(tag.confidence()).isNull();
             assertThat(tag.evidence()).isNull();
+            assertThat(tag.reason()).isNull();
         });
     }
 

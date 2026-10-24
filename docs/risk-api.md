@@ -137,7 +137,7 @@ findings는 finalDetected=true인 태그만 반환한다. 감지가 없으면 �
 finalRevision은 null이다. 최초 분석과 제출 분석은 서로 다른 분석 ID로 조회한다.
 탐지기와 수정안 생성기는 아직 Mock이므로 실제 문맥에 맞는 수정은 외부 AI 연동이 필요하다.
 
-detector-results는 results(code, finalDetected, rule, llm)와 llm(modelName, temperature, reason)을 반환한다.
+detector-results는 results(code, finalDetected, rule, llm)와 llm(modelName, temperature)을 반환한다.
 rule/llm에는 detected, confidence, evidences가 있다. 규칙 탐지 confidence는 null이다.
 모든 위험 코드(미감지 포함)를 반환한다. 기존 소유권 검증과 401/403/404 정책은 세 조회 모두 적용한다.
 미완료 분석은 조회하지 않는다.

@@ -38,15 +38,13 @@ public class RiskAnalysis {
 
     private Double temperature;
 
-    @Column(columnDefinition = "TEXT")
-    private String aiReason;
-
     @Column(nullable = false)
     private LocalDateTime analyzedAt;
 
-    // 최종 전송 문장과 실제 분석했던 문장을 비교하기 위한 스냅샷입니다.
-    @Column(columnDefinition = "TEXT")
+    // 이 분석이 수행될 당시의 민원 내용 스냅샷
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String originalContent;
+
     public static final int MAX_COMPLETED_ANALYSES = 2;
 
     @Column(nullable = false, columnDefinition = "boolean default false")
@@ -64,23 +62,12 @@ public class RiskAnalysis {
     @OrderColumn(name = "suggestion_order")
     private List<RiskTagRevisionSuggestion> tagRevisionSuggestions = new ArrayList<>();
 
-    // 최종 병합·수정 이전에 LLM이 탐지한 표현과 판단 이유
-    @ElementCollection
-    @CollectionTable(name = "risk_analysis_expressions", joinColumns = @JoinColumn(name = "risk_analysis_id"))
-    @OrderColumn(name = "expression_order")
-    private List<AnalyzedExpression> riskyExpressions = new ArrayList<>();
-
     public void complete(String revisionReason, String aiRevision,
-                         List<AnalyzedExpression> expressions,
                          List<RiskTagRevisionSuggestion> suggestions) {
-        Objects.requireNonNull(expressions, "위험 표현 목록이 필요합니다.");
         Objects.requireNonNull(suggestions, "수정 제안 목록이 필요합니다.");
 
         this.revisionReason = revisionReason;
         this.aiRevision = aiRevision;
-
-        this.riskyExpressions.clear();
-        this.riskyExpressions.addAll(expressions);
 
         this.tagRevisionSuggestions.clear();
         suggestions.forEach(suggestion -> {
@@ -90,18 +77,15 @@ public class RiskAnalysis {
         this.completed = true;
     }
 
-
-
     public RiskAnalysis(Complaint complaint, int riskScore, RiskLevel riskLevel,
-                        String modelName, Double temperature, String aiReason) {
+                        String modelName, Double temperature) {
         this.complaint = complaint;
-        this.originalContent = complaint.getContent();
         this.contentVersion = complaint.getContentVersion();
+        this.originalContent = complaint.getContent();
         this.riskScore = riskScore;
         this.riskLevel = riskLevel;
         this.modelName = modelName;
         this.temperature = temperature;
-        this.aiReason = aiReason;
         this.analyzedAt = LocalDateTime.now();
     }
 }

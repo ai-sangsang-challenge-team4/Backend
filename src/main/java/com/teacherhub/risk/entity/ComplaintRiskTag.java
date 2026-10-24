@@ -39,7 +39,11 @@ public class ComplaintRiskTag {
     private String evidence;
 
     @Column(columnDefinition = "TEXT")
+    private String reason;
+
+    @Column(columnDefinition = "TEXT")
     private String ruleEvidence;
+
     @Column(columnDefinition = "TEXT")
     private String llmEvidence;
 
@@ -56,5 +60,6 @@ public class ComplaintRiskTag {
         this.finalDetected = result.detected();
         this.confidence = result.confidence();
         this.evidence = result.evidence();
+        this.reason = result.reason();
     }
 }

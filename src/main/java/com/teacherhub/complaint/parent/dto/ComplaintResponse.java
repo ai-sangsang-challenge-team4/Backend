@@ -1,4 +1,4 @@
-package com.teacherhub.complaint.dto;
+package com.teacherhub.complaint.parent.dto;
 
 import com.teacherhub.complaint.entity.ComplaintStatus;
 import lombok.AllArgsConstructor;
