@@ -1,4 +1,4 @@
-package com.teacherhub.complaint.teacher.dto;
+package com.teacherhub.complaint.teacher.dto.query;
 
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintStatus;

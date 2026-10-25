@@ -11,11 +11,11 @@ import com.teacherhub.complaint.repository.ComplaintOriginalViewLogRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ResponseRepository;
 import com.teacherhub.complaint.repository.ComplaintStatusHistoryRepository;
-import com.teacherhub.complaint.teacher.dto.TeacherComplaintDetailResponse;
-import com.teacherhub.complaint.teacher.dto.TeacherConversationResponse;
-import com.teacherhub.complaint.teacher.dto.TeacherHistoryResponse;
-import com.teacherhub.complaint.teacher.dto.TeacherOriginalViewResponse;
-import com.teacherhub.complaint.teacher.dto.TeacherRiskResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherComplaintDetailResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherOriginalViewResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
@@ -74,7 +74,7 @@ public class TeacherComplaintQueryService {
                 supportContentProvider.createBufferedSummary(complaint.getContent()),
                 supportPolicy.allowedActions(analysis),
                 submittedAt(complaint),
-                responseRepository.findByComplaintIdOrderByIdAsc(complaintId)
+                responseRepository.findByComplaintIdAndSentAtIsNotNullOrderByIdAsc(complaintId)
         );
     }
 

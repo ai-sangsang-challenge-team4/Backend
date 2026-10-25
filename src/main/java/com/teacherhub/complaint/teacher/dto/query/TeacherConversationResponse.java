@@ -1,4 +1,4 @@
-package com.teacherhub.complaint.teacher.dto;
+package com.teacherhub.complaint.teacher.dto.query;
 
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.Response;
@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
 
+import com.teacherhub.complaint.teacher.dto.AllowedAction;
 import com.teacherhub.user.enums.UserRole;
 
 // 교사용 대화 탭 읽기 응답

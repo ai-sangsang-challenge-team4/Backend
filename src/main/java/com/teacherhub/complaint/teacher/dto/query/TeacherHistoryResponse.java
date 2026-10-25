@@ -1,10 +1,11 @@
-package com.teacherhub.complaint.teacher.dto;
+package com.teacherhub.complaint.teacher.dto.query;
 
 import com.teacherhub.complaint.entity.AiDraft;
 import com.teacherhub.complaint.entity.ComplaintOriginalViewLog;
 import com.teacherhub.complaint.entity.ComplaintStatus;
 import com.teacherhub.complaint.entity.ComplaintStatusHistory;
 import com.teacherhub.complaint.entity.Response;
+import com.teacherhub.complaint.teacher.dto.EventType;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.enums.RiskLevel;
 

@@ -3,31 +3,34 @@ package com.teacherhub.complaint.teacher.controller;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.query.dto.ComplaintListResponse;
 import com.teacherhub.complaint.query.service.ComplaintQueryService;
-import com.teacherhub.complaint.teacher.dto.TeacherComplaintDetailResponse;
-import com.teacherhub.complaint.teacher.dto.TeacherConversationResponse;
-import com.teacherhub.complaint.teacher.dto.TeacherHistoryResponse;
-import com.teacherhub.complaint.teacher.dto.TeacherOriginalViewResponse;
-import com.teacherhub.complaint.teacher.dto.TeacherRiskResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherComplaintDetailResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherOriginalViewResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
+import com.teacherhub.complaint.teacher.dto.reply.TeacherAiDraftResponse;
+import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseDraftResponse;
+import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseRequest;
+import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseSubmissionResponse;
 import com.teacherhub.complaint.teacher.service.TeacherComplaintQueryService;
+import com.teacherhub.complaint.teacher.service.TeacherResponseService;
 import com.teacherhub.user.repository.UserRepository;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/teacher/complaints")
-public class TeacherComplaintQueryController {
+public class TeacherComplaintController {
 
     private final TeacherComplaintQueryService teacherComplaintQueryService;
+    private final TeacherResponseService teacherResponseService;
     private final ComplaintQueryService complaintQueryService;
     private final UserRepository userRepository;
 
@@ -92,6 +95,61 @@ public class TeacherComplaintQueryController {
         return ResponseEntity.ok(
                 teacherComplaintQueryService.findHistory(userId(authentication), complaintId)
         );
+    }
+
+
+    // AI 초안 생성
+    @PostMapping("/{complaintId}/response/ai-draft")
+    public ResponseEntity<TeacherAiDraftResponse> generateAiDraft(
+            Authentication authentication,
+            @PathVariable Long complaintId
+    ) {
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+                .body(teacherResponseService.generateAiDraft(
+                        userId(authentication),
+                        complaintId
+                ));
+    }
+
+    // 저장된 답변 초안 조회
+    @GetMapping("/{complaintId}/response-draft")
+    public ResponseEntity<TeacherResponseDraftResponse> findResponseDraft(
+            Authentication authentication,
+            @PathVariable Long complaintId
+    ) {
+        return ResponseEntity.ok(teacherResponseService.findDraft(
+                userId(authentication),
+                complaintId
+        ));
+    }
+
+    // 답변 임시저장: 최초 저장 + 이후 수정
+    @PutMapping("/{complaintId}/response-draft")
+    public ResponseEntity<TeacherResponseDraftResponse> saveResponseDraft(
+            Authentication authentication,
+            @PathVariable Long complaintId,
+            @Valid @RequestBody TeacherResponseRequest request
+    ) {
+        return ResponseEntity.ok(teacherResponseService.saveDraft(
+                userId(authentication),
+                complaintId,
+                request
+        ));
+    }
+
+    // 답변 최종 제출
+    @PostMapping("/{complaintId}/responses")
+    public ResponseEntity<TeacherResponseSubmissionResponse> submitResponse(
+            Authentication authentication,
+            @PathVariable Long complaintId,
+            @Valid @RequestBody TeacherResponseRequest request
+    ) {
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+                .body(teacherResponseService.submit(
+                        userId(authentication),
+                        complaintId,
+                        request
+                ));
     }
 
     private Long userId(Authentication authentication) {

@@ -113,4 +113,11 @@ public class Complaint {
         this.teacher = teacher;
         this.status = ComplaintStatus.ANALYZED;
     }
+
+    public void answer() {
+        if (this.status != ComplaintStatus.ANALYZED) {
+            throw new IllegalStateException("답변 가능한 상태의 민원이 아닙니다.");
+        }
+        this.status = ComplaintStatus.ANSWERED;
+    }
 }

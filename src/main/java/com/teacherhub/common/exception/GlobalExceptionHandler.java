@@ -56,6 +56,21 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.BAD_REQUEST, "EMPTY_COMPLAINT_CONTENT", e, request);
     }
 
+    @ExceptionHandler(AiDraftNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleAiDraftNotFound(AiDraftNotFoundException e, HttpServletRequest request) {
+        return error(HttpStatus.NOT_FOUND, "AI_DRAFT_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(ResponseDraftNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleResponseDraftNotFound(ResponseDraftNotFoundException e, HttpServletRequest request) {
+        return error(HttpStatus.NOT_FOUND, "RESPONSE_DRAFT_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(ResponseNotEditableException.class)
+    public ResponseEntity<ErrorResponse> handleResponseNotEditable(ResponseNotEditableException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, "RESPONSE_NOT_EDITABLE", e, request);
+    }
+
     private ResponseEntity<ErrorResponse> error(HttpStatus status, String code, RuntimeException e, HttpServletRequest request) {
         return ResponseEntity.status(status).body(new ErrorResponse(
                 "ERROR", code, e.getMessage(), OffsetDateTime.now(), request.getRequestURI()));

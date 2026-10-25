@@ -1,4 +1,4 @@
-package com.teacherhub.complaint.teacher.dto;
+package com.teacherhub.complaint.teacher.dto.query;
 
 import com.teacherhub.risk.entity.ComplaintRiskTag;
 import com.teacherhub.risk.entity.RiskAnalysis;

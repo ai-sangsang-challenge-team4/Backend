@@ -22,7 +22,8 @@ erDiagram
   분석 ID와 태그 ID 조합은 유일하다.
 - `ai_drafts`: complaint_id, draft_content, summary, model_name, created_at.
   교사용 답변 초안이다. 학부모의 민원 수정 제안을 여기에 저장하지 않는다.
-- `responses`: complaint_id, teacher_id, ai_draft_id(nullable), content, sent_at, created_at.
+- `responses`: complaint_id, teacher_id, ai_draft_id(nullable), content, sent_at, created_at, updated_at.
+  `sent_at`이 null이면 교사의 임시저장 답변이고, 값이 있으면 전송된 답변이다.
 - `complaint_status_history`: complaint_id, changed_by, previous_status, new_status, changed_at.
   최초 DRAFT 생성의 previous_status는 null이며 시스템 변경의 changed_by도 null을 허용한다.
 
@@ -42,7 +43,10 @@ EMERGENCY enum은 ERD 호환을 위해 유지하되 현재 계산에서는 반�
 
 제출 전 검토는 DRAFT를 유지하며 매번 새 분석을 저장한다. 원문 수정 시
 masked_content를 비우고 content_version을 증가시킨다. 생성/제출 시 상태 이력을 저장한다.
-접수 후 ANALYZED 전환, 교사용 답변 생성·발송 API는 이번 저장 구조 구현에 포함하지 않는다.
+접수 후 ANALYZED 상태에서 교사는 mock 기반 AI 답변 초안을 생성하거나 직접 답변을 작성한다.
+답변은 `responses.sent_at = null` 상태로 임시저장하며, 최종 제출할 때 같은 행에 전송 시각을
+기록하고 민원 상태를 ANSWERED로 전환한다. AI 초안을 사용한 답변은 `ai_draft_id`로 생성
+근거를 유지하고 직접 작성한 답변은 해당 값이 null이다. 공식 템플릿 조회는 아직 포함하지 않는다.
 
 ## risk DTO: 5개
 
