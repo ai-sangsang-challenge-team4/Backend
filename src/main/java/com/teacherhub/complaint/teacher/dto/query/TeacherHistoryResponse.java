@@ -1,18 +1,11 @@
 package com.teacherhub.complaint.teacher.dto.query;
 
-import com.teacherhub.complaint.entity.AiDraft;
-import com.teacherhub.complaint.entity.ComplaintOriginalViewLog;
-import com.teacherhub.complaint.entity.ComplaintStatus;
-import com.teacherhub.complaint.entity.ComplaintStatusHistory;
-import com.teacherhub.complaint.entity.Response;
-import com.teacherhub.complaint.teacher.dto.EventType;
-import com.teacherhub.risk.entity.RiskAnalysis;
-import com.teacherhub.risk.entity.RiskReview;
+import com.teacherhub.complaint.entity.ComplaintEvent;
+import com.teacherhub.complaint.enums.ComplaintStatus;
+import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.risk.enums.RiskLevel;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 // 교사 화면 처리 기록 탭
@@ -22,32 +15,18 @@ public record TeacherHistoryResponse(
 ) {
     public static TeacherHistoryResponse from(
             Long complaintId,
-            List<ComplaintStatusHistory> statusHistories,
-            List<RiskAnalysis> analyses,
-            List<ComplaintOriginalViewLog> originalViewLogs,
-            List<AiDraft> aiDrafts,
-            List<Response> responses,
-            List<RiskReview> riskReviews
+            List<ComplaintEvent> events
     ) {
-        List<HistoryEvent> events = new ArrayList<>();
-        statusHistories.stream().map(HistoryEvent::statusChanged).forEach(events::add);
-        analyses.stream().filter(RiskAnalysis::isCompleted)
-                .map(HistoryEvent::riskAnalyzed).forEach(events::add);
-        riskReviews.stream().map(HistoryEvent::riskReviewed).forEach(events::add);
-        originalViewLogs.stream().map(HistoryEvent::originalViewed).forEach(events::add);
-        aiDrafts.stream().map(HistoryEvent::aiDraftCreated).forEach(events::add);
-        responses.stream()
-                .filter(response -> response.getSentAt() != null)
-                .map(HistoryEvent::responseSent).forEach(events::add);
-        events.sort(Comparator.comparing(HistoryEvent::occurredAt).reversed());
-
-        return new TeacherHistoryResponse(complaintId, List.copyOf(events));
+        return new TeacherHistoryResponse(
+                complaintId,
+                events.stream().map(HistoryEvent::from).toList()
+        );
     }
 
 
     public record HistoryEvent(
             String eventId,
-            EventType type,
+            MessageEventType type,
             LocalDateTime occurredAt,
             String actorName,
             ComplaintStatus previousStatus,
@@ -58,99 +37,19 @@ public record TeacherHistoryResponse(
             RiskLevel previousRiskLevel,
             String reason
     ) {
-        private static HistoryEvent statusChanged(ComplaintStatusHistory history) {
+        private static HistoryEvent from(ComplaintEvent event) {
             return new HistoryEvent(
-                    "status-history:" + history.getId(),
-                    EventType.STATUS_CHANGED,
-                    history.getChangedAt(),
-                    history.getChangedBy() == null ? "SYSTEM" : history.getChangedBy().getName(),
-                    history.getPreviousStatus(),
-                    history.getNewStatus(),
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
-            );
-        }
-
-        private static HistoryEvent riskAnalyzed(RiskAnalysis analysis) {
-            return new HistoryEvent(
-                    "risk-analysis:" + analysis.getId(),
-                    EventType.RISK_ANALYZED,
-                    analysis.getAnalyzedAt(),
-                    "SYSTEM",
-                    null,
-                    null,
-                    analysis.getRiskScore(),
-                    analysis.getRiskLevel(),
-                    null,
-                    null,
-                    null
-            );
-        }
-
-        private static HistoryEvent riskReviewed(RiskReview review) {
-            return new HistoryEvent(
-                    "risk-review:" + review.getId(),
-                    EventType.RISK_REVIEWED,
-                    review.getReviewedAt(),
-                    review.getReviewedBy().getUser().getName(),
-                    null,
-                    null,
-                    review.getReviewedScore(),
-                    review.getReviewedLevel(),
-                    review.getPreviousScore(),
-                    review.getPreviousLevel(),
-                    review.getReason()
-            );
-        }
-
-        private static HistoryEvent originalViewed(ComplaintOriginalViewLog log) {
-            return new HistoryEvent(
-                    "original-view:" + log.getId(),
-                    EventType.ORIGINAL_VIEWED,
-                    log.getViewedAt(),
-                    log.getViewedBy().getName(),
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
-            );
-        }
-
-        private static HistoryEvent aiDraftCreated(AiDraft draft) {
-            return new HistoryEvent(
-                    "ai-draft:" + draft.getId(),
-                    EventType.AI_DRAFT_CREATED,
-                    draft.getCreatedAt(),
-                    "SYSTEM",
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
-            );
-        }
-
-        private static HistoryEvent responseSent(Response response) {
-            return new HistoryEvent(
-                    "response:" + response.getId(),
-                    EventType.RESPONSE_SENT,
-                    response.getSentAt(),
-                    response.getTeacher().getUser().getName(),
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
+                    "complaint-event:" + event.getId(),
+                    event.getEventType(),
+                    event.getOccurredAt(),
+                    event.getActorName(),
+                    event.getPreviousStatus(),
+                    event.getNewStatus(),
+                    event.getRiskScore(),
+                    event.getRiskLevel(),
+                    event.getPreviousRiskScore(),
+                    event.getPreviousRiskLevel(),
+                    event.getReason()
             );
         }
     }

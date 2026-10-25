@@ -9,7 +9,6 @@ public interface TeacherSupportContentProvider {
 
     record GeneratedResponseDraft(
             String content,
-            String summary,
             String modelName
     ) {
     }

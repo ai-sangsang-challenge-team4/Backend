@@ -3,6 +3,10 @@ package com.teacherhub.complaint.parent.controller;
 import com.teacherhub.complaint.parent.dto.ComplaintRequest;
 import com.teacherhub.complaint.parent.dto.ComplaintResponse;
 import com.teacherhub.complaint.parent.service.ComplaintService;
+import com.teacherhub.complaint.parent.dto.message.ComplaintConversationResponse;
+import com.teacherhub.complaint.parent.dto.message.ParentMessageRequest;
+import com.teacherhub.complaint.parent.dto.message.ParentMessageResponse;
+import com.teacherhub.complaint.parent.service.ParentMessageService;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.query.dto.ComplaintDetailResponse;
 import com.teacherhub.complaint.query.dto.ComplaintListResponse;
@@ -25,6 +29,7 @@ public class ComplaintController {
 
     private final ComplaintQueryService complaintQueryService;
     private final ComplaintService complaintService;
+    private final ParentMessageService parentMessageService;
     private final UserRepository userRepository;
 
     // 민원 작성
@@ -77,6 +82,68 @@ public class ComplaintController {
         return ResponseEntity.ok(
                 complaintQueryService.findComplaint(userId(authentication), complaintId)
         );
+    }
+
+    // 교사 답변 이후 학부모의 추가 문의 임시 저장(없으면 생성, 있으면 수정)
+    @PutMapping("/{complaintId}/message-draft")
+    public ResponseEntity<ParentMessageResponse> saveMessageDraft(
+            Authentication authentication,
+            @PathVariable Long complaintId,
+            @Valid @RequestBody ParentMessageRequest request
+    ) {
+        return ResponseEntity.ok(parentMessageService.saveDraft(
+                userId(authentication),
+                complaintId,
+                request
+        ));
+    }
+
+    // 학부모의 추가 문의 임시 저장 조회
+    @GetMapping("/{complaintId}/message-draft")
+    public ResponseEntity<ParentMessageResponse> findMessageDraft(
+            Authentication authentication,
+            @PathVariable Long complaintId
+    ) {
+        return ResponseEntity.ok(parentMessageService.findDraft(
+                userId(authentication),
+                complaintId
+        ));
+    }
+
+    // AI 검토가 완료된 추가 문의 전송
+    @PostMapping("/{complaintId}/messages/{messageId}/send")
+    public ResponseEntity<ParentMessageResponse> sendMessage(
+            Authentication authentication,
+            @PathVariable Long complaintId,
+            @PathVariable Long messageId
+    ) {
+        return ResponseEntity.ok(parentMessageService.submit(
+                userId(authentication),
+                complaintId,
+                messageId
+        ));
+    }
+
+    // 민원과 관련된 학부모-교사 간 대화 내역 조회
+    @GetMapping("/{complaintId}/messages")
+    public ResponseEntity<ComplaintConversationResponse> findConversation(
+            Authentication authentication,
+            @PathVariable Long complaintId
+    ) {
+        return ResponseEntity.ok(parentMessageService.findConversation(
+                userId(authentication),
+                complaintId
+        ));
+    }
+
+    // 교사 답변 확인 후 추가 문의 없이 종료
+    @PostMapping("/{complaintId}/close")
+    public ResponseEntity<Map<String, String>> closeComplaint(
+            Authentication authentication,
+            @PathVariable Long complaintId
+    ) {
+        parentMessageService.close(userId(authentication), complaintId);
+        return ResponseEntity.ok(Map.of("message", "민원이 종료되었습니다."));
     }
 
     private Long userId(Authentication authentication) {

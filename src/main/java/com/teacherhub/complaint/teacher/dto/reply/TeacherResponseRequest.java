@@ -7,7 +7,6 @@ import jakarta.validation.constraints.Size;
 public record TeacherResponseRequest(
         @NotBlank(message = "답변 내용을 입력해주세요.")
         @Size(max = 1500, message = "답변은 1500자 이하로 입력해주세요.")
-        String content,
-        Long aiDraftId
+        String content
 ) {
 }

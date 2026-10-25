@@ -10,8 +10,14 @@ import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 
 import com.teacherhub.complaint.entity.Complaint;
-import com.teacherhub.complaint.entity.ComplaintStatus;
+import com.teacherhub.complaint.entity.ComplaintMessage;
+import com.teacherhub.complaint.entity.ComplaintEvent;
+import com.teacherhub.complaint.enums.MessageType;
+import com.teacherhub.complaint.enums.ComplaintStatus;
+import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.exception.*;
+import com.teacherhub.complaint.repository.ComplaintMessageRepository;
+import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.risk.analyzer.*;
 import com.teacherhub.risk.entity.*;
@@ -31,6 +37,8 @@ import java.util.stream.Collectors;
 
 public class RiskAnalysisService {
     private final ComplaintRepository complaintRepository;
+    private final ComplaintMessageRepository messageRepository;
+    private final ComplaintEventRepository eventRepository;
     private final PiiMaskingService piiMaskingService;
     private final RuleBasedRiskDetector ruleBasedRiskDetector;
     private final LlmRiskAnalyzer llmRiskAnalyzer;
@@ -45,17 +53,54 @@ public class RiskAnalysisService {
             Long userId,
             Long complaintId
     ) {
-        return analyze(userId, complaintId, false);
+        return analyzeInitialMessage(userId, complaintId, false);
     }
 
     @Transactional
     public RiskSummaryResponse analyzeForSubmission(Long userId, Long complaintId) {
-        return analyze(userId, complaintId, true);
+        return analyzeInitialMessage(userId, complaintId, true);
     }
 
-    private RiskSummaryResponse analyze(Long userId, Long complaintId, boolean submitting) {
+    @Transactional
+    public RiskSummaryResponse analyzeMessage(Long userId, Long complaintId, Long messageId) {
+        return analyzeAdditionalMessage(userId, complaintId, messageId, false);
+    }
 
-        // 1. 민원 조회
+    @Transactional
+    public RiskSummaryResponse analyzeMessageForSubmission(Long userId, Long complaintId, Long messageId) {
+        return analyzeAdditionalMessage(userId, complaintId, messageId, true);
+    }
+
+    private RiskSummaryResponse analyzeInitialMessage(Long userId, Long complaintId, boolean submitting) {
+        Complaint complaint = findOwnedComplaintForUpdate(userId, complaintId);
+        if (complaint.getStatus() != ComplaintStatus.DRAFT) {
+            throw new ComplaintNotDraftException("작성 중인 최초 민원만 AI 검토할 수 있습니다.");
+        }
+        return analyze(complaint, complaint.initialMessage(), submitting);
+    }
+
+    private RiskSummaryResponse analyzeAdditionalMessage(
+            Long userId,
+            Long complaintId,
+            Long messageId,
+            boolean submitting
+    ) {
+        Complaint complaint = findOwnedComplaintForUpdate(userId, complaintId);
+        if (complaint.getStatus() != ComplaintStatus.OPEN
+                || complaint.getWaitingFor() != WaitingFor.PARENT) {
+            throw new MessageNotEditableException("학부모가 추가 문의를 작성할 차례가 아닙니다.");
+        }
+        ComplaintMessage message = messageRepository.findById(messageId)
+                .filter(candidate -> candidate.getComplaint().getId().equals(complaintId))
+                .filter(candidate -> candidate.getSender().getId().equals(userId))
+                .filter(candidate -> candidate.getType() == MessageType.PARENT_INQUIRY)
+                .filter(ComplaintMessage::isDraft)
+                .orElseThrow(() -> new ComplaintNotFoundException("작성 중인 추가 문의 메시지를 찾을 수 없습니다."));
+        return analyze(complaint, message, submitting);
+    }
+
+    private Complaint findOwnedComplaintForUpdate(Long userId, Long complaintId) {
+
         Complaint complaint = complaintRepository.findForUpdate(complaintId)
                 .orElseThrow(() ->
                         new ComplaintNotFoundException(
@@ -64,7 +109,6 @@ public class RiskAnalysisService {
                 );
 
 
-        // 2. 로그인한 사용자가 작성한 민원인지 확인
         Long complaintUserId = complaint.getParent()
                 .getUser()
                 .getId();
@@ -74,31 +118,28 @@ public class RiskAnalysisService {
                     "해당 민원에 접근할 권한이 없습니다."
             );
         }
+        return complaint;
+    }
 
-
-        // 3. DRAFT 상태인지 확인
-        if (complaint.getStatus() != ComplaintStatus.DRAFT) {
-            throw new ComplaintNotDraftException(
-                    "작성 중인 민원만 AI 검토할 수 있습니다."
-            );
-        }
-
-
-        // 4. DB에 저장된 원본 민원 내용
-        String originalContent = complaint.getContent();
+    private RiskSummaryResponse analyze(
+            Complaint complaint,
+            ComplaintMessage message,
+            boolean submitting
+    ) {
+        String originalContent = message.getContent();
         if (originalContent == null || originalContent.isBlank()) {
             throw new EmptyComplaintContentException("민원 내용이 없습니다.");
         }
 
 
-        var existing = analysisRepository.findFirstByComplaintIdAndContentVersionAndCompletedTrueOrderByIdDesc(
-                complaintId, complaint.getContentVersion());
+        var existing = analysisRepository.findFirstByMessageIdAndContentVersionAndCompletedTrueOrderByIdDesc(
+                message.getId(), message.getContentVersion());
 
         if (existing.isPresent()) {
             return summary(existing.get());
         }
 
-        long completedCount = analysisRepository.countByComplaintIdAndCompletedTrue(complaintId);
+        long completedCount = analysisRepository.countByMessageIdAndCompletedTrue(message.getId());
         if (submitting && completedCount == 0) throw new AnalysisRequiredException();
         if (!submitting && completedCount > 0) throw new FinalAnalysisOnSubmitException();
 
@@ -111,7 +152,7 @@ public class RiskAnalysisService {
 
         // 6. LLM에 전달하기 전 개인정보 마스킹
         String maskedContent = piiMaskingService.mask(originalContent);
-        complaint.updateMaskedContent(maskedContent);
+        message.updateMaskedContent(maskedContent);
 
         // 7. LLM으로 위험 태그와 위험 표현 분석
         LlmRiskAnalysisResult result = llmRiskAnalyzer.analyze(maskedContent);
@@ -128,8 +169,8 @@ public class RiskAnalysisService {
                 .toList();
 
         // 최종 점수는 룰 엔진이 계산하고 전체/태그별 분석 결과를 함께 저장
-        RiskAnalysis savedAnalysis = calculateAndSave(complaint, finalTags, result, ruleResults);
-        RiskEvaluation evaluation = new RiskEvaluation(savedAnalysis.getId(), complaintId, finalTags,
+        RiskAnalysis savedAnalysis = calculateAndSave(message, finalTags, result, ruleResults);
+        RiskEvaluation evaluation = new RiskEvaluation(savedAnalysis.getId(), complaint.getId(), finalTags,
                 savedAnalysis.getRiskScore(), savedAnalysis.getRiskLevel());
 
 
@@ -139,6 +180,12 @@ public class RiskAnalysisService {
                 : complaintRevisionGenerator.generate(maskedContent, evaluation);
         validateSuggestions(finalTags, revision);
         completeAnalysis(savedAnalysis, revision);
+        eventRepository.save(ComplaintEvent.riskAnalyzed(
+                complaint,
+                savedAnalysis.getId(),
+                savedAnalysis.getRiskScore(),
+                savedAnalysis.getRiskLevel()
+        ));
 
         // 상세 근거와 수정 제안은 별도 GET으로 조회합니다.
         return summary(savedAnalysis);
@@ -182,7 +229,7 @@ public class RiskAnalysisService {
     }
 
     // 민원 위험 점수 계산 및 DB 저장
-    private RiskAnalysis calculateAndSave(Complaint complaint, List<FinalRiskTagResponse> tags, LlmRiskAnalysisResult llm,
+    private RiskAnalysis calculateAndSave(ComplaintMessage message, List<FinalRiskTagResponse> tags, LlmRiskAnalysisResult llm,
                                           List<RiskTagDetectionResult> ruleResults) {
 
         var definitions = tagRepository.findAll().stream()
@@ -197,7 +244,7 @@ public class RiskAnalysisService {
         int score = riskEvaluator.calculate(tags, definitions);
         var level = riskEvaluator.levelFor(score);
 
-        var analysis = analysisRepository.save(new RiskAnalysis(complaint, score, level,
+        var analysis = analysisRepository.save(new RiskAnalysis(message, score, level,
                 llm.metadata().modelName(), llm.metadata().temperature()));
 
         var rules = riskEvaluator.index(ruleResults);

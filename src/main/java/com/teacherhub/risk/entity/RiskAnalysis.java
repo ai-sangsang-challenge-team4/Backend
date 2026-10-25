@@ -1,6 +1,7 @@
 package com.teacherhub.risk.entity;
 
 import com.teacherhub.complaint.entity.Complaint;
+import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.risk.enums.RiskLevel;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -23,6 +24,10 @@ public class RiskAnalysis {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "complaint_id", nullable = false)
     private Complaint complaint;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "message_id", nullable = false)
+    private ComplaintMessage message;
 
     @Column(nullable = false)
     private long contentVersion;
@@ -79,9 +84,15 @@ public class RiskAnalysis {
 
     public RiskAnalysis(Complaint complaint, int riskScore, RiskLevel riskLevel,
                         String modelName, Double temperature) {
-        this.complaint = complaint;
-        this.contentVersion = complaint.getContentVersion();
-        this.originalContent = complaint.getContent();
+        this(complaint.initialMessage(), riskScore, riskLevel, modelName, temperature);
+    }
+
+    public RiskAnalysis(ComplaintMessage message, int riskScore, RiskLevel riskLevel,
+                        String modelName, Double temperature) {
+        this.message = message;
+        this.complaint = message.getComplaint();
+        this.contentVersion = message.getContentVersion();
+        this.originalContent = message.getContent();
         this.riskScore = riskScore;
         this.riskLevel = riskLevel;
         this.modelName = modelName;

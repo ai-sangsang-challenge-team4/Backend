@@ -3,9 +3,12 @@ package com.teacherhub.complaint.teacher.service;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.access.ComplaintAccessPolicy;
 import com.teacherhub.complaint.entity.Complaint;
-import com.teacherhub.complaint.entity.ComplaintStatus;
+import com.teacherhub.complaint.entity.ComplaintEvent;
+import com.teacherhub.complaint.enums.ComplaintStatus;
+import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.repository.ComplaintRepository;
+import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest;
 import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewResponse;
 import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
@@ -32,6 +35,7 @@ public class TeacherRiskReviewService {
     private final ComplaintRepository complaintRepository;
     private final RiskAnalysisRepository riskAnalysisRepository;
     private final RiskReviewRepository riskReviewRepository;
+    private final ComplaintEventRepository eventRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
     private final TeacherRiskScale teacherRiskScale;
@@ -48,17 +52,15 @@ public class TeacherRiskReviewService {
                 .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
         complaintAccessPolicy.validateAssignedTeacher(user, complaint);
 
-        if (complaint.getStatus() != ComplaintStatus.ANALYZED) {
+        if (complaint.getStatus() != ComplaintStatus.OPEN
+                || complaint.getWaitingFor() != WaitingFor.TEACHER) {
             throw new RiskReviewNotAllowedException(
                     "답변 대기 중인 민원만 위험도를 검토할 수 있습니다."
             );
         }
 
         RiskAnalysis analysis = riskAnalysisRepository
-                .findFirstByComplaintIdAndContentVersionAndCompletedTrueOrderByIdDesc(
-                        complaintId,
-                        complaint.getContentVersion()
-                )
+                .findFirstByComplaintIdAndCompletedTrueOrderByIdDesc(complaintId)
                 .orElseThrow(() -> new RiskAnalysisNotFoundException(
                         "완료된 위험 분석 결과를 찾을 수 없습니다."
                 ));
@@ -92,6 +94,16 @@ public class TeacherRiskReviewService {
                 reviewedLevel,
                 direction,
                 reason
+        ));
+        eventRepository.save(ComplaintEvent.riskReviewed(
+                complaint,
+                user,
+                saved.getId(),
+                saved.getPreviousScore(),
+                saved.getPreviousLevel(),
+                saved.getReviewedScore(),
+                saved.getReviewedLevel(),
+                saved.getReason()
         ));
         return TeacherRiskReviewResponse.from(saved);
     }

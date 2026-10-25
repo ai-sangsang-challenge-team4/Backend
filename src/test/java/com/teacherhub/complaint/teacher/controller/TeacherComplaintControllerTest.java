@@ -1,6 +1,7 @@
 package com.teacherhub.complaint.teacher.controller;
 
-import com.teacherhub.complaint.entity.ComplaintStatus;
+import com.teacherhub.complaint.enums.ComplaintStatus;
+import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.query.service.ComplaintQueryService;
 import com.teacherhub.complaint.teacher.dto.query.TeacherComplaintDetailResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
@@ -46,27 +47,27 @@ class TeacherComplaintControllerTest {
         var users = mock(UserRepository.class);
         var user = mock(User.class);
         var now = LocalDateTime.of(2026, 10, 24, 11, 30);
-        var request = new TeacherResponseRequest("수정한 답변", 9L);
+        var request = new TeacherResponseRequest("수정한 답변");
         var riskReviewRequest = new TeacherRiskReviewRequest(5, "하향 검토 사유");
 
         when(user.getId()).thenReturn(7L);
         when(users.findByEmail("teacher@test.com")).thenReturn(Optional.of(user));
         when(responseService.generateAiDraft(7L, 42L)).thenReturn(
-                new TeacherAiDraftResponse(9L, 42L, "AI 초안", "mock-model", now)
+                new TeacherAiDraftResponse(42L, "AI 초안", "mock-model", now)
         );
         when(responseService.findDraft(7L, 42L)).thenReturn(
-                new TeacherResponseDraftResponse(10L, 42L, "수정한 답변", 9L, now, now)
+                new TeacherResponseDraftResponse(10L, 42L, "수정한 답변", now, now)
         );
         when(responseService.saveDraft(7L, 42L, request)).thenReturn(
-                new TeacherResponseDraftResponse(10L, 42L, "수정한 답변", 9L, now, now)
+                new TeacherResponseDraftResponse(10L, 42L, "수정한 답변", now, now)
         );
         when(responseService.submit(7L, 42L, request)).thenReturn(
                 new TeacherResponseSubmissionResponse(
                         10L,
                         42L,
                         "수정한 답변",
-                        9L,
-                        ComplaintStatus.ANSWERED,
+                        ComplaintStatus.OPEN,
+                        WaitingFor.PARENT,
                         now
                 )
         );
@@ -96,11 +97,12 @@ class TeacherComplaintControllerTest {
                 )
         ).build();
         var auth = new UsernamePasswordAuthenticationToken("teacher@test.com", null, List.of());
-        String body = "{\"content\":\"수정한 답변\",\"aiDraftId\":9}";
+        String body = "{\"content\":\"수정한 답변\"}";
 
         mvc.perform(post("/teacher/complaints/42/response/ai-draft").principal(auth))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.aiDraftId").value(9));
+                .andExpect(jsonPath("$.content").value("AI 초안"))
+                .andExpect(jsonPath("$.aiDraftId").doesNotExist());
         mvc.perform(get("/teacher/complaints/42/response-draft").principal(auth))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.responseDraftId").value(10));
@@ -115,7 +117,7 @@ class TeacherComplaintControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.complaintStatus").value("ANSWERED"));
+                .andExpect(jsonPath("$.complaintStatus").value("OPEN"));
         mvc.perform(post("/teacher/complaints/42/risk-reviews")
                         .principal(auth)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -150,7 +152,8 @@ class TeacherComplaintControllerTest {
                 2026,
                 3,
                 2,
-                ComplaintStatus.ANALYZED,
+                ComplaintStatus.OPEN,
+                WaitingFor.TEACHER,
                 submittedAt,
                 RiskLevel.HIGH
         ));

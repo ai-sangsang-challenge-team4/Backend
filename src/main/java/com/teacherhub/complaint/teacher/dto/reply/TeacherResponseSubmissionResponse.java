@@ -1,7 +1,8 @@
 package com.teacherhub.complaint.teacher.dto.reply;
 
-import com.teacherhub.complaint.entity.ComplaintStatus;
-import com.teacherhub.complaint.entity.Response;
+import com.teacherhub.complaint.enums.ComplaintStatus;
+import com.teacherhub.complaint.entity.ComplaintMessage;
+import com.teacherhub.complaint.enums.WaitingFor;
 
 import java.time.LocalDateTime;
 
@@ -10,17 +11,17 @@ public record TeacherResponseSubmissionResponse(
         Long responseId,
         Long complaintId,
         String content,
-        Long aiDraftId,
         ComplaintStatus complaintStatus,
+        WaitingFor waitingFor,
         LocalDateTime sentAt
 ) {
-    public static TeacherResponseSubmissionResponse from(Response response) {
+    public static TeacherResponseSubmissionResponse from(ComplaintMessage response) {
         return new TeacherResponseSubmissionResponse(
                 response.getId(),
                 response.getComplaint().getId(),
                 response.getContent(),
-                response.getAiDraft() == null ? null : response.getAiDraft().getId(),
                 response.getComplaint().getStatus(),
+                response.getComplaint().getWaitingFor(),
                 response.getSentAt()
         );
     }

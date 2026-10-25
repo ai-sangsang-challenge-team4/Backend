@@ -1,5 +1,8 @@
 package com.teacherhub.complaint.entity;
 
+import com.teacherhub.complaint.enums.MessageType;
+import com.teacherhub.complaint.enums.ComplaintStatus;
+import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.user.entity.Student;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -11,6 +14,8 @@ import com.teacherhub.user.entity.Parent;
 import com.teacherhub.user.entity.Teacher;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "complaints")
@@ -39,12 +44,6 @@ public class Complaint {
     private Teacher teacher;
 
 
-    @Column(name = "original_content", nullable = false, columnDefinition = "TEXT")
-    private String content;
-
-    @Column(columnDefinition = "TEXT")
-    private String maskedContent;
-
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -53,18 +52,20 @@ public class Complaint {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-    // 재분석 결과가 어느 원문 버전에 대한 것인지 구분합니다.
-    @Column(nullable = false)
-    private long contentVersion = 1;
-
-    public void updateMaskedContent(String maskedContent) {
-        this.maskedContent = maskedContent;
-    }
-
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ComplaintStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private WaitingFor waitingFor;
+
+    private LocalDateTime closedAt;
+
+    // 하나의 민원에 여러 메세지 존재
+    @OneToMany(mappedBy = "complaint", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id ASC")
+    private List<ComplaintMessage> messages = new ArrayList<>();
 
 
     public Complaint(
@@ -75,10 +76,14 @@ public class Complaint {
 
         this.parent = parent;
         this.student = student;
-        this.content = content;
-
-        // 처음 생성하면 항상 DRAFT
         this.status = ComplaintStatus.DRAFT;
+        this.waitingFor = WaitingFor.NONE;
+        this.messages.add(new ComplaintMessage(
+                this,
+                parent.getUser(),
+                MessageType.PARENT_INQUIRY,
+                content
+        ));
     }
 
     // 민원 내용 수정
@@ -90,12 +95,11 @@ public class Complaint {
             );
         }
 
-        if (java.util.Objects.equals(this.content, content)) {
-            return;
-        }
-        this.content = content;
-        this.maskedContent = null;
-        this.contentVersion++;
+        initialMessage().updateDraft(content);
+    }
+
+    public void updateMaskedContent(String maskedContent) {
+        initialMessage().updateMaskedContent(maskedContent);
     }
 
 
@@ -111,13 +115,50 @@ public class Complaint {
         }
 
         this.teacher = teacher;
-        this.status = ComplaintStatus.ANALYZED;
+        initialMessage().send();
+        this.status = ComplaintStatus.OPEN;
+        this.waitingFor = WaitingFor.TEACHER;
     }
 
-    public void answer() {
-        if (this.status != ComplaintStatus.ANALYZED) {
-            throw new IllegalStateException("답변 가능한 상태의 민원이 아닙니다.");
+    public void teacherMessageSent() {
+        if (status != ComplaintStatus.OPEN || waitingFor != WaitingFor.TEACHER) {
+            throw new IllegalStateException("교사가 답변할 차례가 아닙니다.");
         }
-        this.status = ComplaintStatus.ANSWERED;
+        this.waitingFor = WaitingFor.PARENT;
+    }
+
+    public void parentMessageSent() {
+        if (status != ComplaintStatus.OPEN || waitingFor != WaitingFor.PARENT) {
+            throw new IllegalStateException("학부모가 추가 문의를 작성할 차례가 아닙니다.");
+        }
+        this.waitingFor = WaitingFor.TEACHER;
+    }
+
+    public void close() {
+        if (status != ComplaintStatus.OPEN || waitingFor != WaitingFor.PARENT) {
+            throw new IllegalStateException("교사의 답변을 확인한 민원만 종료할 수 있습니다.");
+        }
+        this.status = ComplaintStatus.CLOSED;
+        this.waitingFor = WaitingFor.NONE;
+        this.closedAt = LocalDateTime.now();
+    }
+
+    public String getContent() {
+        return initialMessage().getContent();
+    }
+
+    public String getMaskedContent() {
+        return initialMessage().getMaskedContent();
+    }
+
+    public long getContentVersion() {
+        return initialMessage().getContentVersion();
+    }
+
+    public ComplaintMessage initialMessage() {
+        if (messages.isEmpty()) {
+            throw new IllegalStateException("최초 민원 메시지가 없습니다.");
+        }
+        return messages.get(0);
     }
 }

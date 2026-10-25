@@ -1,6 +1,6 @@
 package com.teacherhub.complaint.teacher.dto.reply;
 
-import com.teacherhub.complaint.entity.Response;
+import com.teacherhub.complaint.entity.ComplaintMessage;
 
 import java.time.LocalDateTime;
 
@@ -9,16 +9,14 @@ public record TeacherResponseDraftResponse(
         Long responseDraftId,
         Long complaintId,
         String content,
-        Long aiDraftId,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
-    public static TeacherResponseDraftResponse from(Response response) {
+    public static TeacherResponseDraftResponse from(ComplaintMessage response) {
         return new TeacherResponseDraftResponse(
                 response.getId(),
                 response.getComplaint().getId(),
                 response.getContent(),
-                response.getAiDraft() == null ? null : response.getAiDraft().getId(),
                 response.getCreatedAt(),
                 response.getUpdatedAt()
         );

@@ -1,12 +1,13 @@
 package com.teacherhub.complaint.teacher.dto.query;
 
 import com.teacherhub.complaint.entity.Complaint;
-import com.teacherhub.complaint.entity.Response;
+import com.teacherhub.complaint.entity.ComplaintMessage;
+import com.teacherhub.complaint.enums.MessageType;
 
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Stream;
+import java.util.Map;
 
 import com.teacherhub.complaint.teacher.dto.AllowedAction;
 import com.teacherhub.user.enums.UserRole;
@@ -19,24 +20,17 @@ public record TeacherConversationResponse(
 ) {
     public static TeacherConversationResponse from(
             Complaint complaint,
-            String bufferedSummary,
+            Map<Long, String> bufferedSummaries,
             List<AllowedAction> allowedActions,
             LocalDateTime submittedAt,
-            List<Response> responses
+            List<ComplaintMessage> sourceMessages
     ) {
-        Message initialComplaint = new Message(
-                "complaint:" + complaint.getId(),
-                UserRole.PARENT,
-                complaint.getParent().getUser().getName(),
-                bufferedSummary,
-                submittedAt,
-                true
-        );
-
-        List<Message> messages = Stream.concat(
-                        Stream.of(initialComplaint),
-                        responses.stream().map(Message::from)
-                )
+        List<Message> messages = sourceMessages.stream()
+                .map(message -> Message.from(
+                        message,
+                        bufferedSummaries.get(message.getId()),
+                        submittedAt
+                ))
                 .sorted(Comparator.comparing(Message::sentAt))
                 .toList();
 
@@ -51,14 +45,23 @@ public record TeacherConversationResponse(
             LocalDateTime sentAt,
             boolean summarized
     ) {
-        private static Message from(Response response) {
+        private static Message from(
+                ComplaintMessage message,
+                String initialSummary,
+                LocalDateTime initialSubmittedAt
+        ) {
+            boolean summarized = initialSummary != null;
             return new Message(
-                    "response:" + response.getId(),
-                    UserRole.TEACHER,
-                    response.getTeacher().getUser().getName(),
-                    response.getContent(),
-                    response.getSentAt() == null ? response.getCreatedAt() : response.getSentAt(),
-                    false
+                    "message:" + message.getId(),
+                    message.getType() == MessageType.PARENT_INQUIRY
+                            ? UserRole.PARENT
+                            : UserRole.TEACHER,
+                    message.getSender().getName(),
+                    summarized ? initialSummary : message.getContent(),
+                    message.getSentAt() == null
+                            ? initialSubmittedAt
+                            : message.getSentAt(),
+                    summarized
             );
         }
     }

@@ -2,19 +2,19 @@ package com.teacherhub.complaint.teacher.service;
 
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.access.ComplaintAccessPolicy;
-import com.teacherhub.complaint.entity.AiDraft;
 import com.teacherhub.complaint.entity.Complaint;
-import com.teacherhub.complaint.entity.ComplaintStatus;
-import com.teacherhub.complaint.entity.ComplaintStatusHistory;
-import com.teacherhub.complaint.entity.Response;
-import com.teacherhub.complaint.exception.AiDraftNotFoundException;
+import com.teacherhub.complaint.entity.ComplaintMessage;
+import com.teacherhub.complaint.entity.ComplaintEvent;
+import com.teacherhub.complaint.enums.MessageType;
+import com.teacherhub.complaint.enums.ComplaintStatus;
+import com.teacherhub.complaint.enums.MessageStatus;
+import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.exception.ResponseDraftNotFoundException;
 import com.teacherhub.complaint.exception.ResponseNotEditableException;
-import com.teacherhub.complaint.repository.AiDraftRepository;
+import com.teacherhub.complaint.repository.ComplaintMessageRepository;
+import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
-import com.teacherhub.complaint.repository.ComplaintStatusHistoryRepository;
-import com.teacherhub.complaint.repository.ResponseRepository;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherAiDraftResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseDraftResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseRequest;
@@ -26,7 +26,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -34,9 +34,8 @@ import java.time.LocalDateTime;
 public class TeacherResponseService {
 
     private final ComplaintRepository complaintRepository;
-    private final AiDraftRepository aiDraftRepository;
-    private final ResponseRepository responseRepository;
-    private final ComplaintStatusHistoryRepository statusHistoryRepository;
+    private final ComplaintMessageRepository messageRepository;
+    private final ComplaintEventRepository eventRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
     private final TeacherSupportContentProvider supportContentProvider;
@@ -46,24 +45,21 @@ public class TeacherResponseService {
     public TeacherAiDraftResponse generateAiDraft(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findEditableComplaintForUpdate(user, complaintId);
-        var generated = supportContentProvider.createResponseDraft(complaint.getContent());
-        AiDraft aiDraft = aiDraftRepository.saveAndFlush(new AiDraft(
-                complaint,
-                generated.content(),
-                generated.summary(),
-                generated.modelName()
-        ));
-        return TeacherAiDraftResponse.from(aiDraft);
+        var generated = supportContentProvider.createResponseDraft(conversationContext(complaint));
+        ComplaintEvent event = eventRepository.save(ComplaintEvent.aiDraftGenerated(complaint));
+        return TeacherAiDraftResponse.from(complaint.getId(), generated, event.getOccurredAt());
     }
 
     // 임시 저장된 답변 조회
     public TeacherResponseDraftResponse findDraft(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findTeacherComplaint(user, complaintId);
-        Response draft = responseRepository
-                .findFirstByComplaintIdAndTeacherIdAndSentAtIsNullOrderByIdDesc(
+        ComplaintMessage draft = messageRepository
+                .findFirstByComplaintIdAndSenderIdAndTypeAndStatusOrderByIdDesc(
                         complaintId,
-                        complaint.getTeacher().getId()
+                        user.getId(),
+                        MessageType.TEACHER_REPLY,
+                        MessageStatus.DRAFT
                 )
                 .orElseThrow(() -> new ResponseDraftNotFoundException(
                         "저장된 답변 초안을 찾을 수 없습니다."
@@ -80,24 +76,24 @@ public class TeacherResponseService {
     ) {
         User user = findUser(userId);
         Complaint complaint = findEditableComplaintForUpdate(user, complaintId);
-        AiDraft aiDraft = findAiDraft(complaintId, request.aiDraftId());
-        Response draft = responseRepository
-                .findFirstByComplaintIdAndTeacherIdAndSentAtIsNullOrderByIdDesc(
+        ComplaintMessage draft = messageRepository
+                .findFirstByComplaintIdAndSenderIdAndTypeAndStatusOrderByIdDesc(
                         complaintId,
-                        complaint.getTeacher().getId()
+                        user.getId(),
+                        MessageType.TEACHER_REPLY,
+                        MessageStatus.DRAFT
                 )
-                .orElseGet(() -> new Response(
+                .orElseGet(() -> new ComplaintMessage(
                         complaint,
-                        complaint.getTeacher(),
-                        aiDraft,
-                        request.content(),
-                        null
+                        user,
+                        MessageType.TEACHER_REPLY,
+                        request.content()
                 ));
 
         if (draft.getId() != null) {
-            draft.updateDraft(aiDraft, request.content());
+            draft.updateDraft(request.content());
         }
-        Response saved = responseRepository.saveAndFlush(draft);
+        ComplaintMessage saved = messageRepository.saveAndFlush(draft);
         return TeacherResponseDraftResponse.from(saved);
     }
 
@@ -110,32 +106,28 @@ public class TeacherResponseService {
     ) {
         User user = findUser(userId);
         Complaint complaint = findEditableComplaintForUpdate(user, complaintId);
-        AiDraft aiDraft = findAiDraft(complaintId, request.aiDraftId());
-        Response response = responseRepository
-                .findFirstByComplaintIdAndTeacherIdAndSentAtIsNullOrderByIdDesc(
+        ComplaintMessage response = messageRepository
+                .findFirstByComplaintIdAndSenderIdAndTypeAndStatusOrderByIdDesc(
                         complaintId,
-                        complaint.getTeacher().getId()
+                        user.getId(),
+                        MessageType.TEACHER_REPLY,
+                        MessageStatus.DRAFT
                 )
-                .orElseGet(() -> new Response(
+                .orElseGet(() -> new ComplaintMessage(
                         complaint,
-                        complaint.getTeacher(),
-                        aiDraft,
-                        request.content(),
-                        null
+                        user,
+                        MessageType.TEACHER_REPLY,
+                        request.content()
                 ));
 
         if (response.getId() != null) {
-            response.updateDraft(aiDraft, request.content());
+            response.updateDraft(request.content());
         }
-        response.submit(LocalDateTime.now());
-        complaint.answer();
-        Response saved = responseRepository.saveAndFlush(response);
-        statusHistoryRepository.save(new ComplaintStatusHistory(
-                complaint,
-                user,
-                ComplaintStatus.ANALYZED,
-                ComplaintStatus.ANSWERED
-        ));
+        markLatestParentMessageRead(complaintId);
+        response.send();
+        complaint.teacherMessageSent();
+        ComplaintMessage saved = messageRepository.saveAndFlush(response);
+        eventRepository.save(ComplaintEvent.messageSent(saved));
         return TeacherResponseSubmissionResponse.from(saved);
     }
 
@@ -144,7 +136,8 @@ public class TeacherResponseService {
         Complaint complaint = complaintRepository.findForUpdate(complaintId)
                 .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
         complaintAccessPolicy.validateAssignedTeacher(user, complaint);
-        if (complaint.getStatus() != ComplaintStatus.ANALYZED) {
+        if (complaint.getStatus() != ComplaintStatus.OPEN
+                || complaint.getWaitingFor() != WaitingFor.TEACHER) {
             throw new ResponseNotEditableException("접수되어 답변 대기 중인 민원만 답변할 수 있습니다.");
         }
         return complaint;
@@ -157,18 +150,24 @@ public class TeacherResponseService {
         return complaint;
     }
 
-    private AiDraft findAiDraft(Long complaintId, Long aiDraftId) {
-        if (aiDraftId == null) {
-            return null;
-        }
-        return aiDraftRepository.findByIdAndComplaintId(aiDraftId, complaintId)
-                .orElseThrow(() -> new AiDraftNotFoundException(
-                        "해당 민원의 AI 답변 초안을 찾을 수 없습니다."
-                ));
-    }
-
     private User findUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("사용자를 찾을 수 없습니다."));
+    }
+
+    private String conversationContext(Complaint complaint) {
+        return messageRepository
+                .findByComplaintIdAndStatusNotOrderByIdAsc(complaint.getId(), MessageStatus.DRAFT)
+                .stream()
+                .map(message -> message.getType() + ": " + message.getContent())
+                .collect(Collectors.joining("\n\n"));
+    }
+
+    private void markLatestParentMessageRead(Long complaintId) {
+        messageRepository.findFirstByComplaintIdAndTypeAndStatusNotOrderByIdDesc(
+                complaintId,
+                MessageType.PARENT_INQUIRY,
+                MessageStatus.DRAFT
+        ).ifPresent(ComplaintMessage::markRead);
     }
 }

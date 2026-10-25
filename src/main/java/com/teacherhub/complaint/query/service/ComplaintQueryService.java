@@ -3,13 +3,14 @@ package com.teacherhub.complaint.query.service;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.access.ComplaintAccessPolicy;
 import com.teacherhub.complaint.entity.Complaint;
-import com.teacherhub.complaint.entity.ComplaintStatus;
+import com.teacherhub.complaint.enums.MessageType;
+import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.exception.ComplaintAccessDeniedException;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.query.dto.ComplaintDetailResponse;
 import com.teacherhub.complaint.query.dto.ComplaintListResponse;
 import com.teacherhub.complaint.repository.ComplaintRepository;
-import com.teacherhub.complaint.repository.ComplaintStatusHistoryRepository;
+import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.teacher.provider.ComplaintSummaryProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
@@ -31,7 +32,7 @@ import java.util.List;
 public class ComplaintQueryService {
 
     private final ComplaintRepository complaintRepository;
-    private final ComplaintStatusHistoryRepository statusHistoryRepository;
+    private final ComplaintMessageRepository messageRepository;
     private final RiskAnalysisRepository riskAnalysisRepository;
     private final RiskReviewRepository riskReviewRepository;
     private final StudentClassRepository studentClassRepository;
@@ -88,10 +89,7 @@ public class ComplaintQueryService {
 
     private RiskAnalysis latestAnalysis(Complaint complaint) {
         return riskAnalysisRepository
-                .findFirstByComplaintIdAndContentVersionAndCompletedTrueOrderByIdDesc(
-                        complaint.getId(),
-                        complaint.getContentVersion()
-                )
+                .findFirstByComplaintIdAndCompletedTrueOrderByIdDesc(complaint.getId())
                 .orElse(null);
     }
 
@@ -100,12 +98,14 @@ public class ComplaintQueryService {
                 .findTopByStudent_IdOrderBySchoolClass_AcademicYearDesc(complaint.getStudent().getId())
                 .map(studentClass -> studentClass.getSchoolClass())
                 .orElse(null);
-        var latestReceivedAt = statusHistoryRepository
-                .findFirstByComplaintIdAndNewStatusOrderByChangedAtDesc(
+        var latestParentMessage = messageRepository
+                .findFirstByComplaintIdAndTypeAndStatusNotOrderByIdDesc(
                         complaint.getId(),
-                        ComplaintStatus.ANALYZED
-                )
-                .map(history -> history.getChangedAt())
+                        MessageType.PARENT_INQUIRY,
+                        MessageStatus.DRAFT
+                );
+        var latestReceivedAt = latestParentMessage
+                .map(message -> message.getSentAt())
                 .orElse(null);
         RiskAnalysis analysis = latestAnalysis(complaint);
 
@@ -115,9 +115,11 @@ public class ComplaintQueryService {
                 latestReview(analysis),
                 schoolClass,
                 complaintSummaryProvider.createSummary(
-                        complaint.getMaskedContent() == null
-                                ? complaint.getContent()
-                                : complaint.getMaskedContent()
+                        latestParentMessage
+                                .map(message -> message.getMaskedContent() == null
+                                        ? message.getContent()
+                                        : message.getMaskedContent())
+                                .orElse(complaint.getContent())
                 ),
                 latestReceivedAt,
                 viewerRole

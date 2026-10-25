@@ -1,24 +1,26 @@
 package com.teacherhub.complaint.teacher.dto.reply;
 
-import com.teacherhub.complaint.entity.AiDraft;
+import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider.GeneratedResponseDraft;
 
 import java.time.LocalDateTime;
 
 // 교사 AI 초안 응답
 public record TeacherAiDraftResponse(
-        Long aiDraftId,
         Long complaintId,
         String content,
         String modelName,
-        LocalDateTime createdAt
+        LocalDateTime generatedAt
 ) {
-    public static TeacherAiDraftResponse from(AiDraft aiDraft) {
+    public static TeacherAiDraftResponse from(
+            Long complaintId,
+            GeneratedResponseDraft generated,
+            LocalDateTime generatedAt
+    ) {
         return new TeacherAiDraftResponse(
-                aiDraft.getId(),
-                aiDraft.getComplaint().getId(),
-                aiDraft.getDraftContent(),
-                aiDraft.getModelName(),
-                aiDraft.getCreatedAt()
+                complaintId,
+                generated.content(),
+                generated.modelName(),
+                generatedAt
         );
     }
 }

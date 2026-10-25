@@ -22,7 +22,6 @@ public class MockTeacherSupportContentProvider implements TeacherSupportContentP
                         + "우리 학교는 학생과 학부모님의 상담을 중요하게 생각하며, "
                         + "보호자님과 직접 말씀드리고 상황을 설명드리는 시간을 갖고 싶습니다.\n\n"
                         + "감사합니다.",
-                "[MOCK] 민원 내용을 바탕으로 생성한 교사용 답변 초안입니다.",
                 "mock-teacher-response-v1"
         );
     }
