@@ -48,41 +48,43 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Transactional
 public class ComplaintFlowIntegrationTest {
     @Test
-    void allowsOnlyOneContentChange() {
+    void allowsUnlimitedDraftChangesAndPerformsFinalAnalysisOnlyOnSubmit() {
         Long id = complaintService.createDraft(parentUser.getId(),
                 new ComplaintRequest(student.getId(), "최초 원문")).getComplaintId();
         riskAnalysisService.analyze(parentUser.getId(), id);
-        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "수정했다가"));
-
-        org.assertj.core.api.Assertions.assertThatThrownBy(
-                        () -> complaintService.updateDraft(
-                                parentUser.getId(),
-                                id,
-                                new ComplaintRequest(null, "최초 원문")
-                        ))
-                .isInstanceOf(com.teacherhub.complaint.exception.ComplaintEditLimitException.class);
+        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "첫 번째 수정"));
+        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "두 번째 수정"));
+        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "최종 제출 내용"));
 
         Complaint complaint = complaintRepository.findById(id).orElseThrow();
-        assertThat(complaint.getContent()).isEqualTo("수정했다가");
-        assertThat(complaint.getContentVersion()).isEqualTo(2);
+        assertThat(complaint.getContent()).isEqualTo("최종 제출 내용");
+        assertThat(complaint.getContentVersion()).isEqualTo(4);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> riskAnalysisService.analyze(parentUser.getId(), id))
+                .isInstanceOf(com.teacherhub.complaint.exception.FinalAnalysisOnSubmitException.class);
 
         complaintService.submitComplaint(parentUser.getId(), id);
         assertThat(riskAnalysisRepository.countByComplaintIdAndCompletedTrue(id)).isEqualTo(2);
+        var finalAnalysis = riskAnalysisRepository.findByComplaintIdOrderByIdAsc(id).get(1);
+        assertThat(finalAnalysis.getContentVersion()).isEqualTo(4);
+        assertThat(finalAnalysis.getOriginalContent()).isEqualTo("최종 제출 내용");
+        assertThat(finalAnalysis.getAiRevision()).isNull();
         assertThat(complaintRepository.findById(id).orElseThrow().getStatus()).isEqualTo(ComplaintStatus.OPEN);
     }
     @Test
-    void reusesAnalysisWithoutChangesAndSubmitsAsAnalyzed() {
+    void reusesAnalysisWhenFinalContentMatchesReviewedContent() {
         Long id = complaintService.createDraft(parentUser.getId(),
                 new ComplaintRequest(student.getId(), "상황을 확인해 주세요.")).getComplaintId();
         assertThat(complaintService.findStatus(parentUser.getId(), id).getStatus()).isEqualTo(ComplaintStatus.DRAFT);
         var first = riskAnalysisService.analyze(parentUser.getId(), id);
+        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "임시로 수정한 내용"));
         complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "상황을 확인해 주세요."));
         entityManager.flush();
         entityManager.clear();
         var reused = riskAnalysisService.analyze(parentUser.getId(), id);
         assertThat(reused).usingRecursiveComparison().isEqualTo(first);
         assertThat(riskAnalysisRepository.countByComplaintIdAndCompletedTrue(id)).isEqualTo(1);
-        assertThat(complaintRepository.findById(id).orElseThrow().getContentVersion()).isEqualTo(1);
+        assertThat(complaintRepository.findById(id).orElseThrow().getContentVersion()).isEqualTo(3);
         assertThat(complaintRepository.findById(id).orElseThrow().getStatus()).isEqualTo(ComplaintStatus.DRAFT);
         complaintService.submitComplaint(parentUser.getId(), id);
         assertThat(complaintService.findStatus(parentUser.getId(), id).getStatus()).isEqualTo(ComplaintStatus.OPEN);
@@ -98,7 +100,7 @@ public class ComplaintFlowIntegrationTest {
     }
 
     @Test
-    void requiresCurrentAnalysisAndLocksEditsAfterOneReanalysis() {
+    void requiresInitialReviewAndRunsChangedContentAnalysisDuringSubmission() {
         Long id = complaintService.createDraft(parentUser.getId(),
                 new ComplaintRequest(student.getId(), "처음 내용")).getComplaintId();
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> complaintService.submitComplaint(parentUser.getId(), id))

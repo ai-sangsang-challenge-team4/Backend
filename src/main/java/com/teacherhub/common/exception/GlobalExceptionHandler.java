@@ -29,10 +29,6 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.CONFLICT, "REANALYSIS_LIMIT_REACHED", e, request);
     }
 
-    @ExceptionHandler(ComplaintEditLimitException.class)
-    public ResponseEntity<ErrorResponse> handleComplaintEditLimit(ComplaintEditLimitException e, HttpServletRequest request) {
-        return error(HttpStatus.CONFLICT, "COMPLAINT_EDIT_LIMIT_REACHED", e, request);
-    }
     @ExceptionHandler(ComplaintNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleComplaintNotFound(ComplaintNotFoundException e, HttpServletRequest request) {
         return error(HttpStatus.NOT_FOUND, "COMPLAINT_NOT_FOUND", e, request);

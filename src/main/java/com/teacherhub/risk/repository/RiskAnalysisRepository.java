@@ -28,6 +28,11 @@ public interface RiskAnalysisRepository extends JpaRepository<RiskAnalysis, Long
             long contentVersion
     );
 
+    Optional<RiskAnalysis> findFirstByMessageIdAndOriginalContentAndCompletedTrueOrderByIdDesc(
+            Long messageId,
+            String originalContent
+    );
+
     long countByMessageIdAndCompletedTrue(Long messageId);
 
     Optional<RiskAnalysis> findFirstByComplaintIdAndCompletedTrueOrderByIdDesc(Long complaintId);

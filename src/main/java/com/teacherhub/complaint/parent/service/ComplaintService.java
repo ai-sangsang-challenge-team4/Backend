@@ -149,11 +149,6 @@ public class ComplaintService {
         }
 
 
-        if (!java.util.Objects.equals(complaint.getContent(), request.getContent())
-                && complaint.getContentVersion() >= 2) {
-            throw new ComplaintEditLimitException();
-        }
-
         // ComplaintRequest의 content만 사용
         complaint.updateContent(
                 request.getContent()

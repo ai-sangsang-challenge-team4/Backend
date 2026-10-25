@@ -132,8 +132,10 @@ public class RiskAnalysisService {
         }
 
 
-        var existing = analysisRepository.findFirstByMessageIdAndContentVersionAndCompletedTrueOrderByIdDesc(
-                message.getId(), message.getContentVersion());
+        // 임시저장 횟수나 contentVersion이 아니라 실제 제출 내용으로 재분석 필요 여부를 판단한다.
+        // AI 검토 후 수정했다가 검토받은 내용으로 되돌린 경우도 기존 결과를 재사용한다.
+        var existing = analysisRepository.findFirstByMessageIdAndOriginalContentAndCompletedTrueOrderByIdDesc(
+                message.getId(), originalContent);
 
         if (existing.isPresent()) {
             return summary(existing.get());

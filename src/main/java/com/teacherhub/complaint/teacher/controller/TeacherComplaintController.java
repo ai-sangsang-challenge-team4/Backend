@@ -58,7 +58,7 @@ public class TeacherComplaintController {
     }
 
     // 민원 대화 조회 (완충요약버전)
-    @GetMapping("/{complaintId}/conversation")
+    @GetMapping("/{complaintId}/messages")
     public ResponseEntity<TeacherConversationResponse> findConversation(
             Authentication authentication,
             @PathVariable Long complaintId
