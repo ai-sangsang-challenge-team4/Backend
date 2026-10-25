@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintStatus;
 import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
 
 import java.time.LocalDateTime;
@@ -24,6 +25,7 @@ public record ComplaintDetailResponse(
     public static ComplaintDetailResponse from(
             Complaint complaint,
             RiskAnalysis analysis,
+            RiskReview latestReview,
             boolean includeContent
     ) {
         return new ComplaintDetailResponse(
@@ -34,7 +36,11 @@ public record ComplaintDetailResponse(
                 complaint.getTeacher() == null ? null : complaint.getTeacher().getUser().getName(),
                 includeContent ? complaint.getContent() : null,
                 complaint.getStatus(),
-                analysis == null ? null : analysis.getRiskLevel(),
+                analysis == null
+                        ? null
+                        : latestReview == null
+                                ? analysis.getRiskLevel()
+                                : latestReview.getReviewedLevel(),
                 complaint.getCreatedAt(),
                 complaint.getUpdatedAt()
         );

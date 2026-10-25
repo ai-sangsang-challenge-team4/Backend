@@ -3,6 +3,7 @@
 ```mermaid
 erDiagram
     complaints ||--o{ risk_analyses : analyzed
+    risk_analyses ||--o{ risk_reviews : teacher_reviews
     risk_analyses ||--o{ complaint_risk_tags : results
     risk_tags ||--o{ complaint_risk_tags : definitions
     complaints ||--o{ ai_drafts : teacher_drafts
@@ -17,6 +18,9 @@ erDiagram
 - `risk_tags`: code, name, default_score. 기존 기준 정보 조회 기능을 유지한다.
 - `risk_analyses`: complaint_id, risk_score, risk_level, model_name, temperature,
   analyzed_at. 추가한 content_version으로 분석 대상 원문 버전을 구분한다.
+- `risk_reviews`: risk_analysis_id, reviewed_by, previous_score, previous_level,
+  reviewed_score, reviewed_level, direction, reason, reviewed_at. 시스템 분석은 변경하지
+  않고 교사의 위험도 검토를 시간순으로 누적한다.
 - `complaint_risk_tags`: risk_analysis_id, risk_tag_id, rule_detected, llm_detected,
   final_detected, confidence, evidence. 분석 1건에 전체 8개 태그를 저장한다.
   분석 ID와 태그 ID 조합은 유일하다.
@@ -34,12 +38,15 @@ ComplaintReviewService: 본인/DRAFT 검증 → 원문 규칙 탐지 → 마스�
 실패 시 마스킹 변경과 분석 저장을 동일 트랜잭션으로 롤백한다.
 규칙 탐지와 LLM은 mock이며 수정본은 자동 적용하지 않는다.
 
-RiskScoreCalculator의 초안 정책은 최종 탐지된 태그의 default_score 합산이다.
-같은 태그가 두 탐지기에서 발견되어도 한 번만 계산한다.
-0~1점 LOW, 2~4점 MEDIUM, 5점 이상 HIGH.
-EMERGENCY enum은 ERD 호환을 위해 유지하되 현재 계산에서는 반환하지 않는다.
-기존 기본 점수 10~30을 유지하므로 현재는 태그 하나만 탐지돼도 HIGH다.
-평가 후 기본 점수와 계산 정책을 변경할 수 있다.
+시스템 분석은 기존 정책을 유지한다. 최종 탐지된 태그의 default_score를 합산하고,
+같은 태그가 두 탐지기에서 발견되어도 한 번만 계산한다. 시스템 점수는 0~1점 LOW,
+2~4점 MEDIUM, 5점 이상 HIGH이며 현재 자동 계산에서는 EMERGENCY를 반환하지 않는다.
+
+교사 검토에만 별도의 1~7점 척도를 적용한다. 최초 검토 위치는 시스템 등급을
+LOW 2점, MEDIUM 4점, HIGH 6점, EMERGENCY 7점으로 변환해 정한다. 교사용 점수의
+1~2점은 LOW, 3~4점은 MEDIUM, 5~6점은 HIGH, 7점은 EMERGENCY다. 하향 조정은
+사유가 필수이고, 상향 또는 동일 점수 확인은 사유가 선택 사항이다. 각 검토는 별도
+행으로 저장하며 조회·처리 정책에는 가장 최근 검토 등급을 사용한다.
 
 제출 전 검토는 DRAFT를 유지하며 매번 새 분석을 저장한다. 원문 수정 시
 masked_content를 비우고 content_version을 증가시킨다. 생성/제출 시 상태 이력을 저장한다.

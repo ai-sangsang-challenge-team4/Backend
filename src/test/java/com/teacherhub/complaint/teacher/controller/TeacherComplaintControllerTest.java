@@ -8,9 +8,13 @@ import com.teacherhub.complaint.teacher.dto.reply.TeacherAiDraftResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseDraftResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseRequest;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseSubmissionResponse;
+import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest;
+import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewResponse;
 import com.teacherhub.complaint.teacher.service.TeacherComplaintQueryService;
 import com.teacherhub.complaint.teacher.service.TeacherResponseService;
+import com.teacherhub.complaint.teacher.service.TeacherRiskReviewService;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.enums.RiskReviewDirection;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -37,11 +41,13 @@ class TeacherComplaintControllerTest {
     void routesAiDraftTemporarySaveAndFinalSubmission() throws Exception {
         var queryService = mock(TeacherComplaintQueryService.class);
         var responseService = mock(TeacherResponseService.class);
+        var riskReviewService = mock(TeacherRiskReviewService.class);
         var complaintQueryService = mock(ComplaintQueryService.class);
         var users = mock(UserRepository.class);
         var user = mock(User.class);
         var now = LocalDateTime.of(2026, 10, 24, 11, 30);
         var request = new TeacherResponseRequest("수정한 답변", 9L);
+        var riskReviewRequest = new TeacherRiskReviewRequest(5, "하향 검토 사유");
 
         when(user.getId()).thenReturn(7L);
         when(users.findByEmail("teacher@test.com")).thenReturn(Optional.of(user));
@@ -64,9 +70,30 @@ class TeacherComplaintControllerTest {
                         now
                 )
         );
+        when(riskReviewService.review(7L, 42L, riskReviewRequest)).thenReturn(
+                new TeacherRiskReviewResponse(
+                        11L,
+                        42L,
+                        12L,
+                        7,
+                        RiskLevel.EMERGENCY,
+                        5,
+                        RiskLevel.HIGH,
+                        RiskReviewDirection.LOWERED,
+                        "하향 검토 사유",
+                        "교사 이름",
+                        now
+                )
+        );
 
         var mvc = MockMvcBuilders.standaloneSetup(
-                new TeacherComplaintController(queryService, responseService, complaintQueryService, users)
+                new TeacherComplaintController(
+                        queryService,
+                        responseService,
+                        riskReviewService,
+                        complaintQueryService,
+                        users
+                )
         ).build();
         var auth = new UsernamePasswordAuthenticationToken("teacher@test.com", null, List.of());
         String body = "{\"content\":\"수정한 답변\",\"aiDraftId\":9}";
@@ -89,17 +116,26 @@ class TeacherComplaintControllerTest {
                         .content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.complaintStatus").value("ANSWERED"));
+        mvc.perform(post("/teacher/complaints/42/risk-reviews")
+                        .principal(auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"riskScore\":5,\"reason\":\"하향 검토 사유\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.direction").value("LOWERED"))
+                .andExpect(jsonPath("$.riskLevel").value("HIGH"));
 
         verify(responseService).generateAiDraft(7L, 42L);
         verify(responseService).findDraft(7L, 42L);
         verify(responseService).saveDraft(7L, 42L, request);
         verify(responseService).submit(7L, 42L, request);
+        verify(riskReviewService).review(7L, 42L, riskReviewRequest);
     }
 
     @Test
     void returnsTeacherDetailAndConversationFromSeparatedRoutes() throws Exception {
         var service = mock(TeacherComplaintQueryService.class);
         var responseService = mock(TeacherResponseService.class);
+        var riskReviewService = mock(TeacherRiskReviewService.class);
         var complaintQueryService = mock(ComplaintQueryService.class);
         var users = mock(UserRepository.class);
         var user = mock(User.class);
@@ -132,7 +168,13 @@ class TeacherComplaintControllerTest {
         ));
 
         var mvc = MockMvcBuilders.standaloneSetup(
-                new TeacherComplaintController(service, responseService, complaintQueryService, users)
+                new TeacherComplaintController(
+                        service,
+                        responseService,
+                        riskReviewService,
+                        complaintQueryService,
+                        users
+                )
         ).build();
         var auth = new UsernamePasswordAuthenticationToken("teacher@test.com", null, List.of());
 

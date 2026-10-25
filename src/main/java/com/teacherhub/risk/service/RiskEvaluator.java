@@ -140,9 +140,8 @@ public class RiskEvaluator {
         );
     }
 
-    // 위험 태그 결과를 기반으로 점수 계산
-    public int calculate( List<FinalRiskTagResponse> tags, Map<RiskTagCode, RiskTag> definitions
-    ) {
+    // 위험 태그 결과를 기반으로 시스템 점수 계산
+    public int calculate(List<FinalRiskTagResponse> tags, Map<RiskTagCode, RiskTag> definitions) {
         return tags.stream()
                 .filter(FinalRiskTagResponse::detected)
                 .map(FinalRiskTagResponse::code)

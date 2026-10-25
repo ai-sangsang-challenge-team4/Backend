@@ -12,7 +12,9 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintStatusHistoryRepository;
 import com.teacherhub.complaint.teacher.provider.ComplaintSummaryProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
+import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.school.repository.StudentClassRepository;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.enums.UserRole;
@@ -31,6 +33,7 @@ public class ComplaintQueryService {
     private final ComplaintRepository complaintRepository;
     private final ComplaintStatusHistoryRepository statusHistoryRepository;
     private final RiskAnalysisRepository riskAnalysisRepository;
+    private final RiskReviewRepository riskReviewRepository;
     private final StudentClassRepository studentClassRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
@@ -71,6 +74,7 @@ public class ComplaintQueryService {
         return ComplaintDetailResponse.from(
                 complaint,
                 analysis,
+                latestReview(analysis),
                 true
         );
     }
@@ -103,10 +107,12 @@ public class ComplaintQueryService {
                 )
                 .map(history -> history.getChangedAt())
                 .orElse(null);
+        RiskAnalysis analysis = latestAnalysis(complaint);
 
         return ComplaintListResponse.from(
                 complaint,
-                latestAnalysis(complaint),
+                analysis,
+                latestReview(analysis),
                 schoolClass,
                 complaintSummaryProvider.createSummary(
                         complaint.getMaskedContent() == null
@@ -116,6 +122,15 @@ public class ComplaintQueryService {
                 latestReceivedAt,
                 viewerRole
         );
+    }
+
+    private RiskReview latestReview(RiskAnalysis analysis) {
+        if (analysis == null) {
+            return null;
+        }
+        return riskReviewRepository
+                .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(analysis.getId())
+                .orElse(null);
     }
 
 }

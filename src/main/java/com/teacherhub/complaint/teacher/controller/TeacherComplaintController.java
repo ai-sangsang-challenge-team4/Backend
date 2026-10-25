@@ -12,8 +12,11 @@ import com.teacherhub.complaint.teacher.dto.reply.TeacherAiDraftResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseDraftResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseRequest;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseSubmissionResponse;
+import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest;
+import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewResponse;
 import com.teacherhub.complaint.teacher.service.TeacherComplaintQueryService;
 import com.teacherhub.complaint.teacher.service.TeacherResponseService;
+import com.teacherhub.complaint.teacher.service.TeacherRiskReviewService;
 import com.teacherhub.user.repository.UserRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +34,7 @@ public class TeacherComplaintController {
 
     private final TeacherComplaintQueryService teacherComplaintQueryService;
     private final TeacherResponseService teacherResponseService;
+    private final TeacherRiskReviewService teacherRiskReviewService;
     private final ComplaintQueryService complaintQueryService;
     private final UserRepository userRepository;
 
@@ -84,6 +88,21 @@ public class TeacherComplaintController {
         return ResponseEntity.ok(
                 teacherComplaintQueryService.findRisk(userId(authentication), complaintId)
         );
+    }
+
+    // 교사 위험도 검토 및 조정
+    @PostMapping("/{complaintId}/risk-reviews")
+    public ResponseEntity<TeacherRiskReviewResponse> reviewRisk(
+            Authentication authentication,
+            @PathVariable Long complaintId,
+            @Valid @RequestBody TeacherRiskReviewRequest request
+    ) {
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+                .body(teacherRiskReviewService.review(
+                        userId(authentication),
+                        complaintId,
+                        request
+                ));
     }
 
     // 민원 히스토리 조회

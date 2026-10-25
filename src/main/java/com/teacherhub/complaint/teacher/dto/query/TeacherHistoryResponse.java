@@ -7,6 +7,7 @@ import com.teacherhub.complaint.entity.ComplaintStatusHistory;
 import com.teacherhub.complaint.entity.Response;
 import com.teacherhub.complaint.teacher.dto.EventType;
 import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
 
 import java.time.LocalDateTime;
@@ -25,12 +26,14 @@ public record TeacherHistoryResponse(
             List<RiskAnalysis> analyses,
             List<ComplaintOriginalViewLog> originalViewLogs,
             List<AiDraft> aiDrafts,
-            List<Response> responses
+            List<Response> responses,
+            List<RiskReview> riskReviews
     ) {
         List<HistoryEvent> events = new ArrayList<>();
         statusHistories.stream().map(HistoryEvent::statusChanged).forEach(events::add);
         analyses.stream().filter(RiskAnalysis::isCompleted)
                 .map(HistoryEvent::riskAnalyzed).forEach(events::add);
+        riskReviews.stream().map(HistoryEvent::riskReviewed).forEach(events::add);
         originalViewLogs.stream().map(HistoryEvent::originalViewed).forEach(events::add);
         aiDrafts.stream().map(HistoryEvent::aiDraftCreated).forEach(events::add);
         responses.stream()
@@ -49,7 +52,11 @@ public record TeacherHistoryResponse(
             String actorName,
             ComplaintStatus previousStatus,
             ComplaintStatus newStatus,
-            RiskLevel riskLevel
+            Integer riskScore,
+            RiskLevel riskLevel,
+            Integer previousRiskScore,
+            RiskLevel previousRiskLevel,
+            String reason
     ) {
         private static HistoryEvent statusChanged(ComplaintStatusHistory history) {
             return new HistoryEvent(
@@ -59,6 +66,10 @@ public record TeacherHistoryResponse(
                     history.getChangedBy() == null ? "SYSTEM" : history.getChangedBy().getName(),
                     history.getPreviousStatus(),
                     history.getNewStatus(),
+                    null,
+                    null,
+                    null,
+                    null,
                     null
             );
         }
@@ -71,7 +82,27 @@ public record TeacherHistoryResponse(
                     "SYSTEM",
                     null,
                     null,
-                    analysis.getRiskLevel()
+                    analysis.getRiskScore(),
+                    analysis.getRiskLevel(),
+                    null,
+                    null,
+                    null
+            );
+        }
+
+        private static HistoryEvent riskReviewed(RiskReview review) {
+            return new HistoryEvent(
+                    "risk-review:" + review.getId(),
+                    EventType.RISK_REVIEWED,
+                    review.getReviewedAt(),
+                    review.getReviewedBy().getUser().getName(),
+                    null,
+                    null,
+                    review.getReviewedScore(),
+                    review.getReviewedLevel(),
+                    review.getPreviousScore(),
+                    review.getPreviousLevel(),
+                    review.getReason()
             );
         }
 
@@ -81,6 +112,10 @@ public record TeacherHistoryResponse(
                     EventType.ORIGINAL_VIEWED,
                     log.getViewedAt(),
                     log.getViewedBy().getName(),
+                    null,
+                    null,
+                    null,
+                    null,
                     null,
                     null,
                     null
@@ -95,6 +130,10 @@ public record TeacherHistoryResponse(
                     "SYSTEM",
                     null,
                     null,
+                    null,
+                    null,
+                    null,
+                    null,
                     null
             );
         }
@@ -105,6 +144,10 @@ public record TeacherHistoryResponse(
                     EventType.RESPONSE_SENT,
                     response.getSentAt(),
                     response.getTeacher().getUser().getName(),
+                    null,
+                    null,
+                    null,
+                    null,
                     null,
                     null,
                     null

@@ -14,6 +14,7 @@
 | GET | `/risk-analyses/{analysisId}/findings` | 최종 감지 태그·근거·태그별 수정 제안·최종 수정본 조회 | 200 |
 | GET | `/risk-analyses/{analysisId}/detector-results` | 전체 태그의 Rule·LLM 감지 여부·출처별 근거·LLM 신뢰도 조회 | 200 |
 | GET | `/risk-tags` | 위험 태그 기준 목록 조회, 민원 분석과 별개 | 200 |
+| POST | `/teacher/complaints/{complaintId}/risk-reviews` | 교사가 1~7점 위험도를 검토·조정하고 이력을 저장 | 201 |
 
 ## 마스킹 응답 예시
 
@@ -61,6 +62,29 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 같은 내용 버전으로 분석을 다시 요청하면 기존 분석의 요약을 반환하며 AI를 다시 호출하지 않는다.
 과거 ID 조회는 해당 분석 시점의 결과다. `ComplaintReviewResponse`는 삭제했다.
 처리 경로·반복 이력 가산·권장 조치는 아직 구현되지 않았다.
+
+## 교사 위험도 검토
+
+교사는 접수되어 `ANALYZED` 상태인 담당 민원의 현재 위험도를 검토한다.
+
+```json
+{
+  "riskScore": 5,
+  "reason": "표현은 강하지만 즉각적인 위해 가능성은 낮다고 판단했습니다."
+}
+```
+
+- 1~7점 척도는 교사 검토값에만 적용하며 시스템 자동 산정 점수는 기존 방식을 유지한다.
+- 최초 검토값은 시스템 등급을 LOW 2점, MEDIUM 4점, HIGH 6점, EMERGENCY 7점으로 변환한다.
+- 현재 점수보다 낮추면 reason이 필수다.
+- 현재 점수보다 높이거나 동일하게 확인하면 reason은 선택 사항이다.
+- 시스템 분석 결과는 덮어쓰지 않고 `risk_reviews`에 변경 전후 점수·등급과 교사,
+  사유, 검토 시각을 누적한다.
+- `GET /teacher/complaints/{complaintId}/risk`는 시스템 점수와 최신 검토가 반영된
+  현재 점수를 함께 반환한다.
+- `GET /teacher/complaints/{complaintId}/history`에는 `RISK_REVIEWED` 이벤트가 추가된다.
+
+교사 검토 점수 구간은 1~2 LOW, 3~4 MEDIUM, 5~6 HIGH, 7 EMERGENCY다.
 
 ## 재분석 및 최종 제출
 

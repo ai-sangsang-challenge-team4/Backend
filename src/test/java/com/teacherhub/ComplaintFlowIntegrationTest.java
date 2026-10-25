@@ -199,6 +199,76 @@ public class ComplaintFlowIntegrationTest {
         assertThat(submitted.complaintStatus()).isEqualTo(ComplaintStatus.ANSWERED);
     }
 
+    @Test
+    void teacherReviewsSevenPointRiskAndHistoryKeepsEveryAdjustment() {
+        Long complaintId = complaintService.createDraft(
+                parentUser.getId(),
+                new ComplaintRequest(student.getId(), "계속 이러면 학교에 책임을 묻겠습니다.")
+        ).getComplaintId();
+        var systemAnalysis = riskAnalysisService.analyze(parentUser.getId(), complaintId);
+        complaintService.submitComplaint(parentUser.getId(), complaintId);
+
+        assertThat(systemAnalysis.riskScore()).isEqualTo(60);
+        assertThat(systemAnalysis.riskLevel())
+                .isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        teacherRiskReviewService.review(
+                                teacherUser.getId(),
+                                complaintId,
+                                new com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest(5, " ")
+                        )
+                )
+                .isInstanceOf(com.teacherhub.risk.exception.RiskReviewReasonRequiredException.class);
+
+        var lowered = teacherRiskReviewService.review(
+                teacherUser.getId(),
+                complaintId,
+                new com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest(
+                        5,
+                        "표현은 강하지만 즉각적인 위해 가능성은 낮다고 판단했습니다."
+                )
+        );
+        var raised = teacherRiskReviewService.review(
+                teacherUser.getId(),
+                complaintId,
+                new com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest(6, null)
+        );
+
+        assertThat(lowered.previousScore()).isEqualTo(6);
+        assertThat(lowered.direction())
+                .isEqualTo(com.teacherhub.risk.enums.RiskReviewDirection.LOWERED);
+        assertThat(lowered.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
+        assertThat(raised.previousScore()).isEqualTo(5);
+        assertThat(raised.direction())
+                .isEqualTo(com.teacherhub.risk.enums.RiskReviewDirection.RAISED);
+        assertThat(raised.reason()).isNull();
+
+        var currentRisk = teacherComplaintQueryService.findRisk(teacherUser.getId(), complaintId);
+        assertThat(currentRisk.riskScore()).isEqualTo(60);
+        assertThat(currentRisk.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
+        assertThat(currentRisk.reviewScore()).isEqualTo(6);
+        assertThat(currentRisk.reviewLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
+        assertThat(currentRisk.latestReview().direction())
+                .isEqualTo(com.teacherhub.risk.enums.RiskReviewDirection.RAISED);
+
+        var reviewEvents = teacherComplaintQueryService
+                .findHistory(teacherUser.getId(), complaintId)
+                .events().stream()
+                .filter(event -> event.type()
+                        == com.teacherhub.complaint.teacher.dto.EventType.RISK_REVIEWED)
+                .toList();
+        assertThat(reviewEvents).hasSize(2);
+        assertThat(reviewEvents)
+                .extracting(TeacherHistoryResponse.HistoryEvent::previousRiskScore)
+                .containsExactlyInAnyOrder(6, 5);
+        assertThat(reviewEvents)
+                .extracting(TeacherHistoryResponse.HistoryEvent::riskScore)
+                .containsExactlyInAnyOrder(5, 6);
+        assertThat(riskReviewRepository.findByRiskAnalysisComplaintIdOrderByReviewedAtAscIdAsc(complaintId))
+                .hasSize(2);
+    }
+
     @Autowired
     private ComplaintMaskingService maskingService;
 
@@ -292,6 +362,12 @@ public class ComplaintFlowIntegrationTest {
 
     @Autowired
     private com.teacherhub.complaint.teacher.service.TeacherResponseService teacherResponseService;
+
+    @Autowired
+    private com.teacherhub.complaint.teacher.service.TeacherRiskReviewService teacherRiskReviewService;
+
+    @Autowired
+    private com.teacherhub.risk.repository.RiskReviewRepository riskReviewRepository;
 
     @Autowired
     private com.teacherhub.complaint.query.service.ComplaintQueryService complaintQueryService;

@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.time.OffsetDateTime;
 import com.teacherhub.complaint.exception.*;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
+import com.teacherhub.risk.exception.RiskReviewNotAllowedException;
+import com.teacherhub.risk.exception.RiskReviewReasonRequiredException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -39,6 +41,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RiskAnalysisNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleRiskAnalysisNotFound(RiskAnalysisNotFoundException e, HttpServletRequest request) {
         return error(HttpStatus.NOT_FOUND, "RISK_ANALYSIS_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(RiskReviewReasonRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleRiskReviewReasonRequired(RiskReviewReasonRequiredException e, HttpServletRequest request) {
+        return error(HttpStatus.BAD_REQUEST, "RISK_REVIEW_REASON_REQUIRED", e, request);
+    }
+
+    @ExceptionHandler(RiskReviewNotAllowedException.class)
+    public ResponseEntity<ErrorResponse> handleRiskReviewNotAllowed(RiskReviewNotAllowedException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, "RISK_REVIEW_NOT_ALLOWED", e, request);
     }
 
     @ExceptionHandler(ComplaintAccessDeniedException.class)
