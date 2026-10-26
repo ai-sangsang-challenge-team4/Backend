@@ -4,7 +4,7 @@ import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.parent.dto.message.ParentMessageRequest;
 import com.teacherhub.complaint.parent.dto.message.ParentMessageResponse;
-import com.teacherhub.complaint.parent.service.ComplaintService;
+import com.teacherhub.complaint.parent.service.ParentComplaintService;
 import com.teacherhub.complaint.parent.service.ParentMessageService;
 import com.teacherhub.complaint.query.service.ComplaintQueryService;
 import com.teacherhub.user.entity.User;
@@ -31,7 +31,7 @@ class ParentMessageControllerTest {
     @Test
     void routesDraftSendAndCloseWithCurrentTurnInResponse() throws Exception {
         var queryService = mock(ComplaintQueryService.class);
-        var complaintService = mock(ComplaintService.class);
+        var complaintService = mock(ParentComplaintService.class);
         var messageService = mock(ParentMessageService.class);
         var users = mock(UserRepository.class);
         var user = mock(User.class);
@@ -51,7 +51,7 @@ class ParentMessageControllerTest {
                         1, now, now, now
                 ));
 
-        var mvc = MockMvcBuilders.standaloneSetup(new ComplaintController(
+        var mvc = MockMvcBuilders.standaloneSetup(new ParentComplaintController(
                 queryService,
                 complaintService,
                 messageService,

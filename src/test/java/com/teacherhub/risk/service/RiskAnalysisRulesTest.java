@@ -48,7 +48,9 @@ class RiskAnalysisRulesTest {
     void setUp() {
         User user = mock(User.class);
         when(user.getId()).thenReturn(1L);
-        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(new Complaint(new Parent(user), null, "민원 내용")));
+        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(new Complaint(
+                new Parent(user), null, mock(com.teacherhub.user.entity.Teacher.class), "민원 제목", "민원 내용"
+        )));
         when(analyses.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(revisions.generate(anyString(), any())).thenReturn(new RevisionResult(new FinalRevision("reason", "revision"), List.of()));
         weights(3);

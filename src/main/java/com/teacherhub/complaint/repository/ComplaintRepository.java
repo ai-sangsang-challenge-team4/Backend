@@ -13,14 +13,6 @@ import java.util.Optional;
 public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
 
     @EntityGraph(attributePaths = {"parent.user", "student", "teacher.user"})
-    @Query("select c from Complaint c where c.parent.user.id = :userId order by c.createdAt desc")
-    List<Complaint> findByParentUserIdOrderByCreatedAtDesc(@Param("userId") Long userId);
-
-    @EntityGraph(attributePaths = {"parent.user", "student", "teacher.user"})
-    @Query("select c from Complaint c where c.teacher.user.id = :userId order by c.createdAt desc")
-    List<Complaint> findByTeacherUserIdOrderByCreatedAtDesc(@Param("userId") Long userId);
-
-    @EntityGraph(attributePaths = {"parent.user", "student", "teacher.user"})
     @Query("select c from Complaint c where c.id = :id")
     Optional<Complaint> findDetailById(@Param("id") Long id);
 

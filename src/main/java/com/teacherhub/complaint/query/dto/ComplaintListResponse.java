@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 
 public record ComplaintListResponse(
         Long complaintId,
+        String title,
         Long studentId,
         String studentName,
         String counterpartName,
@@ -43,6 +44,7 @@ public record ComplaintListResponse(
 
         return new ComplaintListResponse(
                 complaint.getId(),
+                complaint.getTitle(),
                 complaint.getStudent().getId(),
                 complaint.getStudent().getName(),
                 counterpartName,

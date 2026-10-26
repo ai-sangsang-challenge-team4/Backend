@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 // 교사 화면 상단에서 모든 탭이 공유하는 민원 상세 정보
 public record TeacherComplaintDetailResponse(
         Long complaintId,
+        String title,
         String studentName,
         String parentName,
         Integer academicYear,
@@ -32,6 +33,7 @@ public record TeacherComplaintDetailResponse(
     ) {
         return new TeacherComplaintDetailResponse(
                 complaint.getId(),
+                complaint.getTitle(),
                 complaint.getStudent().getName(),
                 complaint.getParent().getUser().getName(),
                 schoolClass.getAcademicYear(),

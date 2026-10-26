@@ -3,6 +3,7 @@
 ```mermaid
 erDiagram
     complaints ||--|{ complaint_messages : contains
+    school_classes }o--o{ teachers : assigned
     complaint_messages ||--o{ risk_analyses : analyzed
     complaints ||--o{ risk_analyses : groups
     risk_analyses ||--o{ risk_reviews : teacher_reviews
@@ -11,9 +12,10 @@ erDiagram
     complaints ||--o{ complaint_events : history
 ```
 
-- `complaints`: parent_id, student_id, teacher_id, status, waiting_for, closed_at,
-  created_at, updated_at. 하나의 민원 대화방을 나타낸다. 상태는 DRAFT, OPEN, CLOSED이고
+- `complaints`: parent_id, student_id, teacher_id, title, status, waiting_for, closed_at,
+  created_at, updated_at. 하나의 민원 대화방을 나타낸다. 최초 생성 시 학생의 담당 교사 중 한 명을 문의 대상으로 선택하고 제목을 저장한다. 상태는 DRAFT, OPEN, CLOSED이고
   `waiting_for`는 다음 작성 차례(PARENT, TEACHER, NONE)를 나타낸다.
+- `school_class_teachers`: school_class_id, teacher_id. 학급별 복수 담당 교사를 관리한다. 기존 담임교사는 선택 가능 교사에 기본 포함한다.
 - `complaint_messages`: complaint_id, sender_id, type, status,
   content, masked_content, content_version, sent_at, read_at, created_at, updated_at.
   학부모 문의와 교사 답변을 같은 메시지 모델에 저장한다. 임시저장은 DRAFT, 전송은 SENT,

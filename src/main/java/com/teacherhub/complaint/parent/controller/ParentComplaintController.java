@@ -1,15 +1,18 @@
 package com.teacherhub.complaint.parent.controller;
 
-import com.teacherhub.complaint.parent.dto.ComplaintRequest;
-import com.teacherhub.complaint.parent.dto.ComplaintResponse;
-import com.teacherhub.complaint.parent.service.ComplaintService;
+import com.teacherhub.complaint.parent.dto.complaint.ComplaintCreateRequest;
+import com.teacherhub.complaint.parent.dto.complaint.ComplaintDraftUpdateRequest;
+import com.teacherhub.complaint.parent.dto.complaint.ComplaintRecipientResponse;
+import com.teacherhub.complaint.parent.dto.complaint.ComplaintResponse;
+import com.teacherhub.complaint.parent.service.ParentComplaintService;
 import com.teacherhub.complaint.parent.dto.message.ComplaintConversationResponse;
 import com.teacherhub.complaint.parent.dto.message.ParentMessageRequest;
 import com.teacherhub.complaint.parent.dto.message.ParentMessageResponse;
 import com.teacherhub.complaint.parent.service.ParentMessageService;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.query.dto.ComplaintDetailResponse;
-import com.teacherhub.complaint.query.dto.ComplaintListResponse;
+import com.teacherhub.complaint.query.dto.ComplaintListQuery;
+import com.teacherhub.complaint.query.dto.ComplaintPageResponse;
 import com.teacherhub.complaint.query.service.ComplaintQueryService;
 import com.teacherhub.user.repository.UserRepository;
 import jakarta.validation.Valid;
@@ -25,35 +28,44 @@ import java.util.Map;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/complaints")
-public class ComplaintController {
+public class ParentComplaintController {
 
     private final ComplaintQueryService complaintQueryService;
-    private final ComplaintService complaintService;
+    private final ParentComplaintService parentComplaintService;
     private final ParentMessageService parentMessageService;
     private final UserRepository userRepository;
 
     // 민원 작성
     @PostMapping
     public ResponseEntity<ComplaintResponse> createComplaint(
-            Authentication authentication, @Valid @RequestBody ComplaintRequest request) {
+            Authentication authentication, @Valid @RequestBody ComplaintCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(complaintService.createDraft(userId(authentication), request));
+                .body(parentComplaintService.createDraft(userId(authentication), request));
     }
 
     // 민원 내용 수정
     @PatchMapping("/{complaintId}")
     public ResponseEntity<Map<String, String>> updateComplaint(
             Authentication authentication, @PathVariable Long complaintId,
-            @Valid @RequestBody ComplaintRequest request) {
-        complaintService.updateDraft(userId(authentication), complaintId, request);
+            @Valid @RequestBody ComplaintDraftUpdateRequest request) {
+        parentComplaintService.updateDraft(userId(authentication), complaintId, request);
         return ResponseEntity.ok(Map.of("message", "민원 내용이 수정되었습니다."));
+    }
+
+    // 문의 대상 교사 조회
+    @GetMapping("/recipients")
+    public ResponseEntity<List<ComplaintRecipientResponse>> findRecipients(
+            Authentication authentication,
+            @RequestParam Long studentId
+    ) {
+        return ResponseEntity.ok(parentComplaintService.findRecipients(userId(authentication), studentId));
     }
 
     // 민원 제출
     @PostMapping("/{complaintId}/send")
     public ResponseEntity<Map<String, String>> submitComplaint(
             Authentication authentication, @PathVariable Long complaintId) {
-        complaintService.submitComplaint(userId(authentication), complaintId);
+        parentComplaintService.submitComplaint(userId(authentication), complaintId);
         return ResponseEntity.ok(Map.of("message", "민원이 제출되었습니다."));
     }
 
@@ -61,16 +73,17 @@ public class ComplaintController {
     @GetMapping("/{complaintId}/status")
     public ResponseEntity<ComplaintResponse> findStatus(
             Authentication authentication, @PathVariable Long complaintId) {
-        return ResponseEntity.ok(complaintService.findStatus(userId(authentication), complaintId));
+        return ResponseEntity.ok(parentComplaintService.findStatus(userId(authentication), complaintId));
     }
 
     // 학부모가 작성한 민원 목록 조회
     @GetMapping
-    public ResponseEntity<List<ComplaintListResponse>> findComplaints(
-            Authentication authentication
+    public ResponseEntity<ComplaintPageResponse> findComplaints(
+            Authentication authentication,
+            @Valid @ModelAttribute ComplaintListQuery query
     ) {
         return ResponseEntity.ok(
-                complaintQueryService.findComplaints(userId(authentication))
+                complaintQueryService.findComplaints(userId(authentication), query)
         );
     }
 

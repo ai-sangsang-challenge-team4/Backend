@@ -1,6 +1,6 @@
 package com.teacherhub.complaint.parent.controller;
 
-import com.teacherhub.complaint.parent.service.ComplaintService;
+import com.teacherhub.complaint.parent.service.ParentComplaintService;
 import com.teacherhub.complaint.parent.service.ParentMessageService;
 import com.teacherhub.complaint.query.service.ComplaintQueryService;
 import com.teacherhub.complaint.exception.ComplaintNotDraftException;
@@ -19,14 +19,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ComplaintSubmissionControllerTest {
     @Test
     void submitsWithoutExtraHeaderAndReturnsConflictForSubmittedComplaint() throws Exception {
-        var service = mock(ComplaintService.class);
+        var service = mock(ParentComplaintService.class);
         var queryService = mock(ComplaintQueryService.class);
         var users = mock(UserRepository.class);
         var user = mock(User.class);
         when(user.getId()).thenReturn(7L);
         when(users.findByEmail("parent@test.com")).thenReturn(Optional.of(user));
         var messageService = mock(ParentMessageService.class);
-        var mvc = MockMvcBuilders.standaloneSetup(new ComplaintController(queryService, service, messageService, users))
+        var mvc = MockMvcBuilders.standaloneSetup(new ParentComplaintController(queryService, service, messageService, users))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         var auth = new UsernamePasswordAuthenticationToken("parent@test.com", null, List.of());
 

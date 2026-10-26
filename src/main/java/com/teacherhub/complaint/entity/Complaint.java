@@ -38,10 +38,13 @@ public class Complaint {
     private Student student;
 
 
-    // 초안일 때는 아직 담임교사를 지정하지 않으므로 nullable
+    // 최초 민원 작성 시 학생의 담당 교사 중 한 명을 문의 대상으로 선택
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "teacher_id")
+    @JoinColumn(name = "teacher_id", nullable = false)
     private Teacher teacher;
+
+    @Column(nullable = false, length = 100)
+    private String title;
 
 
     @CreationTimestamp
@@ -71,11 +74,15 @@ public class Complaint {
     public Complaint(
             Parent parent,
             Student student,
+            Teacher teacher,
+            String title,
             String content
     ) {
 
         this.parent = parent;
         this.student = student;
+        this.teacher = teacher;
+        this.title = title;
         this.status = ComplaintStatus.DRAFT;
         this.waitingFor = WaitingFor.NONE;
         this.messages.add(new ComplaintMessage(
@@ -87,7 +94,7 @@ public class Complaint {
     }
 
     // 민원 내용 수정
-    public void updateContent(String content) {
+    public void updateDraft(String content) {
 
         if (this.status != ComplaintStatus.DRAFT) {
             throw new IllegalStateException(
@@ -104,9 +111,7 @@ public class Complaint {
 
 
     // 최종 민원 제출
-    public void submit(
-            Teacher teacher
-    ) {
+    public void submit() {
 
         if (this.status != ComplaintStatus.DRAFT) {
             throw new IllegalStateException(
@@ -114,7 +119,6 @@ public class Complaint {
             );
         }
 
-        this.teacher = teacher;
         initialMessage().send();
         this.status = ComplaintStatus.OPEN;
         this.waitingFor = WaitingFor.TEACHER;
