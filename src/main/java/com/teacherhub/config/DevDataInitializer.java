@@ -45,12 +45,15 @@ public class DevDataInitializer implements ApplicationRunner {
                 "teacher@test.com", encodedPassword, "Demo Teacher", UserRole.TEACHER));
         Teacher teacher = teacherRepository.save(new Teacher(teacherUser, "DEV-2026-001"));
 
+        userRepository.save(new User(
+                "admin@test.com", encodedPassword, "Demo Admin", UserRole.ADMIN));
+
         Student student = studentRepository.save(new Student("Demo Student", "DEV-20260001"));
         parentStudentRepository.save(new ParentStudent(parent, student, Relationship.GUARDIAN));
         SchoolClass schoolClass = schoolClassRepository.save(new SchoolClass(2026, 3, 2, teacher));
         studentClassRepository.save(new StudentClass(student, schoolClass));
 
-        log.info("Dev data ready: parentEmail=parent@test.com, studentId={}, classId={}",
+        log.info("Dev data ready: parentEmail=parent@test.com, adminEmail=admin@test.com, studentId={}, classId={}",
                 student.getId(), schoolClass.getId());
     }
 }

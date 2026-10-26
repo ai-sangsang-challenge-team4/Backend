@@ -168,4 +168,27 @@ public class ComplaintEvent {
                 message.getId()
         );
     }
+
+    public static ComplaintEvent escalationChanged(
+            Complaint complaint,
+            User actor,
+            Long escalationId,
+            MessageEventType eventType,
+            String reason
+    ) {
+        if (eventType != MessageEventType.ESCALATION_SHARED
+                && eventType != MessageEventType.ESCALATION_REVIEW_STARTED
+                && eventType != MessageEventType.ESCALATION_COMPLETED) {
+            throw new IllegalArgumentException("관리자 공유 이벤트 타입이 아닙니다.");
+        }
+        ComplaintEvent event = new ComplaintEvent(
+                complaint,
+                actor,
+                eventType,
+                "COMPLAINT_ESCALATION",
+                escalationId
+        );
+        event.reason = reason;
+        return event;
+    }
 }

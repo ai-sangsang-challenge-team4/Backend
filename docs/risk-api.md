@@ -16,6 +16,8 @@
 | GET | `/risk-analyses/{analysisId}/detector-results` | 전체 태그의 Rule·LLM 감지 여부·출처별 근거·LLM 신뢰도 조회 | 200 |
 | GET | `/risk-tags` | 위험 태그 기준 목록 조회, 민원 분석과 별개 | 200 |
 | POST | `/teacher/complaints/{complaintId}/risk-reviews` | 교사가 1~7점 위험도를 검토·조정하고 이력을 저장 | 201 |
+| POST | `/teacher/complaints/{complaintId}/escalation` | EMERGENCY 민원을 관리자에게 공유 | 201 |
+| GET | `/admin/escalations` | 배정된 관리자 공유 건 조회 | 200 |
 
 ## 마스킹 응답 예시
 
@@ -79,6 +81,8 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 - 최초 검토값은 시스템 등급을 LOW 2점, MEDIUM 4점, HIGH 6점, EMERGENCY 7점으로 변환한다.
 - 현재 점수보다 낮추면 reason이 필수다.
 - 현재 점수보다 높이거나 동일하게 확인하면 reason은 선택 사항이다.
+- 현재 등급이 EMERGENCY인 상태에서 점수를 변경하려면 같은 분석에 대한 관리자 공유 건이
+  COMPLETED여야 한다. 승인 전에는 409 ADMIN_APPROVAL_REQUIRED를 반환한다.
 - 시스템 분석 결과는 덮어쓰지 않고 `risk_reviews`에 변경 전후 점수·등급과 교사,
   사유, 검토 시각을 누적한다.
 - `GET /teacher/complaints/{complaintId}/risk`는 시스템 점수와 최신 검토가 반영된

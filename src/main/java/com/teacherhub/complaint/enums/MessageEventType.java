@@ -12,5 +12,11 @@ public enum MessageEventType {
     // AI 초안 생성
     AI_DRAFT_GENERATED,
     // 메세지 전송
-    MESSAGE_SENT
+    MESSAGE_SENT,
+    // 관리자 공유
+    ESCALATION_SHARED,
+    // 관리자 검토 시작
+    ESCALATION_REVIEW_STARTED,
+    // 관리자 처리 완료
+    ESCALATION_COMPLETED
 }

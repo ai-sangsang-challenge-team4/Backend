@@ -7,6 +7,9 @@ import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
+import com.teacherhub.escalation.entity.ComplaintEscalation;
+import com.teacherhub.escalation.exception.AdminApprovalRequiredException;
+import com.teacherhub.escalation.repository.ComplaintEscalationRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest;
@@ -35,6 +38,7 @@ public class TeacherRiskReviewService {
     private final ComplaintRepository complaintRepository;
     private final RiskAnalysisRepository riskAnalysisRepository;
     private final RiskReviewRepository riskReviewRepository;
+    private final ComplaintEscalationRepository escalationRepository;
     private final ComplaintEventRepository eventRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
@@ -77,6 +81,19 @@ public class TeacherRiskReviewService {
         RiskLevel reviewedLevel = teacherRiskScale.levelFor(request.riskScore());
         RiskReviewDirection direction = direction(previousScore, request.riskScore());
         String reason = normalizeReason(request.reason());
+
+        if (previousLevel == RiskLevel.EMERGENCY && request.riskScore() != previousScore) {
+            ComplaintEscalation escalation = escalationRepository.findByComplaintId(complaintId)
+                    .orElseThrow(() -> new AdminApprovalRequiredException(
+                            "EMERGENCY 위험도를 수정하려면 관리자 승인이 필요합니다."
+                    ));
+            if (!escalation.getRiskAnalysis().getId().equals(analysis.getId())
+                    || !escalation.hasApprovedRiskChange()) {
+                throw new AdminApprovalRequiredException(
+                        "EMERGENCY 위험도를 수정하려면 완료된 관리자 승인이 필요합니다."
+                );
+            }
+        }
 
         // 하향 조정에 대한 검토 사유가 없는 경우
         if (direction == RiskReviewDirection.LOWERED && reason == null) {

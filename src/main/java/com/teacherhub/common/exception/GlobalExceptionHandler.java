@@ -1,5 +1,6 @@
 package com.teacherhub.common.exception;
 
+import com.teacherhub.escalation.exception.*;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,9 +12,61 @@ import com.teacherhub.complaint.exception.*;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
 import com.teacherhub.risk.exception.RiskReviewNotAllowedException;
 import com.teacherhub.risk.exception.RiskReviewReasonRequiredException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e, HttpServletRequest request) {
+        String message = e.getBindingResult().getFieldErrors().stream()
+                .findFirst()
+                .map(error -> error.getDefaultMessage())
+                .orElse("요청 값을 확인해주세요.");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(
+                "ERROR", "VALIDATION_FAILED", message, OffsetDateTime.now(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(AdminNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleAdminNotFound(AdminNotFoundException e, HttpServletRequest request) {
+        return error(HttpStatus.NOT_FOUND, "ADMIN_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(EscalationNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleEscalationNotFound(EscalationNotFoundException e, HttpServletRequest request) {
+        return error(HttpStatus.NOT_FOUND, "ESCALATION_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(EscalationAccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleEscalationAccessDenied(EscalationAccessDeniedException e, HttpServletRequest request) {
+        return error(HttpStatus.FORBIDDEN, "ESCALATION_ACCESS_DENIED", e, request);
+    }
+
+    @ExceptionHandler(EscalationReasonRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleEscalationReasonRequired(EscalationReasonRequiredException e, HttpServletRequest request) {
+        return error(HttpStatus.BAD_REQUEST, "ESCALATION_REASON_REQUIRED", e, request);
+    }
+
+    @ExceptionHandler(EscalationNotAllowedException.class)
+    public ResponseEntity<ErrorResponse> handleEscalationNotAllowed(EscalationNotAllowedException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, "ESCALATION_NOT_ALLOWED", e, request);
+    }
+
+    @ExceptionHandler(EscalationStateException.class)
+    public ResponseEntity<ErrorResponse> handleEscalationState(EscalationStateException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, "ESCALATION_STATE_INVALID", e, request);
+    }
+
+    @ExceptionHandler({EscalationVersionConflictException.class, OptimisticLockingFailureException.class})
+    public ResponseEntity<ErrorResponse> handleEscalationVersionConflict(RuntimeException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, "ESCALATION_VERSION_CONFLICT", e, request);
+    }
+
+    @ExceptionHandler(AdminApprovalRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleAdminApprovalRequired(AdminApprovalRequiredException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, "ADMIN_APPROVAL_REQUIRED", e, request);
+    }
+
     @ExceptionHandler(FinalAnalysisOnSubmitException.class)
     public ResponseEntity<ErrorResponse> handleFinalAnalysisOnSubmit(FinalAnalysisOnSubmitException e, HttpServletRequest request) {
         return error(HttpStatus.CONFLICT, "FINAL_ANALYSIS_ON_SUBMIT", e, request);
