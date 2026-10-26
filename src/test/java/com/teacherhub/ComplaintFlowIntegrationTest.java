@@ -225,6 +225,61 @@ public class ComplaintFlowIntegrationTest {
     }
 
     @Test
+    void excludesUnsentParentDraftAnalysisFromEveryTeacherFacingQuery() {
+        String submittedContent = "제출된 최초 민원입니다.";
+        Long complaintId = complaintService.createDraft(
+                parentUser.getId(),
+                new ComplaintRequest(student.getId(), submittedContent)
+        ).getComplaintId();
+        var submittedSummary = riskAnalysisService.analyze(parentUser.getId(), complaintId);
+        var submittedAnalysis = riskAnalysisRepository.findById(submittedSummary.analysisId()).orElseThrow();
+        org.springframework.test.util.ReflectionTestUtils.setField(submittedAnalysis, "riskScore", 0);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                submittedAnalysis,
+                "riskLevel",
+                com.teacherhub.risk.enums.RiskLevel.LOW
+        );
+        entityManager.flush();
+
+        complaintService.submitComplaint(parentUser.getId(), complaintId);
+        teacherResponseService.submit(
+                teacherUser.getId(),
+                complaintId,
+                new TeacherResponseRequest("학부모님의 민원을 확인했습니다.")
+        );
+
+        var draft = parentMessageService.saveDraft(
+                parentUser.getId(),
+                complaintId,
+                new com.teacherhub.complaint.parent.dto.message.ParentMessageRequest(
+                        "교사에게 아직 전송하지 않은 추가 문의입니다."
+                )
+        );
+        riskAnalysisService.analyzeMessage(
+                parentUser.getId(),
+                complaintId,
+                draft.messageId()
+        );
+
+        var detail = teacherComplaintQueryService.findDetail(teacherUser.getId(), complaintId);
+        var risk = teacherComplaintQueryService.findRisk(teacherUser.getId(), complaintId);
+        var original = teacherComplaintQueryService.viewOriginal(teacherUser.getId(), complaintId);
+        var conversation = teacherComplaintQueryService.findConversation(teacherUser.getId(), complaintId);
+        var listItem = complaintQueryService.findComplaints(teacherUser.getId()).stream()
+                .filter(item -> item.complaintId().equals(complaintId))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(detail.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
+        assertThat(risk.riskAnalysisId()).isEqualTo(submittedSummary.analysisId());
+        assertThat(original.content()).isEqualTo(submittedContent);
+        assertThat(conversation.allowedActions())
+                .containsExactly(com.teacherhub.complaint.teacher.dto.AllowedAction.USE_RESPONSE_TEMPLATE);
+        assertThat(listItem.riskAnalysisId()).isEqualTo(submittedSummary.analysisId());
+        assertThat(listItem.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
+    }
+
+    @Test
     void teacherReviewsSevenPointRiskAndHistoryKeepsEveryAdjustment() {
         Long complaintId = complaintService.createDraft(
                 parentUser.getId(),

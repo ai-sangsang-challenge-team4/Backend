@@ -170,7 +170,10 @@ public class TeacherComplaintQueryService {
 
     private RiskAnalysis requiredAnalysis(Complaint complaint) {
         return riskAnalysisRepository
-                .findFirstByComplaintIdAndCompletedTrueOrderByIdDesc(complaint.getId())
+                .findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                        complaint.getId(),
+                        MessageStatus.DRAFT
+                )
                 .orElseThrow(() -> new RiskAnalysisNotFoundException(
                         "완료된 위험 분석 결과를 찾을 수 없습니다."
                 ));
@@ -184,8 +187,11 @@ public class TeacherComplaintQueryService {
 
     private Map<Long, RiskLevel> latestRiskByMessage(Long complaintId) {
         Map<Long, RiskLevel> result = new HashMap<>();
-        riskAnalysisRepository.findByComplaintIdOrderByIdAsc(complaintId).stream()
-                .filter(RiskAnalysis::isCompleted)
+        riskAnalysisRepository
+                .findByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdAsc(
+                        complaintId,
+                        MessageStatus.DRAFT
+                ).stream()
                 .forEach(analysis -> result.put(
                         analysis.getMessage().getId(),
                         analysis.getRiskLevel()

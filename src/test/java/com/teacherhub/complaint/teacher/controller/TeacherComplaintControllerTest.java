@@ -191,7 +191,7 @@ class TeacherComplaintControllerTest {
                 .andExpect(jsonPath("$.submittedAt").value("2026-10-24T10:30:00"))
                 .andExpect(jsonPath("$.riskLevel").value("HIGH"));
 
-        mvc.perform(get("/teacher/complaints/42/conversation").principal(auth))
+        mvc.perform(get("/teacher/complaints/42/messages").principal(auth))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.messages[0].senderRole").value("PARENT"))
                 .andExpect(jsonPath("$.messages[0].summarized").value(true));

@@ -107,7 +107,7 @@ public class ComplaintQueryService {
         var latestReceivedAt = latestParentMessage
                 .map(message -> message.getSentAt())
                 .orElse(null);
-        RiskAnalysis analysis = latestAnalysis(complaint);
+        RiskAnalysis analysis = latestAnalysisForList(complaint, viewerRole);
 
         return ComplaintListResponse.from(
                 complaint,
@@ -133,6 +133,18 @@ public class ComplaintQueryService {
         return riskReviewRepository
                 .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(analysis.getId())
                 .orElse(null);
+    }
+
+    private RiskAnalysis latestAnalysisForList(Complaint complaint, UserRole viewerRole) {
+        if (viewerRole == UserRole.TEACHER) {
+            return riskAnalysisRepository
+                    .findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                            complaint.getId(),
+                            MessageStatus.DRAFT
+                    )
+                    .orElse(null);
+        }
+        return latestAnalysis(complaint);
     }
 
 }

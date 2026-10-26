@@ -237,7 +237,7 @@ AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/
 요청은 `{"content":"수정한 최종 답변"}`만 전달하며 `aiDraftId`는 사용하지 않는다.
 히스토리에는 초안 내용 대신 `AI_DRAFT_GENERATED` 이벤트만 저장한다.
 
-`GET /teacher/complaints/{complaintId}/conversation`은 전송된 모든 메시지를 반환한다.
+`GET /teacher/complaints/{complaintId}/messages`은 전송된 모든 메시지를 반환한다.
 학부모 메시지는 메시지별 최신 자동 위험 분석이 LOW일 때 원문을, LOW보다 높을 때 완충
 요약을 반환한다. 최초 민원과 후속 문의에 동일한 규칙을 적용한다. 교사 메시지는 원문을
 반환하고 임시저장 DRAFT는 대화 내역에서 제외한다.

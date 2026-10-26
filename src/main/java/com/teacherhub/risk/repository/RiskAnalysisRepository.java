@@ -1,5 +1,6 @@
 package com.teacherhub.risk.repository;
 
+import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -36,4 +37,15 @@ public interface RiskAnalysisRepository extends JpaRepository<RiskAnalysis, Long
     long countByMessageIdAndCompletedTrue(Long messageId);
 
     Optional<RiskAnalysis> findFirstByComplaintIdAndCompletedTrueOrderByIdDesc(Long complaintId);
+
+    Optional<RiskAnalysis> findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+            Long complaintId,
+            MessageStatus excludedStatus
+    );
+
+    @EntityGraph(attributePaths = "message")
+    List<RiskAnalysis> findByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdAsc(
+            Long complaintId,
+            MessageStatus excludedStatus
+    );
 }
