@@ -1,9 +1,11 @@
 package com.teacherhub.escalation.controller;
 
 import com.teacherhub.common.exception.UnauthorizedException;
+import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
 import com.teacherhub.escalation.dto.CompleteEscalationRequest;
-import com.teacherhub.escalation.dto.AdminEscalationDetailResponse;
 import com.teacherhub.escalation.dto.EscalationResponse;
+import com.teacherhub.escalation.dto.EscalationShareContentResponse;
 import com.teacherhub.escalation.dto.StartEscalationReviewRequest;
 import com.teacherhub.escalation.service.AdminEscalationService;
 import com.teacherhub.escalation.enums.EscalationStatus;
@@ -41,11 +43,44 @@ public class AdminEscalationController {
 
     // 공유 메세지 상세 조회 (상단 정보, 처리 상태)
     @GetMapping("/{escalationId}")
-    public ResponseEntity<AdminEscalationDetailResponse> findOne(
+    public ResponseEntity<EscalationResponse> findOne(
             Authentication authentication,
             @PathVariable Long escalationId
     ) {
         return ResponseEntity.ok(escalationService.findOne(userId(authentication), escalationId));
+    }
+
+    // 공유 내용 탭 조회
+    @GetMapping("/{escalationId}/messages")
+    public ResponseEntity<EscalationShareContentResponse> findMessages(
+            Authentication authentication,
+            @PathVariable Long escalationId
+    ) {
+        return ResponseEntity.ok(
+                escalationService.findMessages(userId(authentication), escalationId)
+        );
+    }
+
+    // 위험 분석 탭 조회
+    @GetMapping("/{escalationId}/risk")
+    public ResponseEntity<TeacherRiskResponse> findRisk(
+            Authentication authentication,
+            @PathVariable Long escalationId
+    ) {
+        return ResponseEntity.ok(
+                escalationService.findRisk(userId(authentication), escalationId)
+        );
+    }
+
+    // 처리 기록 탭 조회
+    @GetMapping("/{escalationId}/history")
+    public ResponseEntity<TeacherHistoryResponse> findHistory(
+            Authentication authentication,
+            @PathVariable Long escalationId
+    ) {
+        return ResponseEntity.ok(
+                escalationService.findHistory(userId(authentication), escalationId)
+        );
     }
 
     // 처리 메모 작성

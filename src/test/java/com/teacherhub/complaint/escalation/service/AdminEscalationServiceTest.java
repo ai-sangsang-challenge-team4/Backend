@@ -133,16 +133,18 @@ class AdminEscalationServiceTest {
         when(eventRepository.findByComplaintIdOrderByOccurredAtDescIdDesc(42L))
                 .thenReturn(List.of());
 
-        var response = service.findOne(20L, 1L);
+        var messages = service.findMessages(20L, 1L);
+        var risk = service.findRisk(20L, 1L);
+        var history = service.findHistory(20L, 1L);
 
-        assertThat(response.shareContent().reason()).isEqualTo("긴급 대응 지원이 필요합니다.");
-        assertThat(response.shareContent().maskedMessages()).hasSize(1);
-        assertThat(response.shareContent().maskedMessages().get(0).content())
+        assertThat(messages.reason()).isEqualTo("긴급 대응 지원이 필요합니다.");
+        assertThat(messages.maskedMessages()).hasSize(1);
+        assertThat(messages.maskedMessages().get(0).content())
                 .isEqualTo("[전화번호]로 연락해 주세요.");
-        assertThat(response.shareContent().originalMessages()).isEmpty();
-        assertThat(response.riskAnalysis().riskLevel())
+        assertThat(messages.originalMessages()).isEmpty();
+        assertThat(risk.riskLevel())
                 .isEqualTo(com.teacherhub.risk.enums.RiskLevel.EMERGENCY);
-        assertThat(response.history().complaintId()).isEqualTo(42L);
+        assertThat(history.complaintId()).isEqualTo(42L);
     }
 
     @Test

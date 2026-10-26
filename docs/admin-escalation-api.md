@@ -43,42 +43,38 @@ EMERGENCY 민원을 담당 교사가 관리자에게 공유하고, 지정된 관
 | 메서드 | 경로 | 동작 |
 |---|---|---|
 | GET | `/admin/escalations` | 공유 목록 조회 |
-| GET | `/admin/escalations/{escalationId}` | 공유 상세 조회 |
+| GET | `/admin/escalations/{escalationId}` | 상단 정보·처리 상태 조회 |
+| GET | `/admin/escalations/{escalationId}/messages` | 공유 내용 탭 조회 |
+| GET | `/admin/escalations/{escalationId}/risk` | 위험 분석 탭 조회 |
+| GET | `/admin/escalations/{escalationId}/history` | 처리 기록 탭 조회 |
 | POST | `/admin/escalations/{escalationId}/review` | `SHARED → UNDER_REVIEW` |
 | POST | `/admin/escalations/{escalationId}/complete` | 결과 저장 후 `UNDER_REVIEW → COMPLETED` |
 
-상세 조회 응답은 화면의 세 탭과 같은 구조다.
+교사 화면과 마찬가지로 상단 정보와 세 탭을 별도 API로 조회한다. 아래는
+`GET /admin/escalations/{escalationId}/messages`의 공유 내용 응답 예시다.
 
 ```json
 {
-  "escalation": {
-    "escalationId": 1,
-    "complaintId": 42,
-    "escalationStatus": "SHARED",
-    "version": 0
-  },
-  "shareContent": {
-    "adminId": 3,
-    "scopes": ["MASKING_MESSAGES"],
-    "reason": "공동 검토 부탁드립니다.",
-    "maskedMessages": [{
-      "messageId": 11,
-      "senderRole": "PARENT",
-      "content": "[전화번호]로 연락해 주세요.",
-      "masked": true
-    }],
-    "originalMessages": [],
-    "mediationPackageIncluded": false
-  },
-  "riskAnalysis": {},
-  "history": {}
+  "escalationId": 1,
+  "complaintId": 42,
+  "adminId": 3,
+  "scopes": ["MASKING_MESSAGES"],
+  "reason": "공동 검토 부탁드립니다.",
+  "maskedMessages": [{
+    "messageId": 11,
+    "senderRole": "PARENT",
+    "content": "[전화번호]로 연락해 주세요.",
+    "masked": true
+  }],
+  "originalMessages": [],
+  "mediationPackageIncluded": false
 }
 ```
 
-- `shareContent`는 `ShareEscalationRequest`의 대상·범위·사유와 실제 공유 데이터를 반환한다.
+- `/messages`는 `ShareEscalationRequest`의 대상·범위·사유와 실제 공유 데이터를 반환한다.
 - `ORIGINAL_MESSAGES`가 선택되지 않았다면 원문은 응답에 포함하지 않는다.
-- `riskAnalysis`는 교사 위험 분석 탭과 같은 `TeacherRiskResponse` 구조다.
-- `history`는 교사 처리 기록 탭과 같은 `TeacherHistoryResponse` 구조다. 관리자 공유,
+- `/risk`는 교사 위험 분석 탭과 같은 `TeacherRiskResponse` 구조다.
+- `/history`는 교사 처리 기록 탭과 같은 `TeacherHistoryResponse` 구조다. 관리자 공유,
   검토 시작, 처리 완료도 각각 `ESCALATION_SHARED`, `ESCALATION_REVIEW_STARTED`,
   `ESCALATION_COMPLETED` 이벤트로 함께 기록된다.
 

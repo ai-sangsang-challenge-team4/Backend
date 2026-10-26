@@ -2,8 +2,6 @@ package com.teacherhub.escalation.dto;
 
 import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.complaint.enums.MessageType;
-import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
-import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
 import com.teacherhub.escalation.entity.ComplaintEscalation;
 import com.teacherhub.escalation.enums.EscalationScope;
 import com.teacherhub.user.enums.UserRole;
@@ -13,18 +11,20 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
 
-public record AdminEscalationDetailResponse(
-        EscalationResponse escalation,
-        ShareContent shareContent,
-        TeacherRiskResponse riskAnalysis,
-        TeacherHistoryResponse history
+public record EscalationShareContentResponse(
+        Long escalationId,
+        Long complaintId,
+        Long adminId,
+        Set<EscalationScope> scopes,
+        String reason,
+        List<SharedMessage> maskedMessages,
+        List<SharedMessage> originalMessages,
+        boolean mediationPackageIncluded
 ) {
-    public static AdminEscalationDetailResponse from(
+    public static EscalationShareContentResponse from(
             ComplaintEscalation escalation,
             List<ComplaintMessage> messages,
-            Function<ComplaintMessage, String> maskingContent,
-            TeacherRiskResponse riskAnalysis,
-            TeacherHistoryResponse history
+            Function<ComplaintMessage, String> maskingContent
     ) {
         Set<EscalationScope> scopes = Set.copyOf(escalation.getScopes());
         List<SharedMessage> maskedMessages = scopes.contains(EscalationScope.MASKING_MESSAGES)
@@ -38,29 +38,16 @@ public record AdminEscalationDetailResponse(
                 .toList()
                 : List.of();
 
-        return new AdminEscalationDetailResponse(
-                EscalationResponse.from(escalation),
-                new ShareContent(
-                        escalation.getAssignedAdmin().getId(),
-                        scopes,
-                        escalation.getReason(),
-                        maskedMessages,
-                        originalMessages,
-                        scopes.contains(EscalationScope.MEDIATION_PACKAGE)
-                ),
-                riskAnalysis,
-                history
+        return new EscalationShareContentResponse(
+                escalation.getId(),
+                escalation.getComplaint().getId(),
+                escalation.getAssignedAdmin().getId(),
+                scopes,
+                escalation.getReason(),
+                maskedMessages,
+                originalMessages,
+                scopes.contains(EscalationScope.MEDIATION_PACKAGE)
         );
-    }
-
-    public record ShareContent(
-            Long adminId,
-            Set<EscalationScope> scopes,
-            String reason,
-            List<SharedMessage> maskedMessages,
-            List<SharedMessage> originalMessages,
-            boolean mediationPackageIncluded
-    ) {
     }
 
     public record SharedMessage(

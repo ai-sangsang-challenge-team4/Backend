@@ -10,9 +10,9 @@ import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
 import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
-import com.teacherhub.escalation.dto.AdminEscalationDetailResponse;
 import com.teacherhub.escalation.dto.CompleteEscalationRequest;
 import com.teacherhub.escalation.dto.EscalationResponse;
+import com.teacherhub.escalation.dto.EscalationShareContentResponse;
 import com.teacherhub.escalation.dto.StartEscalationReviewRequest;
 import com.teacherhub.escalation.entity.ComplaintEscalation;
 import com.teacherhub.escalation.exception.EscalationAccessDeniedException;
@@ -62,38 +62,57 @@ public class AdminEscalationService {
                 .toList();
     }
 
-    public AdminEscalationDetailResponse findOne(Long userId, Long escalationId) {
+    public EscalationResponse findOne(Long userId, Long escalationId) {
+        User admin = findAdmin(userId);
+        return EscalationResponse.from(findAssigned(escalationId, admin));
+    }
+
+    // 공유 내용 탭
+    public EscalationShareContentResponse findMessages(Long userId, Long escalationId) {
         User admin = findAdmin(userId);
         ComplaintEscalation escalation = findAssigned(escalationId, admin);
-        RiskReview latestReview = riskReviewRepository
-                .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(
-                        escalation.getRiskAnalysis().getId()
-                )
-                .orElse(null);
-        TeacherRiskResponse risk = TeacherRiskResponse.from(
-                escalation.getRiskAnalysis(),
-                riskTagRepository.findByRiskAnalysisId(escalation.getRiskAnalysis().getId()),
-                latestReview,
-                teacherRiskScale.initialScoreFor(escalation.getRiskAnalysis().getRiskLevel())
-        );
-        TeacherHistoryResponse history = TeacherHistoryResponse.from(
-                escalation.getComplaint().getId(),
-                eventRepository.findByComplaintIdOrderByOccurredAtDescIdDesc(
-                        escalation.getComplaint().getId()
-                )
-        );
         List<ComplaintMessage> messages = messageRepository
                 .findByComplaintIdAndStatusNotOrderByIdAsc(
                         escalation.getComplaint().getId(),
                         MessageStatus.DRAFT
                 );
 
-        return AdminEscalationDetailResponse.from(
+        return EscalationShareContentResponse.from(
                 escalation,
                 messages,
-                this::maskedContent,
-                risk,
-                history
+                this::maskedContent
+        );
+    }
+
+    // 위험 분석 탭
+    public TeacherRiskResponse findRisk(Long userId, Long escalationId) {
+        User admin = findAdmin(userId);
+        ComplaintEscalation escalation = findAssigned(escalationId, admin);
+
+        RiskReview latestReview = riskReviewRepository
+                .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(
+                        escalation.getRiskAnalysis().getId()
+                )
+                .orElse(null);
+
+        return TeacherRiskResponse.from(
+                escalation.getRiskAnalysis(),
+                riskTagRepository.findByRiskAnalysisId(escalation.getRiskAnalysis().getId()),
+                latestReview,
+                teacherRiskScale.initialScoreFor(escalation.getRiskAnalysis().getRiskLevel())
+        );
+    }
+
+    // 처리 기록 탭
+    public TeacherHistoryResponse findHistory(Long userId, Long escalationId) {
+        User admin = findAdmin(userId);
+        ComplaintEscalation escalation = findAssigned(escalationId, admin);
+
+        return TeacherHistoryResponse.from(
+                escalation.getComplaint().getId(),
+                eventRepository.findByComplaintIdOrderByOccurredAtDescIdDesc(
+                        escalation.getComplaint().getId()
+                )
         );
     }
 
