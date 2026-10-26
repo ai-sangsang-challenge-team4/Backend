@@ -16,6 +16,7 @@ import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewResponse;
 import com.teacherhub.complaint.teacher.service.TeacherComplaintQueryService;
 import com.teacherhub.complaint.teacher.service.TeacherResponseService;
 import com.teacherhub.complaint.teacher.service.TeacherRiskReviewService;
+import com.teacherhub.common.exception.GlobalExceptionHandler;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskReviewDirection;
 import com.teacherhub.user.entity.User;
@@ -68,7 +69,7 @@ class TeacherParentComplaintControllerTest {
                 riskReviewService,
                 complaintQueryService,
                 users
-        )).build();
+        )).setControllerAdvice(new GlobalExceptionHandler()).build();
         var auth = new UsernamePasswordAuthenticationToken("teacher@test.com", null, List.of());
 
         mvc.perform(get("/teacher/complaints")
@@ -82,6 +83,13 @@ class TeacherParentComplaintControllerTest {
                 .andExpect(jsonPath("$.page").value(1))
                 .andExpect(jsonPath("$.size").value(10))
                 .andExpect(jsonPath("$.totalElements").value(12));
+
+        mvc.perform(get("/teacher/complaints")
+                        .principal(auth)
+                        .param("page", "214748365"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("페이지 번호가 허용 범위를 초과했습니다."));
     }
 
     @Test

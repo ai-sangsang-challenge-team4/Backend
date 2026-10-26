@@ -9,6 +9,7 @@ import com.teacherhub.complaint.parent.service.ParentMessageService;
 import com.teacherhub.complaint.query.service.ComplaintQueryService;
 import com.teacherhub.common.exception.GlobalExceptionHandler;
 import com.teacherhub.user.entity.User;
+import com.teacherhub.user.exception.StudentNotFoundException;
 import com.teacherhub.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -21,6 +22,29 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class ComplaintStatusControllerTest {
+    @Test
+    void returnsNotFoundWhenRecipientStudentDoesNotExist() throws Exception {
+        var service = mock(ParentComplaintService.class);
+        var queryService = mock(ComplaintQueryService.class);
+        var users = mock(UserRepository.class);
+        var user = mock(User.class);
+        when(user.getId()).thenReturn(7L);
+        when(users.findByEmail("parent@test.com")).thenReturn(Optional.of(user));
+        when(service.findRecipients(7L, 999L))
+                .thenThrow(new StudentNotFoundException("학생 정보를 찾을 수 없습니다."));
+        var messageService = mock(ParentMessageService.class);
+        var mvc = MockMvcBuilders.standaloneSetup(new ParentComplaintController(queryService, service, messageService, users))
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
+        var auth = new UsernamePasswordAuthenticationToken("parent@test.com", null, List.of());
+
+        mvc.perform(get("/complaints/recipients")
+                        .principal(auth)
+                        .param("studentId", "999"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("STUDENT_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("학생 정보를 찾을 수 없습니다."));
+    }
+
     @Test
     void returnsBadRequestWithValidationMessageWhenRequiredFieldIsMissing() throws Exception {
         var service = mock(ParentComplaintService.class);

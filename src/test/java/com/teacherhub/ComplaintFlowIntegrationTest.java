@@ -630,6 +630,37 @@ public class ComplaintFlowIntegrationTest {
     }
 
     @Test
+    void returnsNoRecipientsWhenLinkedStudentHasNoClassAndRejectsUnknownStudent() {
+        Student unassignedStudent = studentRepository.save(new Student("학급 미배정 학생", "20269999"));
+        parentStudentRepository.save(new ParentStudent(
+                parent,
+                unassignedStudent,
+                Relationship.values()[0]
+        ));
+
+        assertThat(parentComplaintService.findRecipients(parentUser.getId(), unassignedStudent.getId()))
+                .isEmpty();
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> parentComplaintService.createDraft(
+                                parentUser.getId(),
+                                new ComplaintCreateRequest(
+                                        unassignedStudent.getId(),
+                                        teacher.getId(),
+                                        "학급 미배정 문의",
+                                        "문의 내용"
+                                )
+                        )
+                )
+                .isInstanceOf(com.teacherhub.complaint.exception.InvalidComplaintRecipientException.class)
+                .hasMessage("학생의 학급 정보를 찾을 수 없습니다.");
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> parentComplaintService.findRecipients(parentUser.getId(), Long.MAX_VALUE)
+                )
+                .isInstanceOf(com.teacherhub.user.exception.StudentNotFoundException.class)
+                .hasMessage("학생 정보를 찾을 수 없습니다.");
+    }
+
+    @Test
     void searchesFiltersSortsAndPaginatesComplaintListsByTen() {
         java.util.List<Long> complaintIds = new java.util.ArrayList<>();
         for (int index = 0; index < 12; index++) {

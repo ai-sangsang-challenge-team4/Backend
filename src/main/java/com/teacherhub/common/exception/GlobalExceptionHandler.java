@@ -13,6 +13,7 @@ import com.teacherhub.complaint.exception.*;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
 import com.teacherhub.risk.exception.RiskReviewNotAllowedException;
 import com.teacherhub.risk.exception.RiskReviewReasonRequiredException;
+import com.teacherhub.user.exception.StudentNotFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -54,6 +55,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ComplaintNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleComplaintNotFound(ComplaintNotFoundException e, HttpServletRequest request) {
         return error(HttpStatus.NOT_FOUND, "COMPLAINT_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(StudentNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleStudentNotFound(StudentNotFoundException e, HttpServletRequest request) {
+        return error(HttpStatus.NOT_FOUND, "STUDENT_NOT_FOUND", e, request);
     }
 
     @ExceptionHandler(InvalidComplaintRecipientException.class)

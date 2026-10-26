@@ -125,9 +125,14 @@ public class ComplaintSearchQueryRepository {
         Predicate visibleMessage = viewerRole == UserRole.TEACHER
                 ? builder.notEqual(message.get("status"), MessageStatus.DRAFT)
                 : builder.conjunction();
-        Predicate recipientName = viewerRole == UserRole.PARENT
-                ? builder.like(builder.lower(complaint.get("teacher").get("user").get("name")), pattern)
-                : builder.like(builder.lower(complaint.get("parent").get("user").get("name")), pattern);
+        Predicate recipientName;
+        if (viewerRole == UserRole.PARENT) {
+            Join<?, ?> teacher = complaint.join("teacher", JoinType.LEFT);
+            Join<?, ?> teacherUser = teacher.join("user", JoinType.LEFT);
+            recipientName = builder.like(builder.lower(teacherUser.get("name")), pattern);
+        } else {
+            recipientName = builder.like(builder.lower(complaint.get("parent").get("user").get("name")), pattern);
+        }
 
         return builder.or(
                 builder.like(builder.lower(complaint.get("title")), pattern),

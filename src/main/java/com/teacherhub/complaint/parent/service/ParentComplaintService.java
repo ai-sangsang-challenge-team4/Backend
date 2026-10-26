@@ -24,10 +24,15 @@ import com.teacherhub.user.entity.Teacher;
 import com.teacherhub.user.repository.StudentRepository;
 import com.teacherhub.user.repository.TeacherRepository;
 import com.teacherhub.user.repository.UserRepository;
+import com.teacherhub.user.exception.StudentNotFoundException;
 import lombok.RequiredArgsConstructor;
 import com.teacherhub.complaint.exception.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -65,11 +70,7 @@ public class ParentComplaintService {
 
         // 학생 조회
         Student student = studentRepository.findById(request.studentId())
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "학생 정보를 찾을 수 없습니다."
-                        )
-                );
+                .orElseThrow(() -> new StudentNotFoundException("학생 정보를 찾을 수 없습니다."));
 
 
         // 해당 학생이 로그인한 학부모의 자녀인지 확인
@@ -198,37 +199,39 @@ public class ParentComplaintService {
                 );
     }
 
-    public java.util.List<ComplaintRecipientResponse> findRecipients(Long userId, Long studentId) {
+    public List<ComplaintRecipientResponse> findRecipients(Long userId, Long studentId) {
         Parent parent = parentRepository.findByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("학부모 정보를 찾을 수 없습니다."));
         Student student = studentRepository.findById(studentId)
-                .orElseThrow(() -> new IllegalArgumentException("학생 정보를 찾을 수 없습니다."));
+                .orElseThrow(() -> new StudentNotFoundException("학생 정보를 찾을 수 없습니다."));
         if (!parentStudentRepository.existsByParentAndStudent(parent, student)) {
             throw new ComplaintAccessDeniedException("해당 학부모와 연결된 학생이 아닙니다.");
         }
 
-        SchoolClass schoolClass = latestSchoolClass(student);
-        return schoolClass.availableTeachers().stream()
-                .map(teacher -> ComplaintRecipientResponse.from(teacher, schoolClass.getHomeroomTeacher()))
-                .sorted(java.util.Comparator
-                        .comparing(ComplaintRecipientResponse::homeroomTeacher).reversed()
-                        .thenComparing(ComplaintRecipientResponse::teacherName))
-                .toList();
+        return latestSchoolClass(student)
+                .map(schoolClass -> schoolClass.availableTeachers().stream()
+                        .map(teacher -> ComplaintRecipientResponse.from(teacher, schoolClass.getHomeroomTeacher()))
+                        .sorted(Comparator
+                                .comparing(ComplaintRecipientResponse::homeroomTeacher).reversed()
+                                .thenComparing(ComplaintRecipientResponse::teacherName))
+                        .toList())
+                .orElseGet(List::of);
     }
 
     private Teacher findAvailableTeacher(Student student, Long teacherId) {
         Teacher teacher = teacherRepository.findById(teacherId)
                 .orElseThrow(() -> new InvalidComplaintRecipientException("문의 대상을 찾을 수 없습니다."));
-        if (!latestSchoolClass(student).hasAssignedTeacher(teacher)) {
+        SchoolClass schoolClass = latestSchoolClass(student)
+                .orElseThrow(() -> new InvalidComplaintRecipientException("학생의 학급 정보를 찾을 수 없습니다."));
+        if (!schoolClass.hasAssignedTeacher(teacher)) {
             throw new InvalidComplaintRecipientException("학생의 담당 교사에게만 문의를 보낼 수 있습니다.");
         }
         return teacher;
     }
 
-    private SchoolClass latestSchoolClass(Student student) {
+    private Optional<SchoolClass> latestSchoolClass(Student student) {
         return studentClassRepository.findTopByStudentOrderBySchoolClass_AcademicYearDesc(student)
-                .map(StudentClass::getSchoolClass)
-                .orElseThrow(() -> new IllegalArgumentException("학생의 학급 정보를 찾을 수 없습니다."));
+                .map(StudentClass::getSchoolClass);
     }
 
 
