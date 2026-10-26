@@ -1,4 +1,4 @@
-package com.teacherhub.complaint.parent.dto;
+package com.teacherhub.complaint.parent.dto.complaint;
 
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.WaitingFor;

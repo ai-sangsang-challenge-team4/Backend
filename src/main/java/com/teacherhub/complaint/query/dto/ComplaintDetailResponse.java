@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ComplaintDetailResponse(
         Long complaintId,
+        String title,
         Long studentId,
         String studentName,
         String parentName,
@@ -32,6 +33,7 @@ public record ComplaintDetailResponse(
     ) {
         return new ComplaintDetailResponse(
                 complaint.getId(),
+                complaint.getTitle(),
                 complaint.getStudent().getId(),
                 complaint.getStudent().getName(),
                 complaint.getParent().getUser().getName(),

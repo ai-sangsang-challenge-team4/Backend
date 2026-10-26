@@ -1,7 +1,8 @@
 package com.teacherhub.complaint.teacher.controller;
 
 import com.teacherhub.common.exception.UnauthorizedException;
-import com.teacherhub.complaint.query.dto.ComplaintListResponse;
+import com.teacherhub.complaint.query.dto.ComplaintListQuery;
+import com.teacherhub.complaint.query.dto.ComplaintPageResponse;
 import com.teacherhub.complaint.query.service.ComplaintQueryService;
 import com.teacherhub.complaint.teacher.dto.query.TeacherComplaintDetailResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
@@ -40,9 +41,12 @@ public class TeacherComplaintController {
 
     // 민원 전체 조회
     @GetMapping
-    public ResponseEntity<List<ComplaintListResponse>> findComplaints(Authentication authentication) {
+    public ResponseEntity<ComplaintPageResponse> findComplaints(
+            Authentication authentication,
+            @Valid @ModelAttribute ComplaintListQuery query
+    ) {
         return ResponseEntity.ok(
-                complaintQueryService.findComplaints(userId(authentication))
+                complaintQueryService.findComplaints(userId(authentication), query)
         );
     }
 

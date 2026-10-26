@@ -1,8 +1,12 @@
 package com.teacherhub;
 
 import com.teacherhub.complaint.enums.*;
-import com.teacherhub.complaint.parent.dto.ComplaintRequest;
-import com.teacherhub.complaint.parent.dto.ComplaintResponse;
+import com.teacherhub.complaint.parent.dto.complaint.ComplaintCreateRequest;
+import com.teacherhub.complaint.parent.dto.complaint.ComplaintDraftUpdateRequest;
+import com.teacherhub.complaint.parent.dto.complaint.ComplaintResponse;
+import com.teacherhub.complaint.parent.dto.complaint.ComplaintRecipientResponse;
+import com.teacherhub.complaint.query.dto.ComplaintListQuery;
+import com.teacherhub.complaint.query.dto.ComplaintListSort;
 import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseRequest;
@@ -14,7 +18,7 @@ import com.teacherhub.risk.dto.response.RiskDetectorResponse;
 import com.teacherhub.risk.masking.ComplaintMaskingService;
 import com.teacherhub.risk.service.RiskAnalysisService;
 import com.teacherhub.risk.service.RiskAnalysisQueryService;
-import com.teacherhub.complaint.parent.service.ComplaintService;
+import com.teacherhub.complaint.parent.service.ParentComplaintService;
 import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.school.entity.StudentClass;
 import com.teacherhub.school.repository.SchoolClassRepository;
@@ -49,12 +53,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class ComplaintFlowIntegrationTest {
     @Test
     void allowsUnlimitedDraftChangesAndPerformsFinalAnalysisOnlyOnSubmit() {
-        Long id = complaintService.createDraft(parentUser.getId(),
-                new ComplaintRequest(student.getId(), "최초 원문")).getComplaintId();
+        Long id = parentComplaintService.createDraft(parentUser.getId(),
+                createRequest("최초 원문")).getComplaintId();
         riskAnalysisService.analyze(parentUser.getId(), id);
-        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "첫 번째 수정"));
-        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "두 번째 수정"));
-        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "최종 제출 내용"));
+        parentComplaintService.updateDraft(parentUser.getId(), id, updateRequest("첫 번째 수정"));
+        parentComplaintService.updateDraft(parentUser.getId(), id, updateRequest("두 번째 수정"));
+        parentComplaintService.updateDraft(parentUser.getId(), id, updateRequest("최종 제출 내용"));
 
         Complaint complaint = complaintRepository.findById(id).orElseThrow();
         assertThat(complaint.getContent()).isEqualTo("최종 제출 내용");
@@ -63,7 +67,7 @@ public class ComplaintFlowIntegrationTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> riskAnalysisService.analyze(parentUser.getId(), id))
                 .isInstanceOf(com.teacherhub.complaint.exception.FinalAnalysisOnSubmitException.class);
 
-        complaintService.submitComplaint(parentUser.getId(), id);
+        parentComplaintService.submitComplaint(parentUser.getId(), id);
         assertThat(riskAnalysisRepository.countByComplaintIdAndCompletedTrue(id)).isEqualTo(2);
         var finalAnalysis = riskAnalysisRepository.findByComplaintIdOrderByIdAsc(id).get(1);
         assertThat(finalAnalysis.getContentVersion()).isEqualTo(4);
@@ -73,12 +77,12 @@ public class ComplaintFlowIntegrationTest {
     }
     @Test
     void reusesAnalysisWhenFinalContentMatchesReviewedContent() {
-        Long id = complaintService.createDraft(parentUser.getId(),
-                new ComplaintRequest(student.getId(), "상황을 확인해 주세요.")).getComplaintId();
-        assertThat(complaintService.findStatus(parentUser.getId(), id).getStatus()).isEqualTo(ComplaintStatus.DRAFT);
+        Long id = parentComplaintService.createDraft(parentUser.getId(),
+                createRequest("상황을 확인해 주세요.")).getComplaintId();
+        assertThat(parentComplaintService.findStatus(parentUser.getId(), id).getStatus()).isEqualTo(ComplaintStatus.DRAFT);
         var first = riskAnalysisService.analyze(parentUser.getId(), id);
-        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "임시로 수정한 내용"));
-        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "상황을 확인해 주세요."));
+        parentComplaintService.updateDraft(parentUser.getId(), id, updateRequest("임시로 수정한 내용"));
+        parentComplaintService.updateDraft(parentUser.getId(), id, updateRequest("상황을 확인해 주세요."));
         entityManager.flush();
         entityManager.clear();
         var reused = riskAnalysisService.analyze(parentUser.getId(), id);
@@ -86,10 +90,10 @@ public class ComplaintFlowIntegrationTest {
         assertThat(riskAnalysisRepository.countByComplaintIdAndCompletedTrue(id)).isEqualTo(1);
         assertThat(complaintRepository.findById(id).orElseThrow().getContentVersion()).isEqualTo(3);
         assertThat(complaintRepository.findById(id).orElseThrow().getStatus()).isEqualTo(ComplaintStatus.DRAFT);
-        complaintService.submitComplaint(parentUser.getId(), id);
-        assertThat(complaintService.findStatus(parentUser.getId(), id).getStatus()).isEqualTo(ComplaintStatus.OPEN);
+        parentComplaintService.submitComplaint(parentUser.getId(), id);
+        assertThat(parentComplaintService.findStatus(parentUser.getId(), id).getStatus()).isEqualTo(ComplaintStatus.OPEN);
         assertThat(complaintRepository.findById(id).orElseThrow().getStatus()).isEqualTo(ComplaintStatus.OPEN);
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> complaintService.submitComplaint(parentUser.getId(), id))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> parentComplaintService.submitComplaint(parentUser.getId(), id))
                 .isInstanceOf(com.teacherhub.complaint.exception.ComplaintNotDraftException.class);
         assertThat(riskAnalysisRepository.countByComplaintIdAndCompletedTrue(id)).isEqualTo(1);
         assertThat(eventRepository.findByComplaintIdOrderByOccurredAtDescIdDesc(id))
@@ -101,32 +105,32 @@ public class ComplaintFlowIntegrationTest {
 
     @Test
     void requiresInitialReviewAndRunsChangedContentAnalysisDuringSubmission() {
-        Long id = complaintService.createDraft(parentUser.getId(),
-                new ComplaintRequest(student.getId(), "처음 내용")).getComplaintId();
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> complaintService.submitComplaint(parentUser.getId(), id))
+        Long id = parentComplaintService.createDraft(parentUser.getId(),
+                createRequest("처음 내용")).getComplaintId();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> parentComplaintService.submitComplaint(parentUser.getId(), id))
                 .isInstanceOf(com.teacherhub.complaint.exception.AnalysisRequiredException.class);
         riskAnalysisService.analyze(parentUser.getId(), id);
-        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "수정 내용"));
+        parentComplaintService.updateDraft(parentUser.getId(), id, updateRequest("수정 내용"));
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> riskAnalysisService.analyze(parentUser.getId(), id))
                 .isInstanceOf(com.teacherhub.complaint.exception.FinalAnalysisOnSubmitException.class);
-        complaintService.submitComplaint(parentUser.getId(), id);
+        parentComplaintService.submitComplaint(parentUser.getId(), id);
         assertThat(riskAnalysisRepository.countByComplaintIdAndCompletedTrue(id)).isEqualTo(2);
         var finalAnalysis = riskAnalysisRepository.findByComplaintIdOrderByIdAsc(id).get(1);
         assertThat(finalAnalysis.getContentVersion()).isEqualTo(2);
         assertThat(finalAnalysis.getAiRevision()).isNull();
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "또 수정")))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> parentComplaintService.updateDraft(parentUser.getId(), id, updateRequest("또 수정")))
                 .isInstanceOf(com.teacherhub.complaint.exception.ComplaintNotDraftException.class);
         assertThat(complaintRepository.findById(id).orElseThrow().getStatus()).isEqualTo(ComplaintStatus.OPEN);
     }
 
     @Test
     void generatesAiDraftWithoutPersistenceThenSavesEditsAndSubmitsResponse() {
-        Long complaintId = complaintService.createDraft(
+        Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
-                new ComplaintRequest(student.getId(), "상담 일정과 조치 내용을 확인해 주세요.")
+                createRequest("상담 일정과 조치 내용을 확인해 주세요.")
         ).getComplaintId();
         riskAnalysisService.analyze(parentUser.getId(), complaintId);
-        complaintService.submitComplaint(parentUser.getId(), complaintId);
+        parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
 
         var aiDraft = teacherResponseService.generateAiDraft(teacherUser.getId(), complaintId);
         assertThat(aiDraft.content()).contains("안녕하세요, 학부모님");
@@ -178,12 +182,12 @@ public class ComplaintFlowIntegrationTest {
 
     @Test
     void submitsDirectResponseWithoutAPreviouslySavedDraft() {
-        Long complaintId = complaintService.createDraft(
+        Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
-                new ComplaintRequest(student.getId(), "직접 답변할 민원입니다.")
+                createRequest("직접 답변할 민원입니다.")
         ).getComplaintId();
         riskAnalysisService.analyze(parentUser.getId(), complaintId);
-        complaintService.submitComplaint(parentUser.getId(), complaintId);
+        parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
 
         var submitted = teacherResponseService.submit(
                 teacherUser.getId(),
@@ -198,9 +202,9 @@ public class ComplaintFlowIntegrationTest {
     @Test
     void showsLowRiskParentMessageWithoutBufferedSummary() {
         String content = "학교생활에 관해 확인하고 싶습니다.";
-        Long complaintId = complaintService.createDraft(
+        Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
-                new ComplaintRequest(student.getId(), content)
+                createRequest(content)
         ).getComplaintId();
         var summary = riskAnalysisService.analyze(parentUser.getId(), complaintId);
         var analysis = riskAnalysisRepository.findById(summary.analysisId()).orElseThrow();
@@ -212,7 +216,7 @@ public class ComplaintFlowIntegrationTest {
         );
         entityManager.flush();
 
-        complaintService.submitComplaint(parentUser.getId(), complaintId);
+        parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
         var conversation = teacherComplaintQueryService.findConversation(
                 teacherUser.getId(),
                 complaintId
@@ -227,9 +231,9 @@ public class ComplaintFlowIntegrationTest {
     @Test
     void excludesUnsentParentDraftAnalysisFromEveryTeacherFacingQuery() {
         String submittedContent = "제출된 최초 민원입니다.";
-        Long complaintId = complaintService.createDraft(
+        Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
-                new ComplaintRequest(student.getId(), submittedContent)
+                createRequest(submittedContent)
         ).getComplaintId();
         var submittedSummary = riskAnalysisService.analyze(parentUser.getId(), complaintId);
         var submittedAnalysis = riskAnalysisRepository.findById(submittedSummary.analysisId()).orElseThrow();
@@ -241,7 +245,7 @@ public class ComplaintFlowIntegrationTest {
         );
         entityManager.flush();
 
-        complaintService.submitComplaint(parentUser.getId(), complaintId);
+        parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
         teacherResponseService.submit(
                 teacherUser.getId(),
                 complaintId,
@@ -281,12 +285,12 @@ public class ComplaintFlowIntegrationTest {
 
     @Test
     void teacherReviewsSevenPointRiskAndHistoryKeepsEveryAdjustment() {
-        Long complaintId = complaintService.createDraft(
+        Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
-                new ComplaintRequest(student.getId(), "계속 이러면 학교에 책임을 묻겠습니다.")
+                createRequest("계속 이러면 학교에 책임을 묻겠습니다.")
         ).getComplaintId();
         var systemAnalysis = riskAnalysisService.analyze(parentUser.getId(), complaintId);
-        complaintService.submitComplaint(parentUser.getId(), complaintId);
+        parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
 
         assertThat(systemAnalysis.riskScore()).isEqualTo(60);
         assertThat(systemAnalysis.riskLevel())
@@ -354,12 +358,12 @@ public class ComplaintFlowIntegrationTest {
 
     @Test
     void masksAndRetrievesAnalysisWithOwnershipChecks() {
-        var created = complaintService.createDraft(parentUser.getId(),
-                new ComplaintRequest(student.getId(), "전화 010-1234-5678로 연락 부탁드립니다."));
+        var created = parentComplaintService.createDraft(parentUser.getId(),
+                createRequest("전화 010-1234-5678로 연락 부탁드립니다."));
         Long id = created.getComplaintId();
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> complaintService.findStatus(teacherUser.getId(), id))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> parentComplaintService.findStatus(teacherUser.getId(), id))
                 .isInstanceOf(com.teacherhub.complaint.exception.ComplaintAccessDeniedException.class);
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> complaintService.findStatus(parentUser.getId(), Long.MAX_VALUE))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> parentComplaintService.findStatus(parentUser.getId(), Long.MAX_VALUE))
                 .isInstanceOf(com.teacherhub.complaint.exception.ComplaintNotFoundException.class);
         var masked = maskingService.mask(parentUser.getId(), id);
         assertThat(masked.maskedContent()).isEqualTo("전화 [전화번호]로 연락 부탁드립니다.");
@@ -375,14 +379,14 @@ public class ComplaintFlowIntegrationTest {
                 .isInstanceOf(com.teacherhub.complaint.exception.ComplaintAccessDeniedException.class);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> riskAnalysisQueryService.findFindings(parentUser.getId(), Long.MAX_VALUE))
                 .isInstanceOf(com.teacherhub.risk.exception.RiskAnalysisNotFoundException.class);
-        complaintService.updateDraft(parentUser.getId(), id, new ComplaintRequest(null, "새 내용"));
+        parentComplaintService.updateDraft(parentUser.getId(), id, updateRequest("새 내용"));
         assertThat(complaintRepository.findById(id).orElseThrow().getMaskedContent()).isNull();
     }
 
     @Test
     void persistsTagSuggestionsAndSeparatesSourceEvidence() {
-        Long complaintId = complaintService.createDraft(parentUser.getId(),
-                new ComplaintRequest(student.getId(), "확인을 요청드립니다.")).getComplaintId();
+        Long complaintId = parentComplaintService.createDraft(parentUser.getId(),
+                createRequest("확인을 요청드립니다.")).getComplaintId();
         var review = riskAnalysisService.analyze(parentUser.getId(), complaintId);
         Long analysisId = review.analysisId();
         entityManager.flush();
@@ -427,7 +431,7 @@ public class ComplaintFlowIntegrationTest {
     private jakarta.persistence.EntityManager entityManager;
 
     @Autowired
-    private ComplaintService complaintService;
+    private ParentComplaintService parentComplaintService;
 
     @Autowired
     private com.teacherhub.complaint.parent.service.ParentMessageService parentMessageService;
@@ -488,12 +492,12 @@ public class ComplaintFlowIntegrationTest {
 
     @Test
     void continuesConversationWithParentAnalysisTeacherReplyAndParentClose() {
-        Long complaintId = complaintService.createDraft(
+        Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
-                new ComplaintRequest(student.getId(), "첫 번째 문의입니다.")
+                createRequest("첫 번째 문의입니다.")
         ).getComplaintId();
         riskAnalysisService.analyze(parentUser.getId(), complaintId);
-        complaintService.submitComplaint(parentUser.getId(), complaintId);
+        parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
 
         teacherResponseService.submit(
                 teacherUser.getId(),
@@ -572,6 +576,203 @@ public class ComplaintFlowIntegrationTest {
         assertThat(messageRepository.findByComplaintIdOrderByIdAsc(complaintId))
                 .allMatch(message -> message.getStatus()
                         == MessageStatus.READ);
+    }
+
+    @Test
+    void selectsOneOfMultipleAssignedTeachersAsTheComplaintRecipient() {
+        User subjectTeacherUser = userRepository.save(new User(
+                "subject-teacher@test.com",
+                "password",
+                "교과 담당 교사",
+                UserRole.TEACHER
+        ));
+        Teacher subjectTeacher = teacherRepository.save(new Teacher(subjectTeacherUser, "T-2026-002"));
+        SchoolClass schoolClass = schoolClassRepository.findAll().get(0);
+        schoolClass.assignTeacher(subjectTeacher);
+        schoolClassRepository.saveAndFlush(schoolClass);
+
+        var recipients = parentComplaintService.findRecipients(parentUser.getId(), student.getId());
+        assertThat(recipients)
+                .extracting(ComplaintRecipientResponse::teacherId)
+                .containsExactlyInAnyOrder(teacher.getId(), subjectTeacher.getId());
+        assertThat(recipients)
+                .filteredOn(ComplaintRecipientResponse::homeroomTeacher)
+                .extracting(ComplaintRecipientResponse::teacherId)
+                .containsExactly(teacher.getId());
+
+        Long complaintId = parentComplaintService.createDraft(
+                parentUser.getId(),
+                new ComplaintCreateRequest(
+                        student.getId(),
+                        subjectTeacher.getId(),
+                        "교과 수업 문의",
+                        "교과 수업 일정을 확인해 주세요."
+                )
+        ).getComplaintId();
+
+        Complaint draft = complaintRepository.findById(complaintId).orElseThrow();
+        assertThat(draft.getTitle()).isEqualTo("교과 수업 문의");
+        assertThat(draft.getTeacher().getId()).isEqualTo(subjectTeacher.getId());
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> teacherComplaintQueryService.findDetail(subjectTeacherUser.getId(), complaintId)
+                )
+                .isInstanceOf(com.teacherhub.complaint.exception.ComplaintAccessDeniedException.class);
+
+        riskAnalysisService.analyze(parentUser.getId(), complaintId);
+        parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
+
+        assertThat(teacherComplaintQueryService.findDetail(subjectTeacherUser.getId(), complaintId).title())
+                .isEqualTo("교과 수업 문의");
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> teacherComplaintQueryService.findDetail(teacherUser.getId(), complaintId)
+                )
+                .isInstanceOf(com.teacherhub.complaint.exception.ComplaintAccessDeniedException.class);
+    }
+
+    @Test
+    void returnsNoRecipientsWhenLinkedStudentHasNoClassAndRejectsUnknownStudent() {
+        Student unassignedStudent = studentRepository.save(new Student("학급 미배정 학생", "20269999"));
+        parentStudentRepository.save(new ParentStudent(
+                parent,
+                unassignedStudent,
+                Relationship.values()[0]
+        ));
+
+        assertThat(parentComplaintService.findRecipients(parentUser.getId(), unassignedStudent.getId()))
+                .isEmpty();
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> parentComplaintService.createDraft(
+                                parentUser.getId(),
+                                new ComplaintCreateRequest(
+                                        unassignedStudent.getId(),
+                                        teacher.getId(),
+                                        "학급 미배정 문의",
+                                        "문의 내용"
+                                )
+                        )
+                )
+                .isInstanceOf(com.teacherhub.complaint.exception.InvalidComplaintRecipientException.class)
+                .hasMessage("학생의 학급 정보를 찾을 수 없습니다.");
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> parentComplaintService.findRecipients(parentUser.getId(), Long.MAX_VALUE)
+                )
+                .isInstanceOf(com.teacherhub.user.exception.StudentNotFoundException.class)
+                .hasMessage("학생 정보를 찾을 수 없습니다.");
+    }
+
+    @Test
+    void searchesFiltersSortsAndPaginatesComplaintListsByTen() {
+        java.util.List<Long> complaintIds = new java.util.ArrayList<>();
+        for (int index = 0; index < 12; index++) {
+            Long complaintId = parentComplaintService.createDraft(
+                    parentUser.getId(),
+                    new ComplaintCreateRequest(
+                            student.getId(),
+                            teacher.getId(),
+                            "검색 제목 " + index,
+                            index == 5 ? "독서 일정을 알고 싶습니다." : "민원 내용 " + index
+                    )
+            ).getComplaintId();
+            complaintIds.add(complaintId);
+        }
+
+        var firstPage = complaintQueryService.findComplaints(
+                parentUser.getId(),
+                new ComplaintListQuery(0, "검색 제목", ComplaintStatus.DRAFT, null, ComplaintListSort.LATEST)
+        );
+        var secondPage = complaintQueryService.findComplaints(
+                parentUser.getId(),
+                new ComplaintListQuery(1, "검색 제목", ComplaintStatus.DRAFT, null, ComplaintListSort.LATEST)
+        );
+
+        assertThat(firstPage.content()).hasSize(10);
+        assertThat(firstPage.totalElements()).isEqualTo(12);
+        assertThat(firstPage.totalPages()).isEqualTo(2);
+        assertThat(firstPage.hasNext()).isTrue();
+        assertThat(secondPage.content()).hasSize(2);
+        assertThat(secondPage.last()).isTrue();
+        assertThat(firstPage.content().get(0).complaintId()).isEqualTo(complaintIds.get(11));
+
+        var oldest = complaintQueryService.findComplaints(
+                parentUser.getId(),
+                new ComplaintListQuery(0, "검색 제목", ComplaintStatus.DRAFT, null, ComplaintListSort.OLDEST)
+        );
+        assertThat(oldest.content().get(0).complaintId()).isEqualTo(complaintIds.get(0));
+
+        var contentSearch = complaintQueryService.findComplaints(
+                parentUser.getId(),
+                new ComplaintListQuery(0, "독서 일정", null, null, null)
+        );
+        assertThat(contentSearch.content())
+                .singleElement()
+                .satisfies(item -> assertThat(item.complaintId()).isEqualTo(complaintIds.get(5)));
+
+        Long submittedId = complaintIds.get(0);
+        var analyzed = riskAnalysisService.analyze(parentUser.getId(), submittedId);
+        var analysis = riskAnalysisRepository.findById(analyzed.analysisId()).orElseThrow();
+        org.springframework.test.util.ReflectionTestUtils.setField(analysis, "riskScore", 0);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                analysis,
+                "riskLevel",
+                com.teacherhub.risk.enums.RiskLevel.LOW
+        );
+        entityManager.flush();
+        parentComplaintService.submitComplaint(parentUser.getId(), submittedId);
+
+        var filtered = complaintQueryService.findComplaints(
+                parentUser.getId(),
+                new ComplaintListQuery(
+                        0,
+                        teacherUser.getName(),
+                        ComplaintStatus.OPEN,
+                        com.teacherhub.risk.enums.RiskLevel.LOW,
+                        ComplaintListSort.LATEST
+                )
+        );
+        assertThat(filtered.content())
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.complaintId()).isEqualTo(submittedId);
+                    assertThat(item.title()).isEqualTo("검색 제목 0");
+                    assertThat(item.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
+                });
+
+        teacherRiskReviewService.review(
+                teacherUser.getId(),
+                submittedId,
+                new com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest(5, "상향 조정")
+        );
+        var reviewedRisk = complaintQueryService.findComplaints(
+                teacherUser.getId(),
+                new ComplaintListQuery(
+                        0,
+                        null,
+                        ComplaintStatus.OPEN,
+                        com.teacherhub.risk.enums.RiskLevel.HIGH,
+                        ComplaintListSort.LATEST
+                )
+        );
+        assertThat(reviewedRisk.content())
+                .singleElement()
+                .satisfies(item -> assertThat(item.complaintId()).isEqualTo(submittedId));
+        assertThat(complaintQueryService.findComplaints(
+                teacherUser.getId(),
+                new ComplaintListQuery(
+                        0,
+                        null,
+                        ComplaintStatus.OPEN,
+                        com.teacherhub.risk.enums.RiskLevel.LOW,
+                        ComplaintListSort.LATEST
+                )
+        ).content()).isEmpty();
+
+        var teacherPage = complaintQueryService.findComplaints(
+                teacherUser.getId(),
+                new ComplaintListQuery(0, null, null, null, null)
+        );
+        assertThat(teacherPage.content())
+                .singleElement()
+                .satisfies(item -> assertThat(item.complaintId()).isEqualTo(submittedId));
     }
 
 
@@ -661,15 +862,12 @@ public class ComplaintFlowIntegrationTest {
         // 1. 민원 작성
         // =========================
 
-        ComplaintRequest createRequest =
-                new ComplaintRequest(
-                        student.getId(),
-                        "계속 이런 식이면 교육청에 신고하겠습니다."
-                );
+        ComplaintCreateRequest createRequest =
+                createRequest("계속 이런 식이면 교육청에 신고하겠습니다.");
 
 
         ComplaintResponse createResponse =
-                complaintService.createDraft(
+                parentComplaintService.createDraft(
                         parentUser.getId(),
                         createRequest
                 );
@@ -715,7 +913,7 @@ public class ComplaintFlowIntegrationTest {
         var findings = riskAnalysisQueryService.findFindings(parentUser.getId(), reviewResponse.analysisId());
         assertThat(findings.finalRevision().reason()).isNotBlank();
         assertThat(findings.finalRevision().content()).isNotBlank();
-        assertThat(draft.getContent()).isEqualTo(createRequest.getContent());
+        assertThat(draft.getContent()).isEqualTo(createRequest.content());
         assertThat(riskAnalysisQueryService.findDetectorResults(parentUser.getId(), reviewResponse.analysisId()).results())
                 .hasSize(com.teacherhub.risk.enums.RiskTagCode.values().length);
         assertThat(riskAnalysisQueryService.findDetectorResults(parentUser.getId(), reviewResponse.analysisId()).results())
@@ -747,14 +945,11 @@ public class ComplaintFlowIntegrationTest {
         // 3. 민원 내용 수정
         // =========================
 
-        ComplaintRequest updateRequest =
-                new ComplaintRequest(
-                        null,
-                        "아이의 학교생활과 관련하여 상황 확인을 요청드립니다."
-                );
+        ComplaintDraftUpdateRequest updateRequest =
+                updateRequest("아이의 학교생활과 관련하여 상황 확인을 요청드립니다.");
 
 
-        complaintService.updateDraft(
+        parentComplaintService.updateDraft(
                 parentUser.getId(),
                 complaintId,
                 updateRequest
@@ -783,7 +978,7 @@ public class ComplaintFlowIntegrationTest {
         // 4. 최종 제출
         // =========================
 
-        complaintService.submitComplaint(
+        parentComplaintService.submitComplaint(
                 parentUser.getId(),
                 complaintId
         );
@@ -859,7 +1054,10 @@ public class ComplaintFlowIntegrationTest {
         assertThat(teacherListItem.grade()).isEqualTo(3);
         assertThat(teacherListItem.classNo()).isEqualTo(2);
         assertThat(teacherListItem.aiSummary()).isNotBlank();
-        assertThat(teacherListItem.latestReceivedAt()).isEqualTo(teacherDetail.submittedAt());
+        assertThat(teacherListItem.latestReceivedAt()).isCloseTo(
+                teacherDetail.submittedAt(),
+                org.assertj.core.api.Assertions.within(1, java.time.temporal.ChronoUnit.SECONDS)
+        );
 
         var parentListItem = complaintQueryService.findComplaints(parentUser.getId()).stream()
                 .filter(item -> item.complaintId().equals(complaintId))
@@ -891,5 +1089,18 @@ public class ComplaintFlowIntegrationTest {
                         == MessageEventType.STATUS_CHANGED)
                 .extracting(TeacherHistoryResponse.HistoryEvent::newStatus)
                 .contains(ComplaintStatus.DRAFT, ComplaintStatus.OPEN);
+    }
+
+    private ComplaintCreateRequest createRequest(String content) {
+        return new ComplaintCreateRequest(
+                student.getId(),
+                teacher.getId(),
+                "테스트 민원 제목",
+                content
+        );
+    }
+
+    private ComplaintDraftUpdateRequest updateRequest(String content) {
+        return new ComplaintDraftUpdateRequest(content);
     }
 }

@@ -3,6 +3,8 @@ package com.teacherhub.complaint.teacher.controller;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.query.service.ComplaintQueryService;
+import com.teacherhub.complaint.query.dto.ComplaintPageResponse;
+import com.teacherhub.complaint.query.dto.ComplaintListSort;
 import com.teacherhub.complaint.teacher.dto.query.TeacherComplaintDetailResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherAiDraftResponse;
@@ -14,6 +16,7 @@ import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewResponse;
 import com.teacherhub.complaint.teacher.service.TeacherComplaintQueryService;
 import com.teacherhub.complaint.teacher.service.TeacherResponseService;
 import com.teacherhub.complaint.teacher.service.TeacherRiskReviewService;
+import com.teacherhub.common.exception.GlobalExceptionHandler;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskReviewDirection;
 import com.teacherhub.user.entity.User;
@@ -30,13 +33,64 @@ import java.util.Optional;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-class TeacherComplaintControllerTest {
+class TeacherParentComplaintControllerTest {
+
+    @Test
+    void bindsComplaintListSearchFiltersAndPagination() throws Exception {
+        var queryService = mock(TeacherComplaintQueryService.class);
+        var responseService = mock(TeacherResponseService.class);
+        var riskReviewService = mock(TeacherRiskReviewService.class);
+        var complaintQueryService = mock(ComplaintQueryService.class);
+        var users = mock(UserRepository.class);
+        var user = mock(User.class);
+        when(user.getId()).thenReturn(7L);
+        when(users.findByEmail("teacher@test.com")).thenReturn(Optional.of(user));
+        when(complaintQueryService.findComplaints(eq(7L), argThat(query ->
+                query.page() == 1
+                        && "학부모".equals(query.keyword())
+                        && query.status() == ComplaintStatus.OPEN
+                        && query.riskLevel() == RiskLevel.HIGH
+                        && query.sort() == ComplaintListSort.OLDEST
+        ))).thenReturn(new ComplaintPageResponse(
+                List.of(), 1, 10, 12, 2, false, true, false, true
+        ));
+
+        var mvc = MockMvcBuilders.standaloneSetup(new TeacherComplaintController(
+                queryService,
+                responseService,
+                riskReviewService,
+                complaintQueryService,
+                users
+        )).setControllerAdvice(new GlobalExceptionHandler()).build();
+        var auth = new UsernamePasswordAuthenticationToken("teacher@test.com", null, List.of());
+
+        mvc.perform(get("/teacher/complaints")
+                        .principal(auth)
+                        .param("page", "1")
+                        .param("keyword", "학부모")
+                        .param("status", "OPEN")
+                        .param("riskLevel", "HIGH")
+                        .param("sort", "OLDEST"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(10))
+                .andExpect(jsonPath("$.totalElements").value(12));
+
+        mvc.perform(get("/teacher/complaints")
+                        .principal(auth)
+                        .param("page", "214748365"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("페이지 번호가 허용 범위를 초과했습니다."));
+    }
 
     @Test
     void routesAiDraftTemporarySaveAndFinalSubmission() throws Exception {
@@ -147,6 +201,7 @@ class TeacherComplaintControllerTest {
         when(users.findByEmail("teacher@test.com")).thenReturn(Optional.of(user));
         when(service.findDetail(7L, 42L)).thenReturn(new TeacherComplaintDetailResponse(
                 42L,
+                "민원 제목",
                 "학생 이름",
                 "학부모 이름",
                 2026,
