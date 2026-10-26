@@ -1,8 +1,10 @@
 package com.teacherhub.complaint.query.dto;
 
 import com.teacherhub.complaint.entity.Complaint;
-import com.teacherhub.complaint.entity.ComplaintStatus;
+import com.teacherhub.complaint.enums.ComplaintStatus;
+import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.user.enums.UserRole;
@@ -19,6 +21,7 @@ public record ComplaintListResponse(
         Integer grade,
         Integer classNo,
         ComplaintStatus status,
+        WaitingFor waitingFor,
         Long riskAnalysisId,
         RiskLevel riskLevel,
         String aiSummary,
@@ -27,6 +30,7 @@ public record ComplaintListResponse(
     public static ComplaintListResponse from(
             Complaint complaint,
             RiskAnalysis analysis,
+            RiskReview latestReview,
             SchoolClass schoolClass,
             String aiSummary,
             LocalDateTime latestReceivedAt,
@@ -47,8 +51,13 @@ public record ComplaintListResponse(
                 schoolClass == null ? null : schoolClass.getGrade(),
                 schoolClass == null ? null : schoolClass.getClassNo(),
                 complaint.getStatus(),
+                complaint.getWaitingFor(),
                 analysis == null ? null : analysis.getId(),
-                analysis == null ? null : analysis.getRiskLevel(),
+                analysis == null
+                        ? null
+                        : latestReview == null
+                                ? analysis.getRiskLevel()
+                                : latestReview.getReviewedLevel(),
                 aiSummary,
                 latestReceivedAt
         );

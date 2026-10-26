@@ -1,10 +1,11 @@
 package com.teacherhub.complaint.parent.controller;
 
 import com.teacherhub.complaint.parent.dto.ComplaintResponse;
-import com.teacherhub.complaint.entity.ComplaintStatus;
+import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.exception.ComplaintAccessDeniedException;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.parent.service.ComplaintService;
+import com.teacherhub.complaint.parent.service.ParentMessageService;
 import com.teacherhub.complaint.query.service.ComplaintQueryService;
 import com.teacherhub.common.exception.GlobalExceptionHandler;
 import com.teacherhub.user.entity.User;
@@ -28,15 +29,16 @@ class ComplaintStatusControllerTest {
         var user = mock(User.class);
         when(user.getId()).thenReturn(7L);
         when(users.findByEmail("parent@test.com")).thenReturn(Optional.of(user));
-        var mvc = MockMvcBuilders.standaloneSetup(new ComplaintController(queryService, service, users))
+        var messageService = mock(ParentMessageService.class);
+        var mvc = MockMvcBuilders.standaloneSetup(new ComplaintController(queryService, service, messageService, users))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         var auth = new UsernamePasswordAuthenticationToken("parent@test.com", null, List.of());
         when(service.findStatus(7L, 42L)).thenReturn(ComplaintResponse.builder()
-                .complaintId(42L).status(ComplaintStatus.ANALYZED).build());
+                .complaintId(42L).status(ComplaintStatus.OPEN).build());
 
         mvc.perform(get("/complaints/42/status").principal(auth)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.complaintId").value(42))
-                .andExpect(jsonPath("$.status").value("ANALYZED"));
+                .andExpect(jsonPath("$.status").value("OPEN"));
         mvc.perform(patch("/complaints/42").principal(auth).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"content\":\"수정한 민원\"}")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("민원 내용이 수정되었습니다."));

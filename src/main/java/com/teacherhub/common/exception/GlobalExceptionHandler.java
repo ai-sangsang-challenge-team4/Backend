@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.time.OffsetDateTime;
 import com.teacherhub.complaint.exception.*;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
+import com.teacherhub.risk.exception.RiskReviewNotAllowedException;
+import com.teacherhub.risk.exception.RiskReviewReasonRequiredException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -27,10 +29,6 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.CONFLICT, "REANALYSIS_LIMIT_REACHED", e, request);
     }
 
-    @ExceptionHandler(ComplaintEditLimitException.class)
-    public ResponseEntity<ErrorResponse> handleComplaintEditLimit(ComplaintEditLimitException e, HttpServletRequest request) {
-        return error(HttpStatus.CONFLICT, "COMPLAINT_EDIT_LIMIT_REACHED", e, request);
-    }
     @ExceptionHandler(ComplaintNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleComplaintNotFound(ComplaintNotFoundException e, HttpServletRequest request) {
         return error(HttpStatus.NOT_FOUND, "COMPLAINT_NOT_FOUND", e, request);
@@ -39,6 +37,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RiskAnalysisNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleRiskAnalysisNotFound(RiskAnalysisNotFoundException e, HttpServletRequest request) {
         return error(HttpStatus.NOT_FOUND, "RISK_ANALYSIS_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(RiskReviewReasonRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleRiskReviewReasonRequired(RiskReviewReasonRequiredException e, HttpServletRequest request) {
+        return error(HttpStatus.BAD_REQUEST, "RISK_REVIEW_REASON_REQUIRED", e, request);
+    }
+
+    @ExceptionHandler(RiskReviewNotAllowedException.class)
+    public ResponseEntity<ErrorResponse> handleRiskReviewNotAllowed(RiskReviewNotAllowedException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, "RISK_REVIEW_NOT_ALLOWED", e, request);
     }
 
     @ExceptionHandler(ComplaintAccessDeniedException.class)
@@ -54,6 +62,26 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(EmptyComplaintContentException.class)
     public ResponseEntity<ErrorResponse> handleEmptyComplaintContent(EmptyComplaintContentException e, HttpServletRequest request) {
         return error(HttpStatus.BAD_REQUEST, "EMPTY_COMPLAINT_CONTENT", e, request);
+    }
+
+    @ExceptionHandler(ResponseDraftNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleResponseDraftNotFound(ResponseDraftNotFoundException e, HttpServletRequest request) {
+        return error(HttpStatus.NOT_FOUND, "RESPONSE_DRAFT_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(MessageDraftNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleMessageDraftNotFound(MessageDraftNotFoundException e, HttpServletRequest request) {
+        return error(HttpStatus.NOT_FOUND, "MESSAGE_DRAFT_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(ResponseNotEditableException.class)
+    public ResponseEntity<ErrorResponse> handleResponseNotEditable(ResponseNotEditableException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, "RESPONSE_NOT_EDITABLE", e, request);
+    }
+
+    @ExceptionHandler(MessageNotEditableException.class)
+    public ResponseEntity<ErrorResponse> handleMessageNotEditable(MessageNotEditableException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, "MESSAGE_NOT_EDITABLE", e, request);
     }
 
     private ResponseEntity<ErrorResponse> error(HttpStatus status, String code, RuntimeException e, HttpServletRequest request) {

@@ -1,6 +1,6 @@
 package com.teacherhub.risk.masking;
 
-import com.teacherhub.complaint.entity.ComplaintStatus;
+import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.risk.dto.response.MaskingResponse;
 import lombok.RequiredArgsConstructor;

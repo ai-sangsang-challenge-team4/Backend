@@ -9,6 +9,8 @@ import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.repository.ComplaintRepository;
+import com.teacherhub.complaint.repository.ComplaintMessageRepository;
+import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.risk.analyzer.*;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.FinalRevision;
@@ -30,6 +32,8 @@ import static org.mockito.Mockito.*;
 
 class RiskAnalysisRulesTest {
     private final ComplaintRepository complaints = mock(ComplaintRepository.class);
+    private final ComplaintMessageRepository messages = mock(ComplaintMessageRepository.class);
+    private final ComplaintEventRepository events = mock(ComplaintEventRepository.class);
     private final RuleBasedRiskDetector rules = mock(RuleBasedRiskDetector.class);
     private final LlmRiskAnalyzer llm = mock(LlmRiskAnalyzer.class);
     private final RiskTagRepository definitions = mock(RiskTagRepository.class);
@@ -37,7 +41,7 @@ class RiskAnalysisRulesTest {
     private final ComplaintRiskTagRepository results = mock(ComplaintRiskTagRepository.class);
     private final ComplaintRevisionGenerator revisions = mock(ComplaintRevisionGenerator.class);
     private final RiskEvaluator evaluator = new RiskEvaluator();
-    private final RiskAnalysisService service = new RiskAnalysisService(complaints,
+    private final RiskAnalysisService service = new RiskAnalysisService(complaints, messages, events,
             new PiiMaskingServiceImpl(), rules, llm, definitions, analyses, results, revisions, evaluator);
 
     @BeforeEach

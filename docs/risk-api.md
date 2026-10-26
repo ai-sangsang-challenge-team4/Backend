@@ -10,10 +10,12 @@
 |---|---|---|---|
 | POST | `/complaints/{complaintId}/mask` | 원문의 규칙 기반 개인정보 마스킹 결과 저장·반환 | 200 |
 | POST | `/complaints/{complaintId}/risk-analysis` | 마스킹 → 룰·LLM 탐지 → 병합 → 점수 계산·저장 → 수정안 생성 | 200 |
+| POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 학부모 추가 문의 메시지의 위험 분석·수정안 생성 | 200 |
 | GET | `/risk-analyses/{analysisId}` | 저장된 분석의 점수·등급 조회 | 200 |
 | GET | `/risk-analyses/{analysisId}/findings` | 최종 감지 태그·근거·태그별 수정 제안·최종 수정본 조회 | 200 |
 | GET | `/risk-analyses/{analysisId}/detector-results` | 전체 태그의 Rule·LLM 감지 여부·출처별 근거·LLM 신뢰도 조회 | 200 |
 | GET | `/risk-tags` | 위험 태그 기준 목록 조회, 민원 분석과 별개 | 200 |
+| POST | `/teacher/complaints/{complaintId}/risk-reviews` | 교사가 1~7점 위험도를 검토·조정하고 이력을 저장 | 201 |
 
 ## 마스킹 응답 예시
 
@@ -62,15 +64,41 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 과거 ID 조회는 해당 분석 시점의 결과다. `ComplaintReviewResponse`는 삭제했다.
 처리 경로·반복 이력 가산·권장 조치는 아직 구현되지 않았다.
 
+## 교사 위험도 검토
+
+교사는 `OPEN`이며 교사 답변 차례인 담당 민원의 현재 위험도를 검토한다.
+
+```json
+{
+  "riskScore": 5,
+  "reason": "표현은 강하지만 즉각적인 위해 가능성은 낮다고 판단했습니다."
+}
+```
+
+- 1~7점 척도는 교사 검토값에만 적용하며 시스템 자동 산정 점수는 기존 방식을 유지한다.
+- 최초 검토값은 시스템 등급을 LOW 2점, MEDIUM 4점, HIGH 6점, EMERGENCY 7점으로 변환한다.
+- 현재 점수보다 낮추면 reason이 필수다.
+- 현재 점수보다 높이거나 동일하게 확인하면 reason은 선택 사항이다.
+- 시스템 분석 결과는 덮어쓰지 않고 `risk_reviews`에 변경 전후 점수·등급과 교사,
+  사유, 검토 시각을 누적한다.
+- `GET /teacher/complaints/{complaintId}/risk`는 시스템 점수와 최신 검토가 반영된
+  현재 점수를 함께 반환한다.
+- `GET /teacher/complaints/{complaintId}/history`에는 `RISK_REVIEWED` 이벤트가 추가된다.
+
+교사 검토 점수 구간은 1~2 LOW, 3~4 MEDIUM, 5~6 HIGH, 7 EMERGENCY다.
+
 ## 재분석 및 최종 제출
 
-- 최초 분석 1회 + 재분석 1회, 민원별 성공한 분석 최대 2회.
-- 최초 분석은 수정안을 생성하고, 전송 시 분석은 위험도만 확정한다. 처리 중에는 DRAFT이며 실패 시 제출 전체가 롤백된다.
+- 초안의 임시저장과 사용자의 직접 수정 횟수는 제한하지 않는다. 최초 민원과 학부모 추가 문의에 같은 정책을 적용한다.
+- 사용자에게 수정안을 보여주는 AI 검토는 학부모 메시지별 1회만 수행한다.
+- AI 검토 후 내용이 변경됐다면 제출 시 최종 내용의 위험도를 내부적으로 한 번 더 분석한다. 이 분석은 새 수정안을 생성하지 않는다.
+- 내용이 변경되지 않았다면 기존 검토 결과를 재사용한다. 따라서 학부모 메시지별 성공한 AI 분석은 최대 2회다.
+- 분석과 제출 처리 중에는 DRAFT이며 실패 시 제출 전체가 롤백된다.
 - 동일 내용 저장은 contentVersion을 올리지 않는다. 같은 버전 분석 재요청은 저장 결과를 반환하고 AI 호출/횟수를 추가하지 않는다.
 - PATCH 후 바로 POST send를 호출한다. 서버는 최종 문장이 분석 원문과 같으면 재사용하고, 다르면 한 번 재분석한다. 수정했다가 원문으로 되돌린 경우도 재사용한다.
 - 수정 후 POST risk-analysis 호출은 409 FINAL_ANALYSIS_ON_SUBMIT. 최종 재분석은 send 내부에서만 실행하고 새 수정안을 생성하지 않는다. 최대 성공 분석 2회 제한은 유지한다.
 - POST `/complaints/{complaintId}/send`: Bearer 인증 필요, 본문 없음. 최초 분석이 없으면 409 ANALYSIS_REQUIRED. 변경된 내용의 최종 분석은 서버가 자동 처리하며 성공 후에만 교사가 지정된다.
-- 최종 제출 성공 시 200이며 상태 및 이력은 DRAFT → ANALYZED. 최초 분석 후 수정하지 않은 경우에도 바로 제출할 수 있다.
+- 최초 민원 제출 성공 시 200이며 상태 및 이력은 DRAFT → OPEN, waitingFor는 TEACHER다. 최초 분석 후 수정하지 않은 경우에도 바로 제출할 수 있다.
 - 분석·수정·제출은 동일 민원 행의 비관적 쓰기 잠금으로 동시 실행을 직렬화한다. 현재 동기 처리이므로 AI 호출 동안 잠금이 유지된다.
 
 DB에는 risk_analyses의 original_content/completed/revision_reason/ai_revision 컬럼과 risk_analysis_expressions 테이블이 추가된다. 기존 분석에는 전체 재사용 응답이 없으므로 completed 기본값은 false이며 재사용·완료 횟수에서 제외된다. 기존 데이터를 유지하는 배포에서는 이 정책을 고려해 스키마를 반영해야 한다.
@@ -99,6 +127,8 @@ DB에는 risk_analyses의 original_content/completed/revision_reason/ai_revision
 | ComplaintNotFoundException | 404 | COMPLAINT_NOT_FOUND |
 | RiskAnalysisNotFoundException | 404 | RISK_ANALYSIS_NOT_FOUND |
 | ComplaintNotDraftException | 409 | COMPLAINT_NOT_DRAFT |
+| MessageNotEditableException | 409 | MESSAGE_NOT_EDITABLE |
+| MessageDraftNotFoundException | 404 | MESSAGE_DRAFT_NOT_FOUND |
 
 ```json
 {"status":"ERROR","code":"COMPLAINT_ACCESS_DENIED","message":"해당 민원에 접근할 권한이 없습니다.","timestamp":"2026-10-01T09:00:00+09:00","path":"/complaints/42/mask"}
@@ -175,10 +205,43 @@ DTO를 반환하는 기존 API의 응답은 유지한다. 빈 성공 응답을 �
 - GET `/complaints/{complaintId}/status`: 200, 기존 ComplaintResponse 사용.
 
 ```json
-{"complaintId":42,"status":"ANALYZED"}
+{"complaintId":42,"status":"OPEN"}
 ```
 
 상태 조회는 작성자만 가능하다. 인증 없음은 401, 다른 작성자의 민원은 403,
 없는 민원은 404다. 조회만 수행하며 분석이나 수정안을 생성하지 않는다.
-Postman에서는 생성 후 DRAFT, send 성공 후 ANALYZED를 조회하고,
+Postman에서는 생성 후 DRAFT, send 성공 후 OPEN을 조회하고,
 제출 이후 PATCH가 409 COMPLAINT_NOT_DRAFT로 차단되는지 확인한다.
+
+## 민원 대화 메시지 흐름
+
+민원 상태와 메시지 상태를 분리한다. 민원은 `DRAFT → OPEN → CLOSED`, 메시지는
+`DRAFT → SENT → READ` 흐름이며 `waitingFor`가 현재 작성 차례를 나타낸다.
+
+| 메서드 | 경로 | 동작 |
+|---|---|---|
+| GET | `/complaints/{complaintId}/messages` | 학부모용 전송 메시지 목록과 현재 차례 조회 |
+| PUT | `/complaints/{complaintId}/message-draft` | 학부모 추가 문의 초안 생성 또는 덮어쓰기 |
+| GET | `/complaints/{complaintId}/message-draft` | 학부모 추가 문의 임시저장 조회 |
+| POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 추가 문의 AI 위험 분석·수정 제안 생성 |
+| POST | `/complaints/{complaintId}/messages/{messageId}/send` | 분석된 추가 문의 전송 후 교사 차례로 변경 |
+| POST | `/complaints/{complaintId}/close` | 교사 답변 확인 후 민원 종료 |
+
+교사 답변 API 경로는 기존 값을 유지한다. AI 초안 생성 시 지금까지 전송된 전체 대화가
+입력 문맥이 되며, 임시저장과 최종 전송은 `complaint_messages`의 `TEACHER_REPLY` 행을
+사용한다. 교사 전송 후 민원은 계속 OPEN이고 `waitingFor=PARENT`가 된다. 따라서 학부모가
+추가 문의를 보내면 다시 `waitingFor=TEACHER`로 바뀌어 같은 분기 처리를 반복할 수 있다.
+
+AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/response/ai-draft`는
+`complaintId`, `content`, `modelName`, `generatedAt`만 반환한다. 교사 답변 임시저장 및 제출
+요청은 `{"content":"수정한 최종 답변"}`만 전달하며 `aiDraftId`는 사용하지 않는다.
+히스토리에는 초안 내용 대신 `AI_DRAFT_GENERATED` 이벤트만 저장한다.
+
+`GET /teacher/complaints/{complaintId}/messages`은 전송된 모든 메시지를 반환한다.
+학부모 메시지는 메시지별 최신 자동 위험 분석이 LOW일 때 원문을, LOW보다 높을 때 완충
+요약을 반환한다. 최초 민원과 후속 문의에 동일한 규칙을 적용한다. 교사 메시지는 원문을
+반환하고 임시저장 DRAFT는 대화 내역에서 제외한다.
+
+`GET /teacher/complaints/{complaintId}/history`는 `ComplaintEventType`과 함께
+`complaint_events`에 저장된 통합 이력을 발생 시각 역순으로 반환한다. 기존
+`complaint_status_history`, `complaint_original_view_logs` 테이블은 사용하지 않는다.

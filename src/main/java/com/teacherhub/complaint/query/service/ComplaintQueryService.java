@@ -3,16 +3,19 @@ package com.teacherhub.complaint.query.service;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.access.ComplaintAccessPolicy;
 import com.teacherhub.complaint.entity.Complaint;
-import com.teacherhub.complaint.entity.ComplaintStatus;
+import com.teacherhub.complaint.enums.MessageType;
+import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.exception.ComplaintAccessDeniedException;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.query.dto.ComplaintDetailResponse;
 import com.teacherhub.complaint.query.dto.ComplaintListResponse;
 import com.teacherhub.complaint.repository.ComplaintRepository;
-import com.teacherhub.complaint.repository.ComplaintStatusHistoryRepository;
+import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.teacher.provider.ComplaintSummaryProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
+import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.school.repository.StudentClassRepository;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.enums.UserRole;
@@ -29,8 +32,9 @@ import java.util.List;
 public class ComplaintQueryService {
 
     private final ComplaintRepository complaintRepository;
-    private final ComplaintStatusHistoryRepository statusHistoryRepository;
+    private final ComplaintMessageRepository messageRepository;
     private final RiskAnalysisRepository riskAnalysisRepository;
+    private final RiskReviewRepository riskReviewRepository;
     private final StudentClassRepository studentClassRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
@@ -71,6 +75,7 @@ public class ComplaintQueryService {
         return ComplaintDetailResponse.from(
                 complaint,
                 analysis,
+                latestReview(analysis),
                 true
         );
     }
@@ -84,10 +89,7 @@ public class ComplaintQueryService {
 
     private RiskAnalysis latestAnalysis(Complaint complaint) {
         return riskAnalysisRepository
-                .findFirstByComplaintIdAndContentVersionAndCompletedTrueOrderByIdDesc(
-                        complaint.getId(),
-                        complaint.getContentVersion()
-                )
+                .findFirstByComplaintIdAndCompletedTrueOrderByIdDesc(complaint.getId())
                 .orElse(null);
     }
 
@@ -96,26 +98,53 @@ public class ComplaintQueryService {
                 .findTopByStudent_IdOrderBySchoolClass_AcademicYearDesc(complaint.getStudent().getId())
                 .map(studentClass -> studentClass.getSchoolClass())
                 .orElse(null);
-        var latestReceivedAt = statusHistoryRepository
-                .findFirstByComplaintIdAndNewStatusOrderByChangedAtDesc(
+        var latestParentMessage = messageRepository
+                .findFirstByComplaintIdAndTypeAndStatusNotOrderByIdDesc(
                         complaint.getId(),
-                        ComplaintStatus.ANALYZED
-                )
-                .map(history -> history.getChangedAt())
+                        MessageType.PARENT_INQUIRY,
+                        MessageStatus.DRAFT
+                );
+        var latestReceivedAt = latestParentMessage
+                .map(message -> message.getSentAt())
                 .orElse(null);
+        RiskAnalysis analysis = latestAnalysisForList(complaint, viewerRole);
 
         return ComplaintListResponse.from(
                 complaint,
-                latestAnalysis(complaint),
+                analysis,
+                latestReview(analysis),
                 schoolClass,
                 complaintSummaryProvider.createSummary(
-                        complaint.getMaskedContent() == null
-                                ? complaint.getContent()
-                                : complaint.getMaskedContent()
+                        latestParentMessage
+                                .map(message -> message.getMaskedContent() == null
+                                        ? message.getContent()
+                                        : message.getMaskedContent())
+                                .orElse(complaint.getContent())
                 ),
                 latestReceivedAt,
                 viewerRole
         );
+    }
+
+    private RiskReview latestReview(RiskAnalysis analysis) {
+        if (analysis == null) {
+            return null;
+        }
+        return riskReviewRepository
+                .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(analysis.getId())
+                .orElse(null);
+    }
+
+    private RiskAnalysis latestAnalysisForList(Complaint complaint, UserRole viewerRole) {
+        if (viewerRole == UserRole.TEACHER) {
+            return riskAnalysisRepository
+                    .findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                            complaint.getId(),
+                            MessageStatus.DRAFT
+                    )
+                    .orElse(null);
+        }
+        return latestAnalysis(complaint);
     }
 
 }

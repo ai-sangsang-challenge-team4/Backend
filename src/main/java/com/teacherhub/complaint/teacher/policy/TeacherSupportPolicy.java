@@ -2,6 +2,7 @@ package com.teacherhub.complaint.teacher.policy;
 
 import com.teacherhub.complaint.teacher.dto.AllowedAction;
 import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.enums.RiskLevel;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -11,7 +12,11 @@ public class TeacherSupportPolicy {
 
     // 민원의 위험 수준에 따른 허용된 행동을 결정하는 정책
     public List<AllowedAction> allowedActions(RiskAnalysis analysis) {
-        return switch (analysis.getRiskLevel()) {
+        return allowedActions(analysis.getRiskLevel());
+    }
+
+    public List<AllowedAction> allowedActions(RiskLevel riskLevel) {
+        return switch (riskLevel) {
             case LOW, MEDIUM -> List.of(AllowedAction.USE_RESPONSE_TEMPLATE);
             case HIGH -> List.of(
                     AllowedAction.USE_RESPONSE_TEMPLATE,

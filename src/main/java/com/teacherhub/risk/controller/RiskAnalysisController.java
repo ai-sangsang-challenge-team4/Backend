@@ -47,6 +47,16 @@ public class RiskAnalysisController {
         return analysisService.analyze(userId(authentication), complaintId);
     }
 
+    @PostMapping("/complaints/{complaintId}/messages/{messageId}/risk-analysis")
+    @Operation(summary = "학부모 추가 문의 위험 분석 및 수정안 생성")
+    public RiskSummaryResponse analyzeMessage(
+            Authentication authentication,
+            @PathVariable Long complaintId,
+            @PathVariable Long messageId
+    ) {
+        return analysisService.analyzeMessage(userId(authentication), complaintId, messageId);
+    }
+
     @GetMapping("/risk-analyses/{analysisId}/findings")
     @Operation(summary = "감지된 위험 태그의 근거 및 수정 제안 조회")
     public RiskRevisionResponse findFindings(Authentication authentication, @PathVariable Long analysisId) {

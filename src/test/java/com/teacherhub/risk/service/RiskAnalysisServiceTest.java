@@ -2,6 +2,8 @@ package com.teacherhub.risk.service;
 
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.repository.ComplaintRepository;
+import com.teacherhub.complaint.repository.ComplaintMessageRepository;
+import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.analyzer.LlmRiskAnalyzer;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator;
@@ -30,6 +32,8 @@ import static org.mockito.Mockito.*;
 
 class RiskAnalysisServiceTest {
     private final ComplaintRepository repository = mock(ComplaintRepository.class);
+    private final ComplaintMessageRepository messages = mock(ComplaintMessageRepository.class);
+    private final ComplaintEventRepository events = mock(ComplaintEventRepository.class);
     private final PiiMaskingService masking = mock(PiiMaskingService.class);
     private final RuleBasedRiskDetector rules = mock(RuleBasedRiskDetector.class);
     private final LlmRiskAnalyzer llm = mock(LlmRiskAnalyzer.class);
@@ -39,7 +43,7 @@ class RiskAnalysisServiceTest {
     private final ComplaintRevisionGenerator revisions = mock(ComplaintRevisionGenerator.class);
     private final RiskEvaluator evaluator = new RiskEvaluator();
     private final RiskAnalysisService service = new RiskAnalysisService(
-            repository, masking, rules, llm, tags, analyses, detections, revisions, evaluator);
+            repository, messages, events, masking, rules, llm, tags, analyses, detections, revisions, evaluator);
 
     private Complaint draft() {
         User user = mock(User.class);
@@ -98,7 +102,7 @@ class RiskAnalysisServiceTest {
     @Test
     void rejectsThirdNewAnalysisBeforeCallingDetectors() {
         draft();
-        when(analyses.countByComplaintIdAndCompletedTrue(42L)).thenReturn(2L);
+        when(analyses.countByMessageIdAndCompletedTrue(isNull())).thenReturn(2L);
         assertThatThrownBy(() -> service.analyzeForSubmission(1L, 42L))
                 .isInstanceOf(com.teacherhub.complaint.exception.ReanalysisLimitException.class);
         verifyNoInteractions(rules, masking, llm, revisions);

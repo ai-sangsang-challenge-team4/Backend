@@ -53,11 +53,18 @@ class RiskAnalysisControllerTest {
                 .andExpect(jsonPath("$.originalContent").doesNotExist())
                 .andExpect(jsonPath("$.riskyExpressions").doesNotExist())
                 .andExpect(jsonPath("$.revision").doesNotExist());
+        when(review.analyzeMessage(7L, 10L, 30L)).thenReturn(new RiskSummaryResponse(
+                21L, 10L, 2, com.teacherhub.risk.enums.RiskLevel.MEDIUM));
+        mvc.perform(post("/complaints/10/messages/30/risk-analysis").principal(auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.analysisId").value(21))
+                .andExpect(jsonPath("$.riskLevel").value("MEDIUM"));
         mvc.perform(get("/risk-analyses/20/findings").principal(auth)).andExpect(status().isOk());
         mvc.perform(get("/risk-analyses/20/detector-results").principal(auth)).andExpect(status().isOk());
         verify(query).findFindings(7L, 20L);
         verify(query).findDetectorResults(7L, 20L);
         verify(review).analyze(7L, 10L);
+        verify(review).analyzeMessage(7L, 10L, 30L);
     }
 
     @Test

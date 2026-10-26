@@ -1,4 +1,4 @@
-package com.teacherhub.complaint.teacher.dto;
+package com.teacherhub.complaint.teacher.dto.query;
 
 import java.time.LocalDateTime;
 

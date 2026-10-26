@@ -5,10 +5,10 @@ import com.teacherhub.complaint.access.ComplaintAccessPolicy;
 import com.teacherhub.complaint.parent.dto.ComplaintRequest;
 import com.teacherhub.complaint.parent.dto.ComplaintResponse;
 import com.teacherhub.complaint.entity.Complaint;
-import com.teacherhub.complaint.entity.ComplaintStatus;
+import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.repository.ComplaintRepository;
-import com.teacherhub.complaint.repository.ComplaintStatusHistoryRepository;
-import com.teacherhub.complaint.entity.ComplaintStatusHistory;
+import com.teacherhub.complaint.repository.ComplaintEventRepository;
+import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.risk.service.RiskAnalysisService;
 import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.school.entity.StudentClass;
@@ -34,7 +34,7 @@ public class ComplaintService {
     private final UserRepository userRepository;
     private final ComplaintRepository complaintRepository;
     private final RiskAnalysisService riskAnalysisService;
-    private final ComplaintStatusHistoryRepository statusHistoryRepository;
+    private final ComplaintEventRepository eventRepository;
     private final ParentRepository parentRepository;
     private final StudentRepository studentRepository;
     private final ParentStudentRepository parentStudentRepository;
@@ -97,12 +97,13 @@ public class ComplaintService {
         );
 
         complaintRepository.save(complaint);
-        statusHistoryRepository.save(new ComplaintStatusHistory(
+        eventRepository.save(ComplaintEvent.statusChanged(
                 complaint, parent.getUser(), null, ComplaintStatus.DRAFT));
 
         return ComplaintResponse.builder()
                 .complaintId(complaint.getId())
                 .status(complaint.getStatus())
+                .waitingFor(complaint.getWaitingFor())
                 .build();
     }
 
@@ -117,6 +118,7 @@ public class ComplaintService {
         return ComplaintResponse.builder()
                 .complaintId(complaint.getId())
                 .status(complaint.getStatus())
+                .waitingFor(complaint.getWaitingFor())
                 .build();
     }
 
@@ -146,11 +148,6 @@ public class ComplaintService {
             );
         }
 
-
-        if (!java.util.Objects.equals(complaint.getContent(), request.getContent())
-                && complaint.getContentVersion() >= 2) {
-            throw new ComplaintEditLimitException();
-        }
 
         // ComplaintRequest의 content만 사용
         complaint.updateContent(
@@ -211,8 +208,13 @@ public class ComplaintService {
         // 최종 제출
         complaint.submit(teacher);
 
-        statusHistoryRepository.save(new ComplaintStatusHistory(
-                complaint, complaint.getParent().getUser(), ComplaintStatus.DRAFT, ComplaintStatus.ANALYZED));
+        eventRepository.save(ComplaintEvent.statusChanged(
+                complaint,
+                complaint.getParent().getUser(),
+                ComplaintStatus.DRAFT,
+                ComplaintStatus.OPEN
+        ));
+        eventRepository.save(ComplaintEvent.messageSent(complaint.initialMessage()));
     }
 
     private User findUser(Long userId) {
