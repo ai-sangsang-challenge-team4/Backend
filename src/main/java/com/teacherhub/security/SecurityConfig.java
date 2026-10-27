@@ -40,6 +40,7 @@ public class SecurityConfig {
                                 "/v3/api-docs/**"
                         ).permitAll()
                         .requestMatchers("/teacher/**").hasRole("TEACHER")
+                        .requestMatchers("/admin/**").hasRole("ADMIN")
                         .requestMatchers("/complaints", "/complaints/**", "/risk-analyses/**").hasRole("PARENT")
                         .anyRequest().authenticated()
                 )

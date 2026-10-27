@@ -40,7 +40,7 @@ public class ComplaintEvent {
     private String actorName;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
+    @Column(nullable = false, length = 50)
     private MessageEventType eventType;
 
     @Column(length = 40)
@@ -68,7 +68,7 @@ public class ComplaintEvent {
     @Column(length = 20)
     private RiskLevel previousRiskLevel;
 
-    @Column(length = 300)
+    @Column(length = 500)
     private String reason;
 
     @Column(nullable = false, updatable = false)
@@ -167,5 +167,31 @@ public class ComplaintEvent {
                 "COMPLAINT_MESSAGE",
                 message.getId()
         );
+    }
+
+    public static ComplaintEvent escalationChanged(
+            Complaint complaint,
+            User actor,
+            Long escalationId,
+            MessageEventType eventType,
+            String reason
+    ) {
+        if (eventType != MessageEventType.ESCALATION_SHARED
+                && eventType != MessageEventType.ESCALATION_REVIEW_STARTED
+                && eventType != MessageEventType.ESCALATION_RISK_CHANGE_REQUESTED
+                && eventType != MessageEventType.ESCALATION_RISK_CHANGE_APPROVED
+                && eventType != MessageEventType.ESCALATION_RISK_CHANGE_REJECTED
+                && eventType != MessageEventType.ESCALATION_COMPLETED) {
+            throw new IllegalArgumentException("관리자 공유 이벤트 타입이 아닙니다.");
+        }
+        ComplaintEvent event = new ComplaintEvent(
+                complaint,
+                actor,
+                eventType,
+                "COMPLAINT_ESCALATION",
+                escalationId
+        );
+        event.reason = reason;
+        return event;
     }
 }
