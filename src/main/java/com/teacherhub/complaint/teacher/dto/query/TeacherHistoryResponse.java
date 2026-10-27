@@ -1,5 +1,6 @@
 package com.teacherhub.complaint.teacher.dto.query;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.MessageEventType;
@@ -24,6 +25,7 @@ public record TeacherHistoryResponse(
     }
 
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record HistoryEvent(
             String eventId,
             MessageEventType type,

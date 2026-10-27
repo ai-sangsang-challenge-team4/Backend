@@ -17,6 +17,12 @@ public enum MessageEventType {
     ESCALATION_SHARED,
     // 관리자 검토 시작
     ESCALATION_REVIEW_STARTED,
+    // 교사의 EMERGENCY 위험도 변경 요청
+    ESCALATION_RISK_CHANGE_REQUESTED,
+    // EMERGENCY 위험도 변경 승인
+    ESCALATION_RISK_CHANGE_APPROVED,
+    // EMERGENCY 위험도 변경 거부
+    ESCALATION_RISK_CHANGE_REJECTED,
     // 관리자 처리 완료
     ESCALATION_COMPLETED
 }

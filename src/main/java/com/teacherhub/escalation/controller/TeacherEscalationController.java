@@ -1,7 +1,7 @@
 package com.teacherhub.escalation.controller;
 
 import com.teacherhub.common.exception.UnauthorizedException;
-import com.teacherhub.escalation.dto.EscalationResponse;
+import com.teacherhub.escalation.dto.EscalationStateResponse;
 import com.teacherhub.escalation.dto.ShareEscalationRequest;
 import com.teacherhub.escalation.service.TeacherEscalationService;
 import com.teacherhub.user.repository.UserRepository;
@@ -14,27 +14,27 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping({
-        "/teacher/complaints/{complaintId}/escalation",
-        "/teacher/complaints/{complaintId}/escalations"
-})
+@RequestMapping("/teacher/complaints/{complaintId}/escalation")
 public class TeacherEscalationController {
 
     private final TeacherEscalationService escalationService;
     private final UserRepository userRepository;
 
+    // 관리자에게 공유
     @PostMapping
-    public ResponseEntity<EscalationResponse> share(
+    public ResponseEntity<String> share(
             Authentication authentication,
             @PathVariable Long complaintId,
             @Valid @RequestBody ShareEscalationRequest request
     ) {
+        escalationService.share(userId(authentication), complaintId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(escalationService.share(userId(authentication), complaintId, request));
+                .body("공유 요청이 성공적으로 전송되었습니다.");
     }
 
+    // 공유 상태 조회
     @GetMapping
-    public ResponseEntity<EscalationResponse> findStatus(
+    public ResponseEntity<EscalationStateResponse> findStatus(
             Authentication authentication,
             @PathVariable Long complaintId
     ) {

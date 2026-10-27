@@ -6,7 +6,8 @@ import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
-import com.teacherhub.escalation.dto.EscalationResponse;
+import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
+import com.teacherhub.escalation.dto.EscalationStateResponse;
 import com.teacherhub.escalation.dto.ShareEscalationRequest;
 import com.teacherhub.escalation.entity.ComplaintEscalation;
 import com.teacherhub.escalation.enums.EscalationScope;
@@ -44,9 +45,14 @@ public class TeacherEscalationService {
     private final ComplaintEventRepository eventRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
+    private final TeacherRiskScale teacherRiskScale;
 
     @Transactional
-    public EscalationResponse share(Long userId, Long complaintId, ShareEscalationRequest request) {
+    public EscalationStateResponse share(
+            Long userId,
+            Long complaintId,
+            ShareEscalationRequest request
+    ) {
         User teacherUser = findUser(userId);
         Complaint complaint = complaintRepository.findForUpdate(complaintId)
                 .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
@@ -62,7 +68,7 @@ public class TeacherEscalationService {
                 .orElse(null);
         if (existing != null) {
             if (existing.matches(admin, scopes, reason)) {
-                return EscalationResponse.from(existing);
+                return stateResponse(existing);
             }
             throw new EscalationNotAllowedException("이미 다른 내용으로 공유된 민원입니다.");
         }
@@ -82,18 +88,31 @@ public class TeacherEscalationService {
                 MessageEventType.ESCALATION_SHARED,
                 reason
         ));
-        return EscalationResponse.from(saved);
+        return stateResponse(saved);
     }
 
-    public EscalationResponse findStatus(Long userId, Long complaintId) {
+    public EscalationStateResponse findStatus(Long userId, Long complaintId) {
         User teacherUser = findUser(userId);
         Complaint complaint = complaintRepository.findDetailById(complaintId)
                 .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
         complaintAccessPolicy.validateAssignedTeacher(teacherUser, complaint);
 
         return escalationRepository.findByComplaintId(complaintId)
-                .map(EscalationResponse::from)
-                .orElseGet(() -> EscalationResponse.notShared(complaintId));
+                .map(this::stateResponse)
+                .orElseGet(EscalationStateResponse::notShared);
+    }
+
+    private EscalationStateResponse stateResponse(ComplaintEscalation escalation) {
+        RiskReview latestReview = riskReviewRepository
+                .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(
+                        escalation.getRiskAnalysis().getId()
+                )
+                .orElse(null);
+        return EscalationStateResponse.from(
+                escalation,
+                latestReview,
+                teacherRiskScale.initialScoreFor(escalation.getRiskAnalysis().getRiskLevel())
+        );
     }
 
     private RiskAnalysis requireEmergencyAnalysis(Long complaintId) {

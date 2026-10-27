@@ -13,8 +13,8 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest;
 import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.risk.entity.RiskAnalysis;
-import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.escalation.enums.RiskReviewStatus;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.user.entity.Teacher;
@@ -24,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -97,12 +98,14 @@ class TeacherRiskReviewServiceTest {
     }
 
     @Test
-    void emergencyRiskCanChangeAfterAdminCompletedApproval() {
+    void emergencyRiskChangeCreatesPendingAdminApprovalRequest() {
         ComplaintEscalation escalation = mock(ComplaintEscalation.class);
-        when(escalation.hasApprovedRiskChange()).thenReturn(true);
         when(escalation.getRiskAnalysis()).thenReturn(analysis);
+        when(escalation.getId()).thenReturn(200L);
+        when(escalation.getRiskChangeRequestedAt())
+                .thenReturn(LocalDateTime.of(2026, 10, 27, 14, 0));
         when(escalationRepository.findByComplaintId(42L)).thenReturn(Optional.of(escalation));
-        when(riskReviewRepository.save(any(RiskReview.class)))
+        when(escalationRepository.saveAndFlush(escalation))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(eventRepository.save(any(ComplaintEvent.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -110,11 +113,20 @@ class TeacherRiskReviewServiceTest {
         var response = service.review(
                 10L,
                 42L,
-                new TeacherRiskReviewRequest(5, "관리자 검토 완료 후 하향")
+                new TeacherRiskReviewRequest(5, "위험도 하향 요청")
         );
 
         assertThat(response.previousLevel()).isEqualTo(RiskLevel.EMERGENCY);
         assertThat(response.riskLevel()).isEqualTo(RiskLevel.HIGH);
-        verify(riskReviewRepository).save(any(RiskReview.class));
+        assertThat(response.status()).isEqualTo(RiskReviewStatus.PENDING_ADMIN_APPROVAL);
+        assertThat(response.riskReviewId()).isNull();
+        verify(escalation).requestRiskChange(
+                7,
+                RiskLevel.EMERGENCY,
+                5,
+                RiskLevel.HIGH,
+                "위험도 하향 요청"
+        );
+        verify(riskReviewRepository, never()).save(any());
     }
 }

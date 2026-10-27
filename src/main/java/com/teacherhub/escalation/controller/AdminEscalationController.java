@@ -3,10 +3,11 @@ package com.teacherhub.escalation.controller;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
-import com.teacherhub.escalation.dto.CompleteEscalationRequest;
-import com.teacherhub.escalation.dto.EscalationResponse;
+import com.teacherhub.escalation.dto.EscalationMessageRequest;
+import com.teacherhub.escalation.dto.EscalationStateResponse;
+import com.teacherhub.escalation.dto.AdminEscalationSummaryResponse;
 import com.teacherhub.escalation.dto.EscalationShareContentResponse;
-import com.teacherhub.escalation.dto.StartEscalationReviewRequest;
+import com.teacherhub.escalation.dto.RiskChangeDecisionRequest;
 import com.teacherhub.escalation.service.AdminEscalationService;
 import com.teacherhub.escalation.enums.EscalationStatus;
 import com.teacherhub.risk.enums.RiskLevel;
@@ -27,9 +28,9 @@ public class AdminEscalationController {
     private final AdminEscalationService escalationService;
     private final UserRepository userRepository;
 
-    // 공유 받은 메세지 조회
+    // 공유 받은 메세지 목록 조회
     @GetMapping
-    public ResponseEntity<List<EscalationResponse>> findAll(
+    public ResponseEntity<List<AdminEscalationSummaryResponse>> findAll(
             Authentication authentication,
             @RequestParam(required = false) EscalationStatus status,
             @RequestParam(required = false) RiskLevel riskLevel
@@ -43,7 +44,7 @@ public class AdminEscalationController {
 
     // 공유 메세지 상세 조회 (상단 정보, 처리 상태)
     @GetMapping("/{escalationId}")
-    public ResponseEntity<EscalationResponse> findOne(
+    public ResponseEntity<AdminEscalationSummaryResponse> findOne(
             Authentication authentication,
             @PathVariable Long escalationId
     ) {
@@ -83,24 +84,36 @@ public class AdminEscalationController {
         );
     }
 
-    // 처리 메모 작성
+    // 관리자 검토 시작 (검토 메세지 작성)
     @PostMapping("/{escalationId}/review")
-    public ResponseEntity<EscalationResponse> startReview(
+    public ResponseEntity<EscalationStateResponse> startReview(
             Authentication authentication,
             @PathVariable Long escalationId,
-            @Valid @RequestBody StartEscalationReviewRequest request
+            @Valid @RequestBody EscalationMessageRequest request
     ) {
         return ResponseEntity.ok(
                 escalationService.startReview(userId(authentication), escalationId, request)
         );
     }
 
-    // 처리 완료
-    @PostMapping("/{escalationId}/complete")
-    public ResponseEntity<EscalationResponse> complete(
+    // EMERGENCY 위험도 변경 승인·거부
+    @PostMapping("/{escalationId}/risk-change-decision")
+    public ResponseEntity<EscalationStateResponse> decideRiskChange(
             Authentication authentication,
             @PathVariable Long escalationId,
-            @Valid @RequestBody CompleteEscalationRequest request
+            @Valid @RequestBody RiskChangeDecisionRequest request
+    ) {
+        return ResponseEntity.ok(
+                escalationService.decideRiskChange(userId(authentication), escalationId, request)
+        );
+    }
+
+    // 관리자 검토 완료
+    @PostMapping("/{escalationId}/complete")
+    public ResponseEntity<EscalationStateResponse> complete(
+            Authentication authentication,
+            @PathVariable Long escalationId,
+            @Valid @RequestBody EscalationMessageRequest request
     ) {
         return ResponseEntity.ok(
                 escalationService.complete(userId(authentication), escalationId, request)

@@ -57,7 +57,7 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.CONFLICT, "ESCALATION_STATE_INVALID", e, request);
     }
 
-    @ExceptionHandler({EscalationVersionConflictException.class, OptimisticLockingFailureException.class})
+    @ExceptionHandler(OptimisticLockingFailureException.class)
     public ResponseEntity<ErrorResponse> handleEscalationVersionConflict(RuntimeException e, HttpServletRequest request) {
         return error(HttpStatus.CONFLICT, "ESCALATION_VERSION_CONFLICT", e, request);
     }

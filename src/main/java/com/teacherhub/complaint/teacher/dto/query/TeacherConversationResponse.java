@@ -28,8 +28,11 @@ public record TeacherConversationResponse(
         List<Message> messages = sourceMessages.stream()
                 .map(message -> Message.from(
                         message,
-                        bufferedSummaries.get(message.getId()),
-                        submittedAt
+                        bufferedSummaries.get(message.getId()) == null
+                                ? message.getContent()
+                                : bufferedSummaries.get(message.getId()),
+                        submittedAt,
+                        bufferedSummaries.get(message.getId()) != null
                 ))
                 .sorted(Comparator.comparing(Message::sentAt))
                 .toList();
@@ -45,19 +48,19 @@ public record TeacherConversationResponse(
             LocalDateTime sentAt,
             boolean summarized
     ) {
-        private static Message from(
+        public static Message from(
                 ComplaintMessage message,
-                String initialSummary,
-                LocalDateTime initialSubmittedAt
+                String content,
+                LocalDateTime initialSubmittedAt,
+                boolean summarized
         ) {
-            boolean summarized = initialSummary != null;
             return new Message(
                     "message:" + message.getId(),
                     message.getType() == MessageType.PARENT_INQUIRY
                             ? UserRole.PARENT
                             : UserRole.TEACHER,
                     message.getSender().getName(),
-                    summarized ? initialSummary : message.getContent(),
+                    content,
                     message.getSentAt() == null
                             ? initialSubmittedAt
                             : message.getSentAt(),

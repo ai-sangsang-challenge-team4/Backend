@@ -5,6 +5,7 @@ import com.teacherhub.complaint.access.ComplaintAccessPolicy;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.complaint.enums.ComplaintStatus;
+import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.escalation.entity.ComplaintEscalation;
@@ -82,23 +83,49 @@ public class TeacherRiskReviewService {
         RiskReviewDirection direction = direction(previousScore, request.riskScore());
         String reason = normalizeReason(request.reason());
 
-        if (previousLevel == RiskLevel.EMERGENCY && request.riskScore() != previousScore) {
-            ComplaintEscalation escalation = escalationRepository.findByComplaintId(complaintId)
-                    .orElseThrow(() -> new AdminApprovalRequiredException(
-                            "EMERGENCY 위험도를 수정하려면 관리자 승인이 필요합니다."
-                    ));
-            if (!escalation.getRiskAnalysis().getId().equals(analysis.getId())
-                    || !escalation.hasApprovedRiskChange()) {
-                throw new AdminApprovalRequiredException(
-                        "EMERGENCY 위험도를 수정하려면 완료된 관리자 승인이 필요합니다."
-                );
-            }
-        }
-
         // 하향 조정에 대한 검토 사유가 없는 경우
         if (direction == RiskReviewDirection.LOWERED && reason == null) {
             throw new RiskReviewReasonRequiredException(
                     "위험도를 하향 조정할 때는 검토 사유가 필요합니다."
+            );
+        }
+
+        if (previousLevel == RiskLevel.EMERGENCY && request.riskScore() != previousScore) {
+            ComplaintEscalation escalation = escalationRepository.findByComplaintId(complaintId)
+                    .orElseThrow(() -> new AdminApprovalRequiredException(
+                            "EMERGENCY 위험도 변경을 요청하려면 먼저 관리자에게 공유해야 합니다."
+                    ));
+            if (!escalation.getRiskAnalysis().getId().equals(analysis.getId())) {
+                throw new AdminApprovalRequiredException(
+                        "현재 위험 분석에 연결된 관리자 공유 건이 필요합니다."
+                );
+            }
+            escalation.requestRiskChange(
+                    previousScore,
+                    previousLevel,
+                    request.riskScore(),
+                    reviewedLevel,
+                    reason
+            );
+            ComplaintEscalation saved = escalationRepository.saveAndFlush(escalation);
+            eventRepository.save(ComplaintEvent.escalationChanged(
+                    complaint,
+                    user,
+                    saved.getId(),
+                    MessageEventType.ESCALATION_RISK_CHANGE_REQUESTED,
+                    reason
+            ));
+            return TeacherRiskReviewResponse.pendingApproval(
+                    complaint.getId(),
+                    analysis.getId(),
+                    previousScore,
+                    previousLevel,
+                    request.riskScore(),
+                    reviewedLevel,
+                    direction,
+                    reason,
+                    user.getName(),
+                    saved.getRiskChangeRequestedAt()
             );
         }
 

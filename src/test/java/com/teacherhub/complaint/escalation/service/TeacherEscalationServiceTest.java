@@ -12,6 +12,7 @@ import com.teacherhub.escalation.exception.EscalationReasonRequiredException;
 import com.teacherhub.escalation.repository.ComplaintEscalationRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
+import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.escalation.service.TeacherEscalationService;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.enums.RiskLevel;
@@ -41,6 +42,7 @@ class TeacherEscalationServiceTest {
     private final ComplaintEventRepository eventRepository = mock(ComplaintEventRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
     private final ComplaintAccessPolicy accessPolicy = mock(ComplaintAccessPolicy.class);
+    private final TeacherRiskScale teacherRiskScale = mock(TeacherRiskScale.class);
     private final TeacherEscalationService service = new TeacherEscalationService(
             complaintRepository,
             escalationRepository,
@@ -48,7 +50,8 @@ class TeacherEscalationServiceTest {
             riskReviewRepository,
             eventRepository,
             userRepository,
-            accessPolicy
+            accessPolicy,
+            teacherRiskScale
     );
 
     private User teacherUser;
@@ -81,6 +84,7 @@ class TeacherEscalationServiceTest {
         when(complaint.getTeacher()).thenReturn(teacher);
         when(analysis.getId()).thenReturn(100L);
         when(analysis.getRiskLevel()).thenReturn(RiskLevel.EMERGENCY);
+        when(teacherRiskScale.initialScoreFor(RiskLevel.EMERGENCY)).thenReturn(7);
 
         when(userRepository.findById(10L)).thenReturn(Optional.of(teacherUser));
         when(userRepository.findById(20L)).thenReturn(Optional.of(admin));
@@ -100,8 +104,7 @@ class TeacherEscalationServiceTest {
         var response = service.share(10L, 42L, request);
 
         assertThat(response.escalationStatus()).isEqualTo(EscalationStatus.SHARED);
-        assertThat(response.adminId()).isEqualTo(20L);
-        assertThat(response.reason()).isEqualTo("긴급 대응 지원이 필요합니다.");
+        assertThat(response.currentRiskLevel()).isEqualTo(RiskLevel.EMERGENCY);
         verify(escalationRepository).saveAndFlush(any(ComplaintEscalation.class));
         verify(eventRepository).save(any(ComplaintEvent.class));
     }

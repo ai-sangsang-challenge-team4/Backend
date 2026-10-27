@@ -1,26 +1,32 @@
 package com.teacherhub.escalation.service;
 
 import com.teacherhub.common.exception.UnauthorizedException;
-import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.complaint.entity.ComplaintEvent;
+import com.teacherhub.complaint.entity.ComplaintMessage;
+import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
+import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
 import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
-import com.teacherhub.escalation.dto.CompleteEscalationRequest;
-import com.teacherhub.escalation.dto.EscalationResponse;
+import com.teacherhub.escalation.dto.EscalationMessageRequest;
+import com.teacherhub.escalation.dto.EscalationStateResponse;
+import com.teacherhub.escalation.dto.AdminEscalationSummaryResponse;
 import com.teacherhub.escalation.dto.EscalationShareContentResponse;
-import com.teacherhub.escalation.dto.StartEscalationReviewRequest;
+import com.teacherhub.escalation.dto.RiskChangeDecisionRequest;
 import com.teacherhub.escalation.entity.ComplaintEscalation;
 import com.teacherhub.escalation.exception.EscalationAccessDeniedException;
 import com.teacherhub.escalation.exception.EscalationNotFoundException;
-import com.teacherhub.escalation.exception.EscalationVersionConflictException;
+import com.teacherhub.escalation.exception.EscalationStateException;
 import com.teacherhub.escalation.repository.ComplaintEscalationRepository;
 import com.teacherhub.escalation.enums.EscalationStatus;
+import com.teacherhub.escalation.enums.EscalationScope;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.enums.RiskReviewDirection;
+import com.teacherhub.escalation.enums.RiskReviewStatus;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
@@ -33,6 +39,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -48,39 +55,62 @@ public class AdminEscalationService {
     private final TeacherRiskScale teacherRiskScale;
     private final PiiMaskingService piiMaskingService;
 
-    public List<EscalationResponse> findAll(
+    public List<AdminEscalationSummaryResponse> findAll(
             Long userId,
             EscalationStatus status,
             RiskLevel riskLevel
     ) {
         User admin = findAdmin(userId);
         return escalationRepository.findByAssignedAdminIdOrderBySharedAtDesc(admin.getId()).stream()
-                .filter(escalation -> status == null || escalation.getStatus() == status)
-                .filter(escalation -> riskLevel == null
-                        || escalation.getRiskAnalysis().getRiskLevel() == riskLevel)
-                .map(EscalationResponse::from)
+                .map(this::summaryResponse)
+                .filter(response -> status == null || response.escalationStatus() == status)
+                .filter(response -> riskLevel == null || response.currentRiskLevel() == riskLevel)
                 .toList();
     }
 
-    public EscalationResponse findOne(Long userId, Long escalationId) {
+    public AdminEscalationSummaryResponse findOne(Long userId, Long escalationId) {
         User admin = findAdmin(userId);
-        return EscalationResponse.from(findAssigned(escalationId, admin));
+        return summaryResponse(findAssigned(escalationId, admin));
     }
 
     // 공유 내용 탭
     public EscalationShareContentResponse findMessages(Long userId, Long escalationId) {
         User admin = findAdmin(userId);
         ComplaintEscalation escalation = findAssigned(escalationId, admin);
-        List<ComplaintMessage> messages = messageRepository
+        List<ComplaintMessage> sourceMessages = messageRepository
                 .findByComplaintIdAndStatusNotOrderByIdAsc(
                         escalation.getComplaint().getId(),
                         MessageStatus.DRAFT
                 );
+        LocalDateTime submittedAt = submittedAt(escalation);
+        List<TeacherConversationResponse.Message> maskedMessages =
+                escalation.getScopes().contains(EscalationScope.MASKING_MESSAGES)
+                        ? sourceMessages.stream()
+                        .map(message -> TeacherConversationResponse.Message.from(
+                                message,
+                                maskedContent(message),
+                                submittedAt,
+                                false
+                        ))
+                        .toList()
+                        : List.of();
+        List<TeacherConversationResponse.Message> originalMessages =
+                escalation.getScopes().contains(EscalationScope.ORIGINAL_MESSAGES)
+                        ? sourceMessages.stream()
+                        .map(message -> TeacherConversationResponse.Message.from(
+                                message,
+                                message.getContent(),
+                                submittedAt,
+                                false
+                        ))
+                        .toList()
+                        : List.of();
 
-        return EscalationShareContentResponse.from(
-                escalation,
-                messages,
-                this::maskedContent
+        return new EscalationShareContentResponse(
+                escalation.getReason(),
+                maskedMessages,
+                originalMessages,
+                escalation.getScopes().contains(EscalationScope.MEDIATION_PACKAGE)
         );
     }
 
@@ -89,11 +119,7 @@ public class AdminEscalationService {
         User admin = findAdmin(userId);
         ComplaintEscalation escalation = findAssigned(escalationId, admin);
 
-        RiskReview latestReview = riskReviewRepository
-                .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(
-                        escalation.getRiskAnalysis().getId()
-                )
-                .orElse(null);
+        RiskReview latestReview = latestReview(escalation);
 
         return TeacherRiskResponse.from(
                 escalation.getRiskAnalysis(),
@@ -117,45 +143,163 @@ public class AdminEscalationService {
     }
 
     @Transactional
-    public EscalationResponse startReview(
+    public EscalationStateResponse startReview(
             Long userId,
             Long escalationId,
-            StartEscalationReviewRequest request
+            EscalationMessageRequest request
     ) {
         User admin = findAdmin(userId);
         ComplaintEscalation escalation = findAssigned(escalationId, admin);
-        validateVersion(escalation, request.version());
-        escalation.startReview();
+        escalation.startReview(request.message());
         ComplaintEscalation saved = escalationRepository.saveAndFlush(escalation);
         eventRepository.save(ComplaintEvent.escalationChanged(
                 saved.getComplaint(),
                 admin,
                 saved.getId(),
                 MessageEventType.ESCALATION_REVIEW_STARTED,
-                "관리자 검토를 시작했습니다."
+                saved.getReviewMemo() == null
+                        ? "관리자 검토를 시작했습니다."
+                        : saved.getReviewMemo()
         ));
-        return EscalationResponse.from(saved);
+        return stateResponse(saved);
     }
 
     @Transactional
-    public EscalationResponse complete(
+    public EscalationStateResponse complete(
             Long userId,
             Long escalationId,
-            CompleteEscalationRequest request
+            EscalationMessageRequest request
     ) {
         User admin = findAdmin(userId);
         ComplaintEscalation escalation = findAssigned(escalationId, admin);
-        validateVersion(escalation, request.version());
-        escalation.complete(request.result().trim());
+        escalation.complete(request.message().trim());
         ComplaintEscalation saved = escalationRepository.saveAndFlush(escalation);
         eventRepository.save(ComplaintEvent.escalationChanged(
                 saved.getComplaint(),
                 admin,
                 saved.getId(),
                 MessageEventType.ESCALATION_COMPLETED,
-                request.result().trim()
+                request.message().trim()
         ));
-        return EscalationResponse.from(saved);
+        return stateResponse(saved);
+    }
+
+    @Transactional
+    public EscalationStateResponse decideRiskChange(
+            Long userId,
+            Long escalationId,
+            RiskChangeDecisionRequest request
+    ) {
+        User admin = findAdmin(userId);
+        ComplaintEscalation escalation = findAssigned(escalationId, admin);
+        return switch (request.status()) {
+            case APPLIED -> approveRiskChange(escalation, admin, request.message());
+            case REJECTED -> rejectRiskChange(escalation, admin, request.message());
+            case PENDING_ADMIN_APPROVAL -> throw new EscalationStateException(
+                    "승인 대기 상태는 관리자가 결정할 수 없습니다."
+            );
+        };
+    }
+
+    private EscalationStateResponse rejectRiskChange(
+            ComplaintEscalation escalation,
+            User admin,
+            String message
+    ) {
+        if (escalation.getRiskReviewStatus() == RiskReviewStatus.REJECTED) {
+            return stateResponse(escalation);
+        }
+
+        escalation.rejectRiskChange();
+        ComplaintEscalation saved = escalationRepository.saveAndFlush(escalation);
+        eventRepository.save(ComplaintEvent.escalationChanged(
+                saved.getComplaint(),
+                admin,
+                saved.getId(),
+                MessageEventType.ESCALATION_RISK_CHANGE_REJECTED,
+                message.trim()
+        ));
+        return stateResponse(saved);
+    }
+
+    private EscalationStateResponse approveRiskChange(
+            ComplaintEscalation escalation,
+            User admin,
+            String message
+    ) {
+        if (escalation.getRiskReviewStatus() == RiskReviewStatus.APPLIED) {
+            return stateResponse(escalation);
+        }
+
+        escalation.approveRiskChange();
+        ComplaintEscalation saved = escalationRepository.saveAndFlush(escalation);
+        RiskReview review = riskReviewRepository.save(new RiskReview(
+                saved.getRiskAnalysis(),
+                saved.getSharedBy(),
+                saved.getRequestedPreviousRiskScore(),
+                saved.getRequestedPreviousRiskLevel(),
+                saved.getRequestedRiskScore(),
+                saved.getRequestedRiskLevel(),
+                direction(saved.getRequestedPreviousRiskScore(), saved.getRequestedRiskScore()),
+                saved.getRiskChangeReason()
+        ));
+        eventRepository.save(ComplaintEvent.riskReviewed(
+                saved.getComplaint(),
+                saved.getSharedBy().getUser(),
+                review.getId(),
+                review.getPreviousScore(),
+                review.getPreviousLevel(),
+                review.getReviewedScore(),
+                review.getReviewedLevel(),
+                review.getReason()
+        ));
+        eventRepository.save(ComplaintEvent.escalationChanged(
+                saved.getComplaint(),
+                admin,
+                saved.getId(),
+                MessageEventType.ESCALATION_RISK_CHANGE_APPROVED,
+                message.trim()
+        ));
+        return EscalationStateResponse.from(
+                saved,
+                review,
+                teacherRiskScale.initialScoreFor(saved.getRiskAnalysis().getRiskLevel())
+        );
+    }
+
+    private AdminEscalationSummaryResponse summaryResponse(ComplaintEscalation escalation) {
+        RiskReview latestReview = latestReview(escalation);
+        return AdminEscalationSummaryResponse.from(
+                escalation,
+                latestReview
+        );
+    }
+
+    private EscalationStateResponse stateResponse(ComplaintEscalation escalation) {
+        RiskReview latestReview = latestReview(escalation);
+        return EscalationStateResponse.from(
+                escalation,
+                latestReview,
+                teacherRiskScale.initialScoreFor(escalation.getRiskAnalysis().getRiskLevel())
+        );
+    }
+
+    private RiskReview latestReview(ComplaintEscalation escalation) {
+        return riskReviewRepository
+                .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(
+                        escalation.getRiskAnalysis().getId()
+                )
+                .orElse(null);
+    }
+
+    private RiskReviewDirection direction(int previousScore, int requestedScore) {
+        if (requestedScore < previousScore) {
+            return RiskReviewDirection.LOWERED;
+        }
+        if (requestedScore > previousScore) {
+            return RiskReviewDirection.RAISED;
+        }
+        return RiskReviewDirection.UNCHANGED;
     }
 
     private ComplaintEscalation findAssigned(Long escalationId, User admin) {
@@ -176,12 +320,15 @@ public class AdminEscalationService {
         return user;
     }
 
-    private void validateVersion(ComplaintEscalation escalation, Long requestedVersion) {
-        if (!escalation.getVersion().equals(requestedVersion)) {
-            throw new EscalationVersionConflictException(
-                    "공유 건이 다른 요청에 의해 수정되었습니다. 최신 상태를 다시 조회해주세요."
-            );
-        }
+    private LocalDateTime submittedAt(ComplaintEscalation escalation) {
+        return eventRepository
+                .findFirstByComplaintIdAndEventTypeAndNewStatusOrderByOccurredAtDescIdDesc(
+                        escalation.getComplaint().getId(),
+                        MessageEventType.STATUS_CHANGED,
+                        ComplaintStatus.OPEN
+                )
+                .map(ComplaintEvent::getOccurredAt)
+                .orElseThrow(() -> new IllegalStateException("민원 제출 이력을 찾을 수 없습니다."));
     }
 
     private String maskedContent(ComplaintMessage message) {
@@ -190,4 +337,5 @@ public class AdminEscalationService {
         }
         return piiMaskingService.mask(message.getContent());
     }
+
 }

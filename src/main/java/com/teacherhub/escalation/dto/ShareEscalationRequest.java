@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 
 import java.util.Set;
 
+// 공유 요청
 public record ShareEscalationRequest(
         Long adminId,
 

@@ -178,6 +178,9 @@ public class ComplaintEvent {
     ) {
         if (eventType != MessageEventType.ESCALATION_SHARED
                 && eventType != MessageEventType.ESCALATION_REVIEW_STARTED
+                && eventType != MessageEventType.ESCALATION_RISK_CHANGE_REQUESTED
+                && eventType != MessageEventType.ESCALATION_RISK_CHANGE_APPROVED
+                && eventType != MessageEventType.ESCALATION_RISK_CHANGE_REJECTED
                 && eventType != MessageEventType.ESCALATION_COMPLETED) {
             throw new IllegalArgumentException("관리자 공유 이벤트 타입이 아닙니다.");
         }
