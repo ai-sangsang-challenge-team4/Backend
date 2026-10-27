@@ -8,6 +8,7 @@ import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.complaint.enums.MessageType;
 import com.teacherhub.complaint.enums.ComplaintStatus;
+import com.teacherhub.complaint.exception.ComplaintAccessDeniedException;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
@@ -149,6 +150,9 @@ public class TeacherComplaintQueryService {
         Complaint complaint = complaintRepository.findDetailById(complaintId)
                 .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
         complaintAccessPolicy.validateAssignedTeacher(user, complaint);
+        if (complaint.getStatus() == ComplaintStatus.DRAFT) {
+            throw new ComplaintAccessDeniedException("제출되지 않은 민원은 교사가 조회할 수 없습니다.");
+        }
         return complaint;
     }
 

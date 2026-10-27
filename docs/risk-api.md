@@ -205,8 +205,10 @@ API 응답 구조를 유지하면서 보조 타입을 사용하는 클래스 안
 
 DTO를 반환하는 기존 API의 응답은 유지한다. 빈 성공 응답을 반환하던 민원 수정·제출 API는 JSON 메시지를 반환한다.
 
+- GET `/complaints/recipients?studentId={studentId}`: 학생의 최신 학급에 배정된 문의 가능 교사 목록을 반환한다.
+- POST `/complaints`: `ComplaintCreateRequest`(`studentId`, `teacherId`, `title`, `content`)로 최초 초안을 생성한다. 선택한 교사는 해당 학생의 담당 교사여야 한다.
 - PATCH `/complaints/{complaintId}`: 200, `{"message":"민원 내용이 수정되었습니다."}`.
-  기존 204에서 200으로 변경했다. 요청 본문은 기존 ComplaintRequest를 사용한다.
+  기존 204에서 200으로 변경했다. 요청 본문은 `ComplaintDraftUpdateRequest`(`content`)를 사용한다.
 - POST `/complaints/{complaintId}/send`: 200, `{"message":"민원이 제출되었습니다."}`.
   요청 본문은 없다.
 - GET `/complaints/{complaintId}/status`: 200, 기존 ComplaintResponse 사용.
@@ -219,6 +221,34 @@ DTO를 반환하는 기존 API의 응답은 유지한다. 빈 성공 응답을 �
 없는 민원은 404다. 조회만 수행하며 분석이나 수정안을 생성하지 않는다.
 Postman에서는 생성 후 DRAFT, send 성공 후 OPEN을 조회하고,
 제출 이후 PATCH가 409 COMPLAINT_NOT_DRAFT로 차단되는지 확인한다.
+
+## 민원 목록 검색·필터·페이지네이션
+
+학부모 `GET /complaints`와 교사 `GET /teacher/complaints`는 동일한 조회 조건을 사용한다.
+
+| 쿼리 파라미터 | 기본값 | 설명 |
+|---|---|---|
+| `page` | `0` | 0부터 시작하는 페이지 번호 |
+| `keyword` | 없음 | 제목·학생명·상대방 이름·메시지 내용 통합 검색 |
+| `status` | 없음 | `DRAFT`, `OPEN`, `CLOSED` |
+| `riskLevel` | 없음 | `LOW`, `MEDIUM`, `HIGH`, `EMERGENCY` |
+| `sort` | `LATEST` | `LATEST`(최근 활동순), `OLDEST`(오래된순) |
+
+페이지 크기는 10개로 고정하며 클라이언트가 `size`를 변경할 수 없다. 교사 목록과 검색에서는 제출되지 않은 민원과 DRAFT 메시지를 제외한다. `riskLevel`은 최신 완료 분석에 최신 교사 검토가 있으면 그 등급을 기준으로 필터링한다.
+
+```json
+{
+  "content": [],
+  "page": 0,
+  "size": 10,
+  "totalElements": 0,
+  "totalPages": 0,
+  "first": true,
+  "last": true,
+  "hasNext": false,
+  "hasPrevious": false
+}
+```
 
 ## 민원 대화 메시지 흐름
 

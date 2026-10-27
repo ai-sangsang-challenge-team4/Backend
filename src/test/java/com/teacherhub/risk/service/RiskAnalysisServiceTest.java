@@ -48,7 +48,10 @@ class RiskAnalysisServiceTest {
     private Complaint draft() {
         User user = mock(User.class);
         when(user.getId()).thenReturn(1L);
-        Complaint complaint = new Complaint(new Parent(user), null, "original private content");
+        Complaint complaint = new Complaint(
+                new Parent(user), null, mock(com.teacherhub.user.entity.Teacher.class),
+                "complaint title", "original private content"
+        );
         ReflectionTestUtils.setField(complaint, "id", 42L);
         when(repository.findForUpdate(42L)).thenReturn(Optional.of(complaint));
         return complaint;
@@ -119,7 +122,7 @@ class RiskAnalysisServiceTest {
 
     @Test
     void rejectsSubmittedComplaintsBeforeAnalysis() {
-        draft().submit(null);
+        draft().submit();
         assertThatThrownBy(() -> service.analyze(1L, 42L))
                 .isInstanceOf(com.teacherhub.complaint.exception.ComplaintNotDraftException.class);
         verifyNoInteractions(rules, masking, llm, revisions);

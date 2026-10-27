@@ -5,28 +5,40 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 
 import java.time.OffsetDateTime;
 import com.teacherhub.complaint.exception.*;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
 import com.teacherhub.risk.exception.RiskReviewNotAllowedException;
 import com.teacherhub.risk.exception.RiskReviewReasonRequiredException;
+import com.teacherhub.user.exception.StudentNotFoundException;
 import org.springframework.dao.OptimisticLockingFailureException;
-import org.springframework.web.bind.MethodArgumentNotValidException;
 
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e, HttpServletRequest request) {
+    public ResponseEntity<ErrorResponse> handleMethodArgumentNotValid(
+            MethodArgumentNotValidException e,
+            HttpServletRequest request
+    ) {
         String message = e.getBindingResult().getFieldErrors().stream()
+                .map(FieldError::getDefaultMessage)
+                .filter(errorMessage -> errorMessage != null && !errorMessage.isBlank())
                 .findFirst()
-                .map(error -> error.getDefaultMessage())
-                .orElse("요청 값을 확인해주세요.");
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(
-                "ERROR", "VALIDATION_FAILED", message, OffsetDateTime.now(), request.getRequestURI()));
+                .orElse("요청 값이 올바르지 않습니다.");
+
+        return ResponseEntity.badRequest().body(new ErrorResponse(
+                "ERROR",
+                "VALIDATION_FAILED",
+                message,
+                OffsetDateTime.now(),
+                request.getRequestURI()
+        ));
     }
 
     @ExceptionHandler(AdminNotFoundException.class)
@@ -96,6 +108,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ComplaintNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleComplaintNotFound(ComplaintNotFoundException e, HttpServletRequest request) {
         return error(HttpStatus.NOT_FOUND, "COMPLAINT_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(StudentNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleStudentNotFound(StudentNotFoundException e, HttpServletRequest request) {
+        return error(HttpStatus.NOT_FOUND, "STUDENT_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(InvalidComplaintRecipientException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidComplaintRecipient(InvalidComplaintRecipientException e, HttpServletRequest request) {
+        return error(HttpStatus.BAD_REQUEST, "INVALID_COMPLAINT_RECIPIENT", e, request);
     }
 
     @ExceptionHandler(RiskAnalysisNotFoundException.class)
