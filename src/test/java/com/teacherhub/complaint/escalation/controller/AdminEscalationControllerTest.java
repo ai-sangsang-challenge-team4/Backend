@@ -165,6 +165,9 @@ class AdminEscalationControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"검토 완료\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("ESCALATION_VERSION_CONFLICT"));
+                .andExpect(jsonPath("$.code").value("ESCALATION_VERSION_CONFLICT"))
+                .andExpect(jsonPath("$.message").value(
+                        "다른 요청에서 데이터가 변경되었습니다. 최신 상태를 다시 조회해주세요."
+                ));
     }
 }

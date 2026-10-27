@@ -40,7 +40,7 @@ public class ComplaintEvent {
     private String actorName;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
+    @Column(nullable = false, length = 50)
     private MessageEventType eventType;
 
     @Column(length = 40)
@@ -68,7 +68,7 @@ public class ComplaintEvent {
     @Column(length = 20)
     private RiskLevel previousRiskLevel;
 
-    @Column(length = 300)
+    @Column(length = 500)
     private String reason;
 
     @Column(nullable = false, updatable = false)

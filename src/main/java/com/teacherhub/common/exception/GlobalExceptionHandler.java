@@ -2,6 +2,7 @@ package com.teacherhub.common.exception;
 
 import com.teacherhub.escalation.exception.*;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -16,6 +17,7 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e, HttpServletRequest request) {
@@ -58,8 +60,17 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(OptimisticLockingFailureException.class)
-    public ResponseEntity<ErrorResponse> handleEscalationVersionConflict(RuntimeException e, HttpServletRequest request) {
-        return error(HttpStatus.CONFLICT, "ESCALATION_VERSION_CONFLICT", e, request);
+    public ResponseEntity<ErrorResponse> handleEscalationVersionConflict(
+            OptimisticLockingFailureException e,
+            HttpServletRequest request
+    ) {
+        log.warn("Optimistic locking conflict while handling request {}", request.getRequestURI(), e);
+        return error(
+                HttpStatus.CONFLICT,
+                "ESCALATION_VERSION_CONFLICT",
+                "다른 요청에서 데이터가 변경되었습니다. 최신 상태를 다시 조회해주세요.",
+                request
+        );
     }
 
     @ExceptionHandler(AdminApprovalRequiredException.class)
@@ -138,8 +149,17 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<ErrorResponse> error(HttpStatus status, String code, RuntimeException e, HttpServletRequest request) {
+        return error(status, code, e.getMessage(), request);
+    }
+
+    private ResponseEntity<ErrorResponse> error(
+            HttpStatus status,
+            String code,
+            String message,
+            HttpServletRequest request
+    ) {
         return ResponseEntity.status(status).body(new ErrorResponse(
-                "ERROR", code, e.getMessage(), OffsetDateTime.now(), request.getRequestURI()));
+                "ERROR", code, message, OffsetDateTime.now(), request.getRequestURI()));
     }
 
     @ExceptionHandler(UnauthorizedException.class)
