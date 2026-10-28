@@ -1,7 +1,5 @@
 package com.teacherhub.user.entity;
 
-
-import com.teacherhub.user.enums.Relationship;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -23,14 +21,9 @@ public class ParentStudent {
     @JoinColumn(name = "student_id", nullable = false)
     private Student student;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private Relationship relationship;
-
-    public ParentStudent(Parent parent, Student student, Relationship relationship) {
+    public ParentStudent(Parent parent, Student student) {
         this.parent = parent;
         this.student = student;
-        this.relationship = relationship;
     }
 
 }

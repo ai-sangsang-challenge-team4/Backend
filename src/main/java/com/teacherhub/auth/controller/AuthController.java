@@ -31,7 +31,8 @@ public class AuthController {
 
     @Operation(
             summary = "회원가입",
-            description = "이메일, 비밀번호, 이름, 사용자 역할을 입력하여 회원가입을 진행합니다."
+            description = "공통 계정 정보와 역할별 학교 정보를 운영 DB와 대조하여 회원가입을 진행합니다. "
+                    + "학부모는 학급·학생·자녀 이름을, 교사는 학교·교직원 번호를 입력합니다."
     )
     @ApiResponses({
             @ApiResponse(
@@ -45,8 +46,13 @@ public class AuthController {
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))
             ),
             @ApiResponse(
+                    responseCode = "404",
+                    description = "운영 DB에서 학교·학급·학생·교사 정보를 찾을 수 없음",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
                     responseCode = "409",
-                    description = "이미 사용 중인 이메일 또는 교직원 번호",
+                    description = "이미 사용 중인 이메일 또는 이미 가입된 교직원",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))
             ),
             @ApiResponse(

@@ -61,7 +61,7 @@ public class TeacherEscalationController {
     }
 
     // 공유 상태 조회
-    @Operation(summary = "관리자 공유 상태 조회", description = "민원의 관리자 공유 여부, 처리 상태와 위험도 변경 요청 상태를 조회합니다.", responses = {
+    @Operation(summary = "관리자 공유 상태 조회", description = "민원의 관리자 공유 여부, 처리 상태와 Emergency 재검토 상태를 조회합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "공유 상태 조회 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))

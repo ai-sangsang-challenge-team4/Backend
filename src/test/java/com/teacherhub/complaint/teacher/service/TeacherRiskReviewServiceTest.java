@@ -5,18 +5,17 @@ import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.WaitingFor;
-import com.teacherhub.escalation.entity.ComplaintEscalation;
-import com.teacherhub.escalation.exception.AdminApprovalRequiredException;
-import com.teacherhub.escalation.repository.ComplaintEscalationRepository;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest;
 import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.dto.EmergencyReviewResponse;
 import com.teacherhub.risk.enums.RiskLevel;
-import com.teacherhub.escalation.enums.RiskReviewStatus;
+import com.teacherhub.risk.enums.RiskReviewStatus;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
+import com.teacherhub.risk.service.EmergencyReviewService;
 import com.teacherhub.user.entity.Teacher;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
@@ -36,20 +35,20 @@ class TeacherRiskReviewServiceTest {
     private final ComplaintRepository complaintRepository = mock(ComplaintRepository.class);
     private final RiskAnalysisRepository riskAnalysisRepository = mock(RiskAnalysisRepository.class);
     private final RiskReviewRepository riskReviewRepository = mock(RiskReviewRepository.class);
-    private final ComplaintEscalationRepository escalationRepository = mock(ComplaintEscalationRepository.class);
     private final ComplaintEventRepository eventRepository = mock(ComplaintEventRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
     private final ComplaintAccessPolicy accessPolicy = mock(ComplaintAccessPolicy.class);
     private final TeacherRiskScale riskScale = mock(TeacherRiskScale.class);
+    private final EmergencyReviewService emergencyReviewService = mock(EmergencyReviewService.class);
     private final TeacherRiskReviewService service = new TeacherRiskReviewService(
             complaintRepository,
             riskAnalysisRepository,
             riskReviewRepository,
-            escalationRepository,
             eventRepository,
             userRepository,
             accessPolicy,
-            riskScale
+            riskScale,
+            emergencyReviewService
     );
 
     private User teacherUser;
@@ -85,30 +84,28 @@ class TeacherRiskReviewServiceTest {
     }
 
     @Test
-    void emergencyRiskCannotChangeWithoutAdminApproval() {
-        when(escalationRepository.findByComplaintId(42L)).thenReturn(Optional.empty());
+    void emergencyRiskCanBeRequestedBeforeAdminShare() {
+        when(emergencyReviewService.request(eq(10L), eq(42L), any())).thenReturn(
+                emergencyReviewResponse()
+        );
 
-        assertThatThrownBy(() -> service.review(
+        var response = service.review(
                 10L,
                 42L,
                 new TeacherRiskReviewRequest(5, "위험도 하향 검토")
-        )).isInstanceOf(AdminApprovalRequiredException.class);
+        );
 
+        assertThat(response.status()).isEqualTo(RiskReviewStatus.PENDING_ADMIN_APPROVAL);
+        assertThat(response.safetyLock()).isTrue();
+        assertThat(response.emergencyReviewRequestId()).isEqualTo(300L);
         verify(riskReviewRepository, never()).save(any());
     }
 
     @Test
     void emergencyRiskChangeCreatesPendingAdminApprovalRequest() {
-        ComplaintEscalation escalation = mock(ComplaintEscalation.class);
-        when(escalation.getRiskAnalysis()).thenReturn(analysis);
-        when(escalation.getId()).thenReturn(200L);
-        when(escalation.getRiskChangeRequestedAt())
-                .thenReturn(LocalDateTime.of(2026, 10, 27, 14, 0));
-        when(escalationRepository.findByComplaintId(42L)).thenReturn(Optional.of(escalation));
-        when(escalationRepository.saveAndFlush(escalation))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-        when(eventRepository.save(any(ComplaintEvent.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(emergencyReviewService.request(eq(10L), eq(42L), any())).thenReturn(
+                emergencyReviewResponse()
+        );
 
         var response = service.review(
                 10L,
@@ -119,14 +116,28 @@ class TeacherRiskReviewServiceTest {
         assertThat(response.previousLevel()).isEqualTo(RiskLevel.EMERGENCY);
         assertThat(response.riskLevel()).isEqualTo(RiskLevel.HIGH);
         assertThat(response.status()).isEqualTo(RiskReviewStatus.PENDING_ADMIN_APPROVAL);
+        assertThat(response.safetyLock()).isTrue();
         assertThat(response.riskReviewId()).isNull();
-        verify(escalation).requestRiskChange(
+        verify(riskReviewRepository, never()).save(any());
+    }
+
+    private EmergencyReviewResponse emergencyReviewResponse() {
+        return new EmergencyReviewResponse(
+                300L,
+                42L,
+                100L,
                 7,
                 RiskLevel.EMERGENCY,
                 5,
                 RiskLevel.HIGH,
-                "위험도 하향 요청"
+                "위험도 하향 요청",
+                RiskReviewStatus.PENDING_ADMIN_APPROVAL,
+                true,
+                20L,
+                "관리자",
+                LocalDateTime.of(2026, 10, 27, 14, 0),
+                null,
+                LocalDateTime.of(2026, 10, 27, 14, 0)
         );
-        verify(riskReviewRepository, never()).save(any());
     }
 }

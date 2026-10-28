@@ -16,6 +16,11 @@
 | GET | `/risk-analyses/{analysisId}/detector-results` | 전체 태그의 Rule·LLM 감지 여부·출처별 근거·LLM 신뢰도 조회 | 200 |
 | GET | `/risk-tags` | 위험 태그 기준 목록 조회, 민원 분석과 별개 | 200 |
 | POST | `/teacher/complaints/{complaintId}/risk-reviews` | 교사가 1~7점 위험도를 검토하고, EMERGENCY 변경은 관리자 승인을 요청 | 201 |
+| POST | `/teacher/complaints/{complaintId}/emergency-review-requests` | 공유 여부와 무관하게 EMERGENCY 하향 재검토 요청 | 201 |
+| GET | `/teacher/complaints/{complaintId}/emergency-review-requests/current` | 최근 재검토 요청과 안전 잠금 상태 조회 | 200 |
+| GET | `/admin/emergency-review-requests` | 지정 검토자에게 배정된 재검토 요청 목록 | 200 |
+| GET | `/admin/emergency-review-requests/{requestId}` | 지정 검토자의 재검토 요청 조회 | 200 |
+| PATCH | `/admin/emergency-review-requests/{requestId}` | 지정 검토자의 위험도 하향 승인·거부 및 안전 잠금 유지·해제 | 200 |
 | POST | `/teacher/complaints/{complaintId}/escalation` | EMERGENCY 민원을 관리자에게 공유 | 201 |
 | GET | `/admin/escalations` | 배정된 관리자 공유 건 조회 | 200 |
 
@@ -81,11 +86,19 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 - 최초 검토값은 시스템 등급을 LOW 2점, MEDIUM 4점, HIGH 6점, EMERGENCY 7점으로 변환한다.
 - 현재 점수보다 낮추면 reason이 필수다.
 - 현재 점수보다 높이거나 동일하게 확인하면 reason은 선택 사항이다.
-- 현재 등급이 EMERGENCY인 상태에서 점수를 변경하면 같은 분석에 연결된 관리자 공유 건에
-  변경 요청을 저장하고 `PENDING_ADMIN_APPROVAL`을 반환한다. 이 시점에는 실제 위험도와
-  `risk_reviews` 이력이 변경되지 않는다. 공유 건이 없으면 409 ADMIN_APPROVAL_REQUIRED다.
-- 관리자가 별도 위험도 변경 승인 API를 호출하면 요청된 값으로 `risk_reviews`가 생성되고
-  현재 위험도에 반영된다.
+- 현재 등급이 EMERGENCY인 상태에서 점수를 낮추면 관리자 공유 여부와 관계없이 별도의
+  Emergency 재검토 요청을 생성하고 `PENDING_ADMIN_APPROVAL`, `safetyLock=true`를 반환한다.
+  요청 사유는 필수이며 처리 중이거나 안전 잠금이 유지 중인 요청이 있으면
+  409 `EMERGENCY_REVIEW_DUPLICATE`다.
+- 요청 시 명시한 관리자, 기존 공유 담당 관리자, 기본 관리자 순으로 지정 검토자를 정한다.
+  지정 검토자만 승인·거부하거나 안전 잠금을 변경할 수 있다.
+- 지정 검토자가 승인하면 요청된 값으로 `risk_reviews`가 생성되고 현재 위험도에 반영된다.
+  위험도가 하향되어도 `safetyLock`은 자동 해제하지 않는다. 지정 검토자가
+  `PATCH /admin/emergency-review-requests/{requestId}`로 명시적으로 해제해야 하며,
+  잠금 중 교사 화면의 허용 행동은 EMERGENCY 정책을 유지한다. 승인·거부와 잠금 변경은
+  모두 이 PATCH API를 사용한다.
+- 기존 `POST /teacher/complaints/{complaintId}/risk-reviews`에서 EMERGENCY를 하향하는 경우도
+  동일한 재검토 요청 흐름을 사용한다.
 - 시스템 분석 결과는 덮어쓰지 않고 `risk_reviews`에 변경 전후 점수·등급과 교사,
   사유, 검토 시각을 누적한다.
 - `GET /teacher/complaints/{complaintId}/risk`는 시스템 점수와 최신 검토가 반영된

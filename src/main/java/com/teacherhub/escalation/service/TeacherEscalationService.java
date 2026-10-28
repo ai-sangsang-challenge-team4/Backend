@@ -23,6 +23,7 @@ import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
+import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.enums.UserRole;
 import com.teacherhub.user.repository.UserRepository;
@@ -42,6 +43,7 @@ public class TeacherEscalationService {
     private final ComplaintEscalationRepository escalationRepository;
     private final RiskAnalysisRepository riskAnalysisRepository;
     private final RiskReviewRepository riskReviewRepository;
+    private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository;
     private final ComplaintEventRepository eventRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
@@ -99,7 +101,33 @@ public class TeacherEscalationService {
 
         return escalationRepository.findByComplaintId(complaintId)
                 .map(this::stateResponse)
-                .orElseGet(EscalationStateResponse::notShared);
+                .orElseGet(() -> notSharedResponse(complaintId));
+    }
+
+    private EscalationStateResponse notSharedResponse(Long complaintId) {
+        RiskAnalysis analysis = riskAnalysisRepository
+                .findFirstByComplaintIdAndCompletedTrueOrderByIdDesc(complaintId)
+                .orElse(null);
+        RiskReview latestReview = analysis == null
+                ? null
+                : riskReviewRepository
+                .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(analysis.getId())
+                .orElse(null);
+        return EscalationStateResponse.notShared(
+                analysis == null
+                        ? null
+                        : latestReview == null
+                        ? teacherRiskScale.initialScoreFor(analysis.getRiskLevel())
+                        : latestReview.getReviewedScore(),
+                analysis == null
+                        ? null
+                        : latestReview == null
+                        ? analysis.getRiskLevel()
+                        : latestReview.getReviewedLevel(),
+                emergencyReviewRequestRepository
+                        .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(complaintId)
+                        .orElse(null)
+        );
     }
 
     private EscalationStateResponse stateResponse(ComplaintEscalation escalation) {
@@ -111,7 +139,12 @@ public class TeacherEscalationService {
         return EscalationStateResponse.from(
                 escalation,
                 latestReview,
-                teacherRiskScale.initialScoreFor(escalation.getRiskAnalysis().getRiskLevel())
+                teacherRiskScale.initialScoreFor(escalation.getRiskAnalysis().getRiskLevel()),
+                emergencyReviewRequestRepository
+                        .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(
+                                escalation.getComplaint().getId()
+                        )
+                        .orElse(null)
         );
     }
 

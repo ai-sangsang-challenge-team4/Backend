@@ -8,7 +8,6 @@ import com.teacherhub.escalation.dto.EscalationMessageRequest;
 import com.teacherhub.escalation.dto.EscalationStateResponse;
 import com.teacherhub.escalation.dto.AdminEscalationSummaryResponse;
 import com.teacherhub.escalation.dto.EscalationShareContentResponse;
-import com.teacherhub.escalation.dto.RiskChangeDecisionRequest;
 import com.teacherhub.escalation.service.AdminEscalationService;
 import com.teacherhub.escalation.enums.EscalationStatus;
 import com.teacherhub.risk.enums.RiskLevel;
@@ -32,7 +31,7 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/admin/escalations")
-@Tag(name = "Admin Escalation", description = "관리자 공유 건 조회, 검토, 위험도 결정 및 완료 API")
+@Tag(name = "Admin Escalation", description = "관리자 공유 건 조회, 검토 및 완료 API")
 @SecurityRequirement(name = "bearerAuth")
 @ApiResponses({
         @ApiResponse(responseCode = "401", description = "인증 토큰이 없거나 유효하지 않음",
@@ -149,27 +148,6 @@ public class AdminEscalationController {
         );
     }
 
-    // EMERGENCY 위험도 변경 승인·거부
-    @Operation(summary = "EMERGENCY 위험도 변경 결정", description = "교사가 요청한 위험도 변경을 승인하거나 거부합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "위험도 변경 결정 성공", useReturnTypeSchema = true),
-            @ApiResponse(responseCode = "400", description = "결정 상태 또는 메시지 입력값 오류",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "404", description = "공유 건을 찾을 수 없음",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "승인 대기 요청이 없거나 처리 가능한 상태가 아님",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    })
-    @PostMapping("/{escalationId}/risk-change-decision")
-    public ResponseEntity<EscalationStateResponse> decideRiskChange(
-            @Parameter(hidden = true) Authentication authentication,
-            @Parameter(description = "관리자 공유 건 ID", example = "1") @PathVariable Long escalationId,
-            @Valid @RequestBody RiskChangeDecisionRequest request
-    ) {
-        return ResponseEntity.ok(
-                escalationService.decideRiskChange(userId(authentication), escalationId, request)
-        );
-    }
-
     // 관리자 검토 완료
     @Operation(summary = "관리자 검토 완료", description = "검토 결과를 저장하고 공유 건을 COMPLETED 상태로 변경합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "관리자 검토 완료 성공", useReturnTypeSchema = true),
@@ -177,7 +155,7 @@ public class AdminEscalationController {
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "공유 건을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "완료 가능한 상태가 아니거나 위험도 승인 대기 중",
+            @ApiResponse(responseCode = "409", description = "완료 가능한 상태가 아니거나 Emergency 재검토 승인 대기 중",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PostMapping("/{escalationId}/complete")

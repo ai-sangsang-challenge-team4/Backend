@@ -29,6 +29,7 @@ import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
+import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.school.repository.StudentClassRepository;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
@@ -52,6 +53,7 @@ public class TeacherComplaintQueryService {
     private final ComplaintMessageRepository messageRepository;
     private final RiskAnalysisRepository riskAnalysisRepository;
     private final RiskReviewRepository riskReviewRepository;
+    private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository;
     private final ComplaintRiskTagRepository complaintRiskTagRepository;
     private final StudentClassRepository studentClassRepository;
     private final UserRepository userRepository;
@@ -82,6 +84,7 @@ public class TeacherComplaintQueryService {
         Complaint complaint = findTeacherComplaint(user, complaintId);
         RiskAnalysis analysis = requiredAnalysis(complaint);
         RiskReview latestReview = latestReview(analysis);
+        boolean safetyLock = isSafetyLocked(complaintId);
         List<ComplaintMessage> messages = messageRepository
                 .findByComplaintIdAndStatusNotOrderByIdAsc(complaintId, MessageStatus.DRAFT);
         Map<Long, RiskLevel> latestRiskByMessage = latestRiskByMessage(complaintId);
@@ -98,7 +101,11 @@ public class TeacherComplaintQueryService {
                 complaint,
                 bufferedSummaries,
                 supportPolicy.allowedActions(
-                        latestReview == null ? analysis.getRiskLevel() : latestReview.getReviewedLevel()
+                        safetyLock
+                                ? RiskLevel.EMERGENCY
+                                : latestReview == null
+                                ? analysis.getRiskLevel()
+                                : latestReview.getReviewedLevel()
                 ),
                 submittedAt(complaint),
                 messages
@@ -132,7 +139,8 @@ public class TeacherComplaintQueryService {
                 analysis,
                 complaintRiskTagRepository.findByRiskAnalysisId(analysis.getId()),
                 latestReview(analysis),
-                teacherRiskScale.initialScoreFor(analysis.getRiskLevel())
+                teacherRiskScale.initialScoreFor(analysis.getRiskLevel()),
+                isSafetyLocked(complaintId)
         );
     }
 
@@ -187,6 +195,12 @@ public class TeacherComplaintQueryService {
         return riskReviewRepository
                 .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(analysis.getId())
                 .orElse(null);
+    }
+
+    private boolean isSafetyLocked(Long complaintId) {
+        return emergencyReviewRequestRepository
+                .findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(complaintId)
+                .isPresent();
     }
 
     private Map<Long, RiskLevel> latestRiskByMessage(Long complaintId) {

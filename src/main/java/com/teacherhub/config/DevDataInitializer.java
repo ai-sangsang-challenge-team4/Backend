@@ -14,11 +14,12 @@ import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskTagRepository;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 import com.teacherhub.school.entity.SchoolClass;
+import com.teacherhub.school.entity.School;
 import com.teacherhub.school.entity.StudentClass;
 import com.teacherhub.school.repository.SchoolClassRepository;
+import com.teacherhub.school.repository.SchoolRepository;
 import com.teacherhub.school.repository.StudentClassRepository;
 import com.teacherhub.user.entity.*;
-import com.teacherhub.user.enums.Relationship;
 import com.teacherhub.user.enums.UserRole;
 import com.teacherhub.user.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +47,7 @@ public class DevDataInitializer implements ApplicationRunner {
     private final TeacherRepository teacherRepository;
     private final StudentRepository studentRepository;
     private final ParentStudentRepository parentStudentRepository;
+    private final SchoolRepository schoolRepository;
     private final SchoolClassRepository schoolClassRepository;
     private final StudentClassRepository studentClassRepository;
     private final ComplaintRepository complaintRepository;
@@ -61,18 +63,27 @@ public class DevDataInitializer implements ApplicationRunner {
         String encodedPassword = passwordEncoder.encode("Test1234!");
         User parentUser = userRepository.save(new User(
                 "parent@test.com", encodedPassword, "Demo Parent", UserRole.PARENT));
+
         Parent parent = parentRepository.save(new Parent(parentUser));
+
+        School school = schoolRepository.save(new School("SCHOOL-001", "상상초등학교"));
 
         User teacherUser = userRepository.save(new User(
                 "teacher@test.com", encodedPassword, "Demo Teacher", UserRole.TEACHER));
-        Teacher teacher = teacherRepository.save(new Teacher(teacherUser, "DEV-2026-001"));
+        Teacher teacher = teacherRepository.save(new Teacher(teacherUser, "DEV-2026-001", school));
+        Teacher unregisteredTeacher = teacherRepository.save(
+                new Teacher(school, "가입용 교사", "DEV-2026-002")
+        );
 
         User adminUser = userRepository.save(new User(
                 "admin@test.com", encodedPassword, "Demo Admin", UserRole.ADMIN));
 
         Student student = studentRepository.save(new Student("Demo Student", "DEV-20260001"));
-        parentStudentRepository.save(new ParentStudent(parent, student, Relationship.GUARDIAN));
-        SchoolClass schoolClass = schoolClassRepository.save(new SchoolClass(2026, 3, 2, teacher));
+        parentStudentRepository.save(new ParentStudent(parent, student));
+
+        SchoolClass schoolClass = new SchoolClass(school, 2026, 3, 2, teacher);
+        schoolClass.assignTeacher(unregisteredTeacher);
+        schoolClassRepository.save(schoolClass);
         studentClassRepository.save(new StudentClass(student, schoolClass));
 
         Complaint emergencyComplaint = new Complaint(

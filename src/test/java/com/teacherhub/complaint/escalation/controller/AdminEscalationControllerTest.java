@@ -8,12 +8,10 @@ import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
 import com.teacherhub.escalation.controller.AdminEscalationController;
 import com.teacherhub.escalation.dto.EscalationMessageRequest;
 import com.teacherhub.escalation.dto.EscalationShareContentResponse;
-import com.teacherhub.escalation.dto.RiskChangeDecisionRequest;
 import com.teacherhub.escalation.exception.EscalationAccessDeniedException;
 import com.teacherhub.escalation.service.AdminEscalationService;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
-import com.teacherhub.escalation.enums.RiskReviewStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.MediaType;
@@ -53,6 +51,7 @@ class AdminEscalationControllerTest {
                 com.teacherhub.risk.enums.RiskLevel.EMERGENCY,
                 7,
                 com.teacherhub.risk.enums.RiskLevel.EMERGENCY,
+                false,
                 null,
                 null,
                 List.of()
@@ -98,17 +97,6 @@ class AdminEscalationControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"학생 안전 조치를 확인합니다.\"}"))
                 .andExpect(status().isOk());
-        mvc.perform(post("/admin/escalations/1/risk-change-decision")
-                        .principal(auth)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\":\"APPLIED\",\"message\":\"위험도 하향 조정을 승인합니다.\"}"))
-                .andExpect(status().isOk());
-        mvc.perform(post("/admin/escalations/1/risk-change-decision")
-                        .principal(auth)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\":\"REJECTED\",\"message\":\"현재 위험 요소 때문에 거부합니다.\"}"))
-                .andExpect(status().isOk());
-
         verify(service).findMessages(20L, 1L);
         verify(service).findRisk(20L, 1L);
         verify(service).findHistory(20L, 1L);
@@ -116,22 +104,6 @@ class AdminEscalationControllerTest {
                 20L,
                 1L,
                 new EscalationMessageRequest("학생 안전 조치를 확인합니다.")
-        );
-        verify(service).decideRiskChange(
-                20L,
-                1L,
-                new RiskChangeDecisionRequest(
-                        RiskReviewStatus.APPLIED,
-                        "위험도 하향 조정을 승인합니다."
-                )
-        );
-        verify(service).decideRiskChange(
-                20L,
-                1L,
-                new RiskChangeDecisionRequest(
-                        RiskReviewStatus.REJECTED,
-                        "현재 위험 요소 때문에 거부합니다."
-                )
         );
     }
 

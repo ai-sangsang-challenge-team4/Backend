@@ -10,6 +10,10 @@ import jakarta.validation.constraints.Size;
 @Schema(description = "회원가입 요청")
 public record SignupRequest(
 
+        @Schema(description = "학교 ID", example = "1")
+        @NotNull(message = "학교 선택은 필수입니다.")
+        Long schoolId,
+
         @Schema(description = "로그인 이메일", example = "parent@example.com")
         @NotBlank(message = "이메일은 필수입니다.")
         @Email(message = "올바른 이메일 형식이 아닙니다.")
@@ -31,7 +35,17 @@ public record SignupRequest(
 
         @Schema(description = "교직원 번호. TEACHER 역할일 때 필수", example = "T-2026-001", nullable = true)
         @Size(max = 100, message = "교직원 번호는 100자 이하로 입력해주세요.")
-        String employeeNo
+        String employeeNo,
+
+        @Schema(description = "학급 ID. PARENT 역할일 때 필수", example = "1", nullable = true)
+        Long schoolClassId,
+
+        @Schema(description = "학생 ID. PARENT 역할일 때 필수", example = "1", nullable = true)
+        Long studentId,
+
+        @Schema(description = "자녀 이름. PARENT 역할일 때 필수", example = "김학생", nullable = true)
+        @Size(max = 50, message = "자녀 이름은 50자 이하로 입력해주세요.")
+        String studentName
 
 ) {
 }
