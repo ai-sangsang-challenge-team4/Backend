@@ -107,13 +107,17 @@ public class ParentComplaintController {
     }
 
     // 민원 제출
-    @Operation(summary = "민원 최종 제출", description = "최종 위험 분석이 완료된 민원 초안을 교사에게 제출합니다.", responses = {
+    @Operation(
+            summary = "민원 최종 제출",
+            description = "최초 위험 분석을 완료한 민원 초안을 제출합니다. 최초 분석 이후 내용이 변경된 경우 제출 시 서버가 최종 내용을 재분석한 후 교사에게 전송합니다.",
+            responses = {
             @ApiResponse(responseCode = "200", description = "민원 제출 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "409", description = "분석이 필요하거나 제출 가능한 상태가 아님",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    })
+            }
+    )
     @PostMapping("/{complaintId}/send")
     public ResponseEntity<Map<String, String>> submitComplaint(
             @Parameter(hidden = true) Authentication authentication,

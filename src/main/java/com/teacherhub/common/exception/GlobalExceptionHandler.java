@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -271,7 +273,13 @@ public class GlobalExceptionHandler {
             IllegalArgumentException e,
             HttpServletRequest request
     ) {
-        return error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e, request);
+        log.warn("Invalid request while handling {}: {}", request.getRequestURI(), e.getMessage(), e);
+        return error(
+                HttpStatus.BAD_REQUEST,
+                "INVALID_REQUEST",
+                "요청 값이 올바르지 않습니다.",
+                request
+        );
     }
 
     @ExceptionHandler(IllegalStateException.class)
@@ -279,7 +287,13 @@ public class GlobalExceptionHandler {
             IllegalStateException e,
             HttpServletRequest request
     ) {
-        return error(HttpStatus.CONFLICT, "INVALID_STATE", e, request);
+        log.warn("Invalid state while handling {}: {}", request.getRequestURI(), e.getMessage(), e);
+        return error(
+                HttpStatus.CONFLICT,
+                "INVALID_STATE",
+                "요청을 현재 상태에서 처리할 수 없습니다.",
+                request
+        );
     }
 
     private ResponseEntity<ErrorResponse> error(HttpStatus status, String code, RuntimeException e, HttpServletRequest request) {
@@ -287,12 +301,12 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<ErrorResponse> error(
-            HttpStatus status,
+            HttpStatusCode status,
             String code,
             String message,
             HttpServletRequest request
     ) {
-        return ResponseEntity.status(status).body(
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON).body(
                 ErrorResponse.of(code, message, request.getRequestURI())
         );
     }
@@ -311,6 +325,22 @@ public class GlobalExceptionHandler {
             Exception e,
             HttpServletRequest request
     ) {
+        if (e instanceof org.springframework.web.ErrorResponse springError) {
+            HttpStatusCode status = springError.getStatusCode();
+            log.warn(
+                    "Spring request error while handling {} with status {}",
+                    request.getRequestURI(),
+                    status.value(),
+                    e
+            );
+            return error(
+                    status,
+                    springErrorCode(status),
+                    springErrorMessage(status),
+                    request
+            );
+        }
+
         log.error("Unexpected error while handling request {}", request.getRequestURI(), e);
         return error(
                 HttpStatus.INTERNAL_SERVER_ERROR,
@@ -318,5 +348,30 @@ public class GlobalExceptionHandler {
                 "서버 내부 오류가 발생했습니다.",
                 request
         );
+    }
+
+    private String springErrorCode(HttpStatusCode status) {
+        HttpStatus resolved = HttpStatus.resolve(status.value());
+        return resolved != null ? resolved.name() : "HTTP_" + status.value();
+    }
+
+    private String springErrorMessage(HttpStatusCode status) {
+        HttpStatus resolved = HttpStatus.resolve(status.value());
+        if (resolved == null) {
+            return status.is4xxClientError()
+                    ? "요청을 처리할 수 없습니다."
+                    : "서버 내부 오류가 발생했습니다.";
+        }
+
+        return switch (resolved) {
+            case BAD_REQUEST -> "요청 형식 또는 값을 확인해주세요.";
+            case NOT_FOUND -> "요청한 API를 찾을 수 없습니다.";
+            case METHOD_NOT_ALLOWED -> "지원하지 않는 HTTP 메서드입니다.";
+            case NOT_ACCEPTABLE -> "요청한 응답 형식을 제공할 수 없습니다.";
+            case UNSUPPORTED_MEDIA_TYPE -> "지원하지 않는 Content-Type입니다.";
+            default -> resolved.is4xxClientError()
+                    ? "요청을 처리할 수 없습니다."
+                    : "서버 내부 오류가 발생했습니다.";
+        };
     }
 }
