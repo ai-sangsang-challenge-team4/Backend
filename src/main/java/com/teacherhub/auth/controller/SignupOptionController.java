@@ -21,7 +21,7 @@ import java.util.List;
 @Tag(name = "Signup Options", description = "운영 DB 기반 회원가입 선택 항목 조회 API")
 @Validated
 @RestController
-@RequestMapping("/auth/signup-options")
+@RequestMapping("/auth")
 @RequiredArgsConstructor
 public class SignupOptionController {
 

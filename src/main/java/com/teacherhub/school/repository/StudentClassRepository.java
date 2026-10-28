@@ -19,5 +19,5 @@ public interface StudentClassRepository extends JpaRepository<StudentClass, Long
     );
 
     @EntityGraph(attributePaths = "student")
-    List<StudentClass> findBySchoolClass_IdOrderByStudent_StudentNoAsc(Long schoolClassId);
+    List<StudentClass> findBySchoolClass_Id(Long schoolClassId);
 }

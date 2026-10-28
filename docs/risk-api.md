@@ -16,11 +16,11 @@
 | GET | `/risk-analyses/{analysisId}/detector-results` | 전체 태그의 Rule·LLM 감지 여부·출처별 근거·LLM 신뢰도 조회 | 200 |
 | GET | `/risk-tags` | 위험 태그 기준 목록 조회, 민원 분석과 별개 | 200 |
 | POST | `/teacher/complaints/{complaintId}/risk-reviews` | 교사가 1~7점 위험도를 검토하고, EMERGENCY 변경은 관리자 승인을 요청 | 201 |
-| POST | `/teacher/complaints/{complaintId}/emergency-review-requests` | 공유 여부와 무관하게 EMERGENCY 하향 재검토 요청 | 201 |
-| GET | `/teacher/complaints/{complaintId}/emergency-review-requests/current` | 최근 재검토 요청과 안전 잠금 상태 조회 | 200 |
-| GET | `/admin/emergency-review-requests` | 지정 검토자에게 배정된 재검토 요청 목록 | 200 |
-| GET | `/admin/emergency-review-requests/{requestId}` | 지정 검토자의 재검토 요청 조회 | 200 |
-| PATCH | `/admin/emergency-review-requests/{requestId}` | 지정 검토자의 위험도 하향 승인·거부 및 안전 잠금 유지·해제 | 200 |
+| POST | `/teacher/complaints/{complaintId}/emergency-review` | 공유 여부와 무관하게 EMERGENCY 하향 재검토 요청 | 201 |
+| GET | `/teacher/complaints/{complaintId}/emergency-review/current` | 최근 재검토 요청과 안전 잠금 상태 조회 | 200 |
+| GET | `/admin/emergency-review` | 지정 검토자에게 배정된 재검토 요청 목록 | 200 |
+| GET | `/admin/emergency-review/{requestId}` | 지정 검토자의 재검토 요청 조회 | 200 |
+| PATCH | `/admin/emergency-review/{requestId}` | 지정 검토자의 위험도 하향 승인·거부 및 안전 잠금 유지·해제 | 200 |
 | POST | `/teacher/complaints/{complaintId}/escalation` | EMERGENCY 민원을 관리자에게 공유 | 201 |
 | GET | `/admin/escalations` | 배정된 관리자 공유 건 조회 | 200 |
 
@@ -94,7 +94,7 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
   지정 검토자만 승인·거부하거나 안전 잠금을 변경할 수 있다.
 - 지정 검토자가 승인하면 요청된 값으로 `risk_reviews`가 생성되고 현재 위험도에 반영된다.
   위험도가 하향되어도 `safetyLock`은 자동 해제하지 않는다. 지정 검토자가
-  `PATCH /admin/emergency-review-requests/{requestId}`로 명시적으로 해제해야 하며,
+  `PATCH /admin/emergency-review/{requestId}`로 명시적으로 해제해야 하며,
   잠금 중 교사 화면의 허용 행동은 EMERGENCY 정책을 유지한다. 승인·거부와 잠금 변경은
   모두 이 PATCH API를 사용한다.
 - 기존 `POST /teacher/complaints/{complaintId}/risk-reviews`에서 EMERGENCY를 하향하는 경우도

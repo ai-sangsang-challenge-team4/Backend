@@ -17,6 +17,13 @@ public enum MessageEventType {
     ESCALATION_SHARED,
     // 관리자 검토 시작
     ESCALATION_REVIEW_STARTED,
+    // 기존 DB 이벤트 역직렬화를 위한 레거시 값
+    @Deprecated
+    ESCALATION_RISK_CHANGE_REQUESTED,
+    @Deprecated
+    ESCALATION_RISK_CHANGE_APPROVED,
+    @Deprecated
+    ESCALATION_RISK_CHANGE_REJECTED,
     // 관리자 처리 완료
     ESCALATION_COMPLETED,
     // Emergency 위험도 재검토 요청

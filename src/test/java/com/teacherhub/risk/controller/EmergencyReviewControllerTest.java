@@ -49,7 +49,7 @@ class EmergencyReviewControllerTest {
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
 
-        mvc.perform(post("/teacher/complaints/42/emergency-review-requests")
+        mvc.perform(post("/teacher/complaints/42/emergency-review")
                         .principal(new UsernamePasswordAuthenticationToken(
                                 "teacher@test.com", null, List.of()
                         ))
@@ -61,7 +61,7 @@ class EmergencyReviewControllerTest {
                 .andExpect(jsonPath("$.requestId").value(300))
                 .andExpect(jsonPath("$.safetyLock").value(true));
 
-        mvc.perform(patch("/admin/emergency-review-requests/300")
+        mvc.perform(patch("/admin/emergency-review/300")
                         .principal(new UsernamePasswordAuthenticationToken(
                                 "admin@test.com", null, List.of()
                         ))
@@ -86,14 +86,14 @@ class EmergencyReviewControllerTest {
                 .build();
         var auth = new UsernamePasswordAuthenticationToken("teacher@test.com", null, List.of());
 
-        mvc.perform(post("/teacher/complaints/42/emergency-review-requests")
+        mvc.perform(post("/teacher/complaints/42/emergency-review")
                         .principal(auth)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"riskScore\":5,\"reason\":\"재검토 사유\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("EMERGENCY_REVIEW_DUPLICATE"));
 
-        mvc.perform(post("/teacher/complaints/42/emergency-review-requests")
+        mvc.perform(post("/teacher/complaints/42/emergency-review")
                         .principal(auth)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"riskScore\":5,\"reason\":\" \"}"))

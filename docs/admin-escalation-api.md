@@ -41,7 +41,7 @@ Emergency 재검토 요청은 공유와 독립적으로 최신 위험 분석을 
 ## 관리자 API
 
 모든 경로는 ADMIN 권한이 필요하다. `/admin/escalations` 경로는 배정받은 공유 건만,
-`/admin/emergency-review-requests` 경로는 지정 검토자로 배정된 요청만 읽거나 변경할 수 있다.
+`/admin/emergency-review` 경로는 지정 검토자로 배정된 요청만 읽거나 변경할 수 있다.
 
 | 메서드 | 경로 | 동작 |
 |---|---|---|
@@ -52,9 +52,9 @@ Emergency 재검토 요청은 공유와 독립적으로 최신 위험 분석을 
 | GET | `/admin/escalations/{escalationId}/history` | 처리 기록 탭 조회 |
 | POST | `/admin/escalations/{escalationId}/review` | `SHARED → UNDER_REVIEW` |
 | POST | `/admin/escalations/{escalationId}/complete` | 결과 저장 후 `UNDER_REVIEW → COMPLETED` |
-| GET | `/admin/emergency-review-requests` | 지정 검토자에게 배정된 재검토 요청 목록 |
-| GET | `/admin/emergency-review-requests/{requestId}` | 지정 검토자의 Emergency 재검토 요청 조회 |
-| PATCH | `/admin/emergency-review-requests/{requestId}` | 재검토 요청 승인·거부 및 안전 잠금 유지·해제 |
+| GET | `/admin/emergency-review` | 지정 검토자에게 배정된 재검토 요청 목록 |
+| GET | `/admin/emergency-review/{requestId}` | 지정 검토자의 Emergency 재검토 요청 조회 |
+| PATCH | `/admin/emergency-review/{requestId}` | 재검토 요청 승인·거부 및 안전 잠금 유지·해제 |
 
 목록과 상단 상세 조회는 화면에 필요한 요약 정보만 반환한다.
 `currentRiskLevel`은 Emergency 재검토 승인으로 적용된 최신 교사 검토를 반영한다.
@@ -143,7 +143,7 @@ Emergency 재검토 승인 요청:
 }
 ```
 
-`PATCH /admin/emergency-review-requests/{requestId}`는 지정 검토자만 호출할 수 있다.
+`PATCH /admin/emergency-review/{requestId}`는 지정 검토자만 호출할 수 있다.
 `status=APPLIED`이면 요청된 점수로 `RiskReview`를 생성하지만 안전 잠금은 유지한다.
 
 Emergency 재검토 거부 요청:
@@ -189,7 +189,7 @@ Emergency 재검토 거부 요청:
 ## EMERGENCY 재검토
 
 교사는 관리자 공유 여부와 무관하게
-`POST /teacher/complaints/{complaintId}/emergency-review-requests`로 하향 점수와 사유를
+`POST /teacher/complaints/{complaintId}/emergency-review`로 하향 점수와 사유를
 요청한다. 요청은 `EmergencyRiskReviewRequest`에 저장되고 `status=PENDING_ADMIN_APPROVAL`,
 `safetyLock=true`가 된다. 지정 검토자가 요청 ID 기반 PATCH API에서 승인하면 실제
 `RiskReview`가 생성되며, 같은 PATCH API로 명시적으로 해제할 때까지 안전 잠금이 유지된다.

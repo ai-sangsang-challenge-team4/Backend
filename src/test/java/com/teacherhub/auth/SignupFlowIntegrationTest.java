@@ -22,13 +22,16 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "JWT_SECRET=test-jwt-secret-key-must-be-at-least-32-bytes")
+@SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
 class SignupFlowIntegrationTest {
@@ -68,13 +71,13 @@ class SignupFlowIntegrationTest {
 
     @Test
     void exposesOperationalSchoolDataAndRegistersParentAndTeacher() throws Exception {
-        mockMvc.perform(get("/auth/signup-options/schools").param("keyword", "테스트"))
+        mockMvc.perform(get("/auth/schools").param("keyword", "테스트"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value("SCHOOL"))
                 .andExpect(jsonPath("$[0].id").value(school.getId()))
                 .andExpect(jsonPath("$[0].displayName").value("테스트초등학교"));
 
-        mockMvc.perform(get("/auth/signup-options/schools/{schoolId}/classes", school.getId())
+        mockMvc.perform(get("/auth/schools/{schoolId}/classes", school.getId())
                         .param("academicYear", "2026")
                         .param("grade", "2"))
                 .andExpect(status().isOk())
@@ -82,7 +85,7 @@ class SignupFlowIntegrationTest {
                 .andExpect(jsonPath("$[0].id").value(schoolClass.getId()))
                 .andExpect(jsonPath("$[0].classNo").value(3));
 
-        mockMvc.perform(get("/auth/signup-options/classes/{classId}/students", schoolClass.getId()))
+        mockMvc.perform(get("/auth/classes/{classId}/students", schoolClass.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value("STUDENT"))
                 .andExpect(jsonPath("$[0].id").value(student.getId()))
@@ -132,5 +135,19 @@ class SignupFlowIntegrationTest {
 
         assertThat(teacherRepository.findById(teacherRoster.getId()).orElseThrow().getUser().getEmail())
                 .isEqualTo("new-teacher@example.com");
+    }
+
+    @Test
+    void sortsNumericStudentNumbersByTheirNumericValue() throws Exception {
+        for (String studentNo : List.of("10", "2", "1")) {
+            Student additionalStudent = studentRepository.save(
+                    new Student("학생 " + studentNo, studentNo)
+            );
+            studentClassRepository.save(new StudentClass(additionalStudent, schoolClass));
+        }
+
+        mockMvc.perform(get("/auth/classes/{classId}/students", schoolClass.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].referenceCode", contains("1", "2", "7", "10")));
     }
 }

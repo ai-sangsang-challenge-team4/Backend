@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigInteger;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -58,9 +60,32 @@ public class SignupOptionService {
             throw new SignupReferenceNotFoundException("학급을 찾을 수 없습니다.");
         }
 
-        return studentClassRepository.findBySchoolClass_IdOrderByStudent_StudentNoAsc(schoolClassId)
+        return studentClassRepository.findBySchoolClass_Id(schoolClassId)
                 .stream()
+                .sorted(Comparator.comparing(
+                        studentClass -> studentClass.getStudent().getStudentNo(),
+                        SignupOptionService::compareStudentNumbers
+                ))
                 .map(studentClass -> SignupOptionResponse.from(studentClass.getStudent()))
                 .toList();
+    }
+
+    private static int compareStudentNumbers(String left, String right) {
+        boolean leftIsNumber = isUnsignedNumber(left);
+        boolean rightIsNumber = isUnsignedNumber(right);
+
+        if (leftIsNumber && rightIsNumber) {
+            int numericComparison = new BigInteger(left).compareTo(new BigInteger(right));
+            return numericComparison != 0 ? numericComparison : left.compareTo(right);
+        }
+        if (leftIsNumber != rightIsNumber) {
+            return leftIsNumber ? -1 : 1;
+        }
+        return left.compareToIgnoreCase(right);
+    }
+
+    private static boolean isUnsignedNumber(String value) {
+        return !value.isEmpty()
+                && value.chars().allMatch(character -> character >= '0' && character <= '9');
     }
 }
