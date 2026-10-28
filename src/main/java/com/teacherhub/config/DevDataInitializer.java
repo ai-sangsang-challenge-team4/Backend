@@ -78,6 +78,8 @@ public class DevDataInitializer implements ApplicationRunner {
         Complaint emergencyComplaint = new Complaint(
                 parent,
                 student,
+                teacher,
+                "긴급 민원 테스트",
                 "내일 하교 시간에 학교 정문에서 기다렸다가 직접 다치게 하겠습니다. 어디로 가는지도 알고 있습니다."
         );
         complaintRepository.save(emergencyComplaint);
@@ -130,7 +132,7 @@ public class DevDataInitializer implements ApplicationRunner {
                 emergencyAnalysis.getRiskLevel()
         ));
 
-        emergencyComplaint.submit(teacher);
+        emergencyComplaint.submit();
         complaintEventRepository.save(ComplaintEvent.statusChanged(
                 emergencyComplaint,
                 parentUser,

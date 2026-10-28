@@ -1,8 +1,11 @@
 package com.teacherhub.risk.controller;
 
+import com.teacherhub.common.exception.ErrorResponse;
 import com.teacherhub.risk.dto.response.RiskTagResponse;
 import com.teacherhub.risk.service.RiskTagService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -20,6 +23,12 @@ import java.util.List;
         description = "위험 요소 API"
 )
 @SecurityRequirement(name = "bearerAuth")
+@ApiResponses({
+        @ApiResponse(responseCode = "401", description = "인증 토큰이 없거나 유효하지 않음",
+                content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "500", description = "예상하지 못한 서버 오류",
+                content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+})
 @RestController
 @RequestMapping("/risk-tags")
 @RequiredArgsConstructor
@@ -34,7 +43,8 @@ public class RiskTagController {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "위험 요소 목록 조회 성공"
+                    description = "위험 요소 목록 조회 성공",
+                    useReturnTypeSchema = true
             )
     })
     @GetMapping

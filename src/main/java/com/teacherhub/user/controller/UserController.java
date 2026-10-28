@@ -1,8 +1,11 @@
 package com.teacherhub.user.controller;
 
+import com.teacherhub.common.exception.ErrorResponse;
 import com.teacherhub.user.dto.UserInfoResponse;
 import com.teacherhub.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -33,15 +36,23 @@ public class UserController {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "내 계정 정보 조회 성공"
+                    description = "내 계정 정보 조회 성공",
+                    useReturnTypeSchema = true
             ),
             @ApiResponse(
                     responseCode = "401",
-                    description = "인증 토큰이 없거나 유효하지 않음"
+                    description = "인증 토큰이 없거나 유효하지 않음",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))
             ),
             @ApiResponse(
                     responseCode = "404",
-                    description = "사용자를 찾을 수 없음"
+                    description = "사용자를 찾을 수 없음",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "500",
+                    description = "예상하지 못한 서버 오류",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))
             )
     })
     @GetMapping("/me")
