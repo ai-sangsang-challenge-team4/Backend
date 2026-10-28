@@ -30,7 +30,6 @@ import com.teacherhub.user.entity.Student;
 import com.teacherhub.user.entity.Teacher;
 import com.teacherhub.user.entity.User;
 
-import com.teacherhub.user.enums.Relationship;
 import com.teacherhub.user.enums.UserRole;
 import com.teacherhub.user.repository.ParentRepository;
 import com.teacherhub.user.repository.ParentStudentRepository;
@@ -634,8 +633,7 @@ public class ComplaintFlowIntegrationTest {
         Student unassignedStudent = studentRepository.save(new Student("학급 미배정 학생", "20269999"));
         parentStudentRepository.save(new ParentStudent(
                 parent,
-                unassignedStudent,
-                Relationship.values()[0]
+                unassignedStudent
         ));
 
         assertThat(parentComplaintService.findRecipients(parentUser.getId(), unassignedStudent.getId()))
@@ -831,14 +829,10 @@ public class ComplaintFlowIntegrationTest {
 
 
         // 학부모 ↔ 학생
-        Relationship relationship =
-                Relationship.values()[0];
-
         ParentStudent parentStudent =
                 new ParentStudent(
                         parent,
-                        student,
-                        relationship
+                        student
                 );
 
         parentStudentRepository.save(parentStudent);

@@ -5,12 +5,8 @@ import com.teacherhub.complaint.access.ComplaintAccessPolicy;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.complaint.enums.ComplaintStatus;
-import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
-import com.teacherhub.escalation.entity.ComplaintEscalation;
-import com.teacherhub.escalation.exception.AdminApprovalRequiredException;
-import com.teacherhub.escalation.repository.ComplaintEscalationRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest;
@@ -18,6 +14,8 @@ import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewResponse;
 import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
+import com.teacherhub.risk.dto.EmergencyReviewCreateRequest;
+import com.teacherhub.risk.dto.EmergencyReviewResponse;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskReviewDirection;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
@@ -25,6 +23,7 @@ import com.teacherhub.risk.exception.RiskReviewNotAllowedException;
 import com.teacherhub.risk.exception.RiskReviewReasonRequiredException;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
+import com.teacherhub.risk.service.EmergencyReviewService;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -39,11 +38,11 @@ public class TeacherRiskReviewService {
     private final ComplaintRepository complaintRepository;
     private final RiskAnalysisRepository riskAnalysisRepository;
     private final RiskReviewRepository riskReviewRepository;
-    private final ComplaintEscalationRepository escalationRepository;
     private final ComplaintEventRepository eventRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
     private final TeacherRiskScale teacherRiskScale;
+    private final EmergencyReviewService emergencyReviewService;
 
     @Transactional
     public TeacherRiskReviewResponse review(
@@ -91,31 +90,13 @@ public class TeacherRiskReviewService {
         }
 
         if (previousLevel == RiskLevel.EMERGENCY && request.riskScore() != previousScore) {
-            ComplaintEscalation escalation = escalationRepository.findByComplaintId(complaintId)
-                    .orElseThrow(() -> new AdminApprovalRequiredException(
-                            "EMERGENCY 위험도 변경을 요청하려면 먼저 관리자에게 공유해야 합니다."
-                    ));
-            if (!escalation.getRiskAnalysis().getId().equals(analysis.getId())) {
-                throw new AdminApprovalRequiredException(
-                        "현재 위험 분석에 연결된 관리자 공유 건이 필요합니다."
-                );
-            }
-            escalation.requestRiskChange(
-                    previousScore,
-                    previousLevel,
-                    request.riskScore(),
-                    reviewedLevel,
-                    reason
+            EmergencyReviewResponse emergencyReview = emergencyReviewService.request(
+                    userId,
+                    complaintId,
+                    new EmergencyReviewCreateRequest(request.riskScore(), reason, null)
             );
-            ComplaintEscalation saved = escalationRepository.saveAndFlush(escalation);
-            eventRepository.save(ComplaintEvent.escalationChanged(
-                    complaint,
-                    user,
-                    saved.getId(),
-                    MessageEventType.ESCALATION_RISK_CHANGE_REQUESTED,
-                    reason
-            ));
             return TeacherRiskReviewResponse.pendingApproval(
+                    emergencyReview.requestId(),
                     complaint.getId(),
                     analysis.getId(),
                     previousScore,
@@ -125,7 +106,7 @@ public class TeacherRiskReviewService {
                     direction,
                     reason,
                     user.getName(),
-                    saved.getRiskChangeRequestedAt()
+                    emergencyReview.requestedAt()
             );
         }
 
@@ -149,7 +130,10 @@ public class TeacherRiskReviewService {
                 saved.getReviewedLevel(),
                 saved.getReason()
         ));
-        return TeacherRiskReviewResponse.from(saved);
+        return TeacherRiskReviewResponse.from(
+                saved,
+                emergencyReviewService.isSafetyLocked(complaintId)
+        );
     }
 
     private RiskReviewDirection direction(int previousScore, int reviewedScore) {

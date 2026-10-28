@@ -1,10 +1,16 @@
 package com.teacherhub.common.exception;
 
+import com.teacherhub.auth.exception.SignupConflictException;
+import com.teacherhub.auth.exception.SignupReferenceNotFoundException;
+import com.teacherhub.auth.exception.SignupValidationException;
 import com.teacherhub.complaint.exception.*;
 import com.teacherhub.escalation.exception.*;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
 import com.teacherhub.risk.exception.RiskReviewNotAllowedException;
 import com.teacherhub.risk.exception.RiskReviewReasonRequiredException;
+import com.teacherhub.risk.exception.EmergencyReviewAccessDeniedException;
+import com.teacherhub.risk.exception.EmergencyReviewDuplicateException;
+import com.teacherhub.risk.exception.EmergencyReviewNotFoundException;
 import com.teacherhub.user.exception.StudentNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -31,6 +37,30 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
+    @ExceptionHandler(SignupValidationException.class)
+    public ResponseEntity<ErrorResponse> handleSignupValidation(
+            SignupValidationException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.BAD_REQUEST, "SIGNUP_VALIDATION_FAILED", e, request);
+    }
+
+    @ExceptionHandler(SignupReferenceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleSignupReferenceNotFound(
+            SignupReferenceNotFoundException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.NOT_FOUND, "SIGNUP_REFERENCE_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(SignupConflictException.class)
+    public ResponseEntity<ErrorResponse> handleSignupConflict(
+            SignupConflictException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.CONFLICT, "SIGNUP_CONFLICT", e, request);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleMethodArgumentNotValid(
             MethodArgumentNotValidException e,
@@ -166,9 +196,28 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.CONFLICT, "ESCALATION_VERSION_CONFLICT", e, request);
     }
 
-    @ExceptionHandler(AdminApprovalRequiredException.class)
-    public ResponseEntity<ErrorResponse> handleAdminApprovalRequired(AdminApprovalRequiredException e, HttpServletRequest request) {
-        return error(HttpStatus.CONFLICT, "ADMIN_APPROVAL_REQUIRED", e, request);
+    @ExceptionHandler(EmergencyReviewDuplicateException.class)
+    public ResponseEntity<ErrorResponse> handleEmergencyReviewDuplicate(
+            EmergencyReviewDuplicateException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.CONFLICT, "EMERGENCY_REVIEW_DUPLICATE", e, request);
+    }
+
+    @ExceptionHandler(EmergencyReviewNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleEmergencyReviewNotFound(
+            EmergencyReviewNotFoundException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.NOT_FOUND, "EMERGENCY_REVIEW_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(EmergencyReviewAccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleEmergencyReviewAccessDenied(
+            EmergencyReviewAccessDeniedException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.FORBIDDEN, "EMERGENCY_REVIEW_ACCESS_DENIED", e, request);
     }
 
     @ExceptionHandler(FinalAnalysisOnSubmitException.class)

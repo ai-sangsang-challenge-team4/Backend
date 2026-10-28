@@ -12,7 +12,7 @@ public record ComplaintRecipientResponse(
     public static ComplaintRecipientResponse from(Teacher teacher, Teacher homeroomTeacher) {
         return new ComplaintRecipientResponse(
                 teacher.getId(),
-                teacher.getUser().getName(),
+                teacher.getName(),
                 teacher.getId().equals(homeroomTeacher.getId())
         );
     }

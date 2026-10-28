@@ -18,6 +18,10 @@ public class SchoolClass {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "school_id")
+    private School school;
+
     @Column(name = "academic_year", nullable = false)
     private int academicYear;
 
@@ -51,6 +55,17 @@ public class SchoolClass {
             int classNo,
             Teacher homeroomTeacher
     ) {
+        this(null, academicYear, grade, classNo, homeroomTeacher);
+    }
+
+    public SchoolClass(
+            School school,
+            int academicYear,
+            int grade,
+            int classNo,
+            Teacher homeroomTeacher
+    ) {
+        this.school = school;
         this.academicYear = academicYear;
         this.grade = grade;
         this.classNo = classNo;
@@ -63,14 +78,18 @@ public class SchoolClass {
     }
 
     public boolean hasAssignedTeacher(Teacher teacher) {
-        return homeroomTeacher.getId().equals(teacher.getId())
-                || assignedTeachers.stream().anyMatch(candidate -> candidate.getId().equals(teacher.getId()));
+        return teacher.getUser() != null && (homeroomTeacher.getId().equals(teacher.getId())
+                || assignedTeachers.stream().anyMatch(candidate -> candidate.getId().equals(teacher.getId())));
     }
 
     public Set<Teacher> availableTeachers() {
         LinkedHashSet<Teacher> teachers = new LinkedHashSet<>();
-        teachers.add(homeroomTeacher);
-        teachers.addAll(assignedTeachers);
+        if (homeroomTeacher.getUser() != null) {
+            teachers.add(homeroomTeacher);
+        }
+        assignedTeachers.stream()
+                .filter(teacher -> teacher.getUser() != null)
+                .forEach(teachers::add);
         return teachers;
     }
 }

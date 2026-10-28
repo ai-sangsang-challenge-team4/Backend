@@ -18,6 +18,7 @@ import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
+import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.user.entity.Teacher;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.enums.UserRole;
@@ -39,6 +40,8 @@ class TeacherEscalationServiceTest {
     private final ComplaintEscalationRepository escalationRepository = mock(ComplaintEscalationRepository.class);
     private final RiskAnalysisRepository riskAnalysisRepository = mock(RiskAnalysisRepository.class);
     private final RiskReviewRepository riskReviewRepository = mock(RiskReviewRepository.class);
+    private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository =
+            mock(EmergencyRiskReviewRequestRepository.class);
     private final ComplaintEventRepository eventRepository = mock(ComplaintEventRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
     private final ComplaintAccessPolicy accessPolicy = mock(ComplaintAccessPolicy.class);
@@ -48,6 +51,7 @@ class TeacherEscalationServiceTest {
             escalationRepository,
             riskAnalysisRepository,
             riskReviewRepository,
+            emergencyReviewRequestRepository,
             eventRepository,
             userRepository,
             accessPolicy,
@@ -93,6 +97,9 @@ class TeacherEscalationServiceTest {
                 .thenReturn(Optional.of(analysis));
         when(riskReviewRepository.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
                 .thenReturn(Optional.empty());
+        when(emergencyReviewRequestRepository
+                .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.empty());
         when(escalationRepository.saveAndFlush(any(ComplaintEscalation.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
     }
@@ -135,6 +142,8 @@ class TeacherEscalationServiceTest {
         var response = service.findStatus(10L, 42L);
 
         assertThat(response.escalationStatus()).isEqualTo(EscalationStatus.NOT_SHARED);
+        assertThat(response.currentRiskLevel()).isEqualTo(RiskLevel.EMERGENCY);
+        assertThat(response.currentRiskScore()).isEqualTo(7);
         verify(escalationRepository, never()).saveAndFlush(any());
     }
 

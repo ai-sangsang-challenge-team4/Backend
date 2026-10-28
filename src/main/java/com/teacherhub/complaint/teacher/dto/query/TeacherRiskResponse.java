@@ -18,6 +18,7 @@ public record TeacherRiskResponse(
         RiskLevel riskLevel,
         Integer reviewScore,
         RiskLevel reviewLevel,
+        boolean safetyLock,
         LocalDateTime analyzedAt,
         LatestReview latestReview,
         List<DetectedFactor> detectedFactors
@@ -26,7 +27,8 @@ public record TeacherRiskResponse(
             RiskAnalysis analysis,
             List<ComplaintRiskTag> riskTags,
             RiskReview latestReview,
-            int initialReviewScore
+            int initialReviewScore,
+            boolean safetyLock
     ) {
         List<DetectedFactor> detectedFactors = riskTags.stream()
                 .filter(ComplaintRiskTag::isFinalDetected)
@@ -40,6 +42,7 @@ public record TeacherRiskResponse(
                 analysis.getRiskLevel(),
                 latestReview == null ? initialReviewScore : latestReview.getReviewedScore(),
                 latestReview == null ? analysis.getRiskLevel() : latestReview.getReviewedLevel(),
+                safetyLock,
                 analysis.getAnalyzedAt(),
                 latestReview == null ? null : LatestReview.from(latestReview),
                 detectedFactors

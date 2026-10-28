@@ -178,9 +178,6 @@ public class ComplaintEvent {
     ) {
         if (eventType != MessageEventType.ESCALATION_SHARED
                 && eventType != MessageEventType.ESCALATION_REVIEW_STARTED
-                && eventType != MessageEventType.ESCALATION_RISK_CHANGE_REQUESTED
-                && eventType != MessageEventType.ESCALATION_RISK_CHANGE_APPROVED
-                && eventType != MessageEventType.ESCALATION_RISK_CHANGE_REJECTED
                 && eventType != MessageEventType.ESCALATION_COMPLETED) {
             throw new IllegalArgumentException("관리자 공유 이벤트 타입이 아닙니다.");
         }
@@ -190,6 +187,30 @@ public class ComplaintEvent {
                 eventType,
                 "COMPLAINT_ESCALATION",
                 escalationId
+        );
+        event.reason = reason;
+        return event;
+    }
+
+    public static ComplaintEvent emergencyReviewChanged(
+            Complaint complaint,
+            User actor,
+            Long requestId,
+            MessageEventType eventType,
+            String reason
+    ) {
+        if (eventType != MessageEventType.EMERGENCY_REVIEW_REQUESTED
+                && eventType != MessageEventType.EMERGENCY_REVIEW_APPROVED
+                && eventType != MessageEventType.EMERGENCY_REVIEW_REJECTED
+                && eventType != MessageEventType.EMERGENCY_SAFETY_LOCK_UPDATED) {
+            throw new IllegalArgumentException("Emergency 재검토 이벤트 타입이 아닙니다.");
+        }
+        ComplaintEvent event = new ComplaintEvent(
+                complaint,
+                actor,
+                eventType,
+                "EMERGENCY_RISK_REVIEW_REQUEST",
+                requestId
         );
         event.reason = reason;
         return event;

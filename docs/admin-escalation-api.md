@@ -11,7 +11,9 @@ EMERGENCY 민원을 담당 교사가 관리자에게 공유하고, 지정된 관
 
 `GET /teacher/complaints/{complaintId}/escalation`
 
-공유 행이 없으면 200과 함께 `escalationStatus=NOT_SHARED`를 반환한다. 담당 교사만 조회할 수 있다.
+공유 행이 없으면 200과 함께 `escalationStatus=NOT_SHARED`를 반환한다. 이때도 최신 분석과
+교사 검토를 기준으로 `currentRiskScore`, `currentRiskLevel`을 채우며, 재검토 요청이 있으면
+`riskReviewStatus`, `emergencyReviewRequestId`, `safetyLock`도 함께 반환한다. 담당 교사만 조회할 수 있다.
 
 ### 관리자 공유
 
@@ -33,12 +35,13 @@ EMERGENCY 민원을 담당 교사가 관리자에게 공유하고, 지정된 관
 - 같은 대상·범위·사유로 중복 요청하면 기존 공유 건을 반환한다. 민원별 공유 행에는 DB 유일
   제약이 있고, 민원 쓰기 잠금으로 동시 클릭도 한 건만 생성된다.
 
-성공 응답의 `escalationStatus`는 `SHARED`다. `riskAnalysisId`, `riskScore`, `riskLevel`은
-공유 시점의 분석 결과이며, 이후 승인 검증도 이 분석 ID에 고정된다.
+성공 응답의 `escalationStatus`는 `SHARED`다. 공유 건은 공유 시점의 위험 분석을 참조하며,
+Emergency 재검토 요청은 공유와 독립적으로 최신 위험 분석을 기준으로 생성된다.
 
 ## 관리자 API
 
-모든 경로는 ADMIN 권한이 필요하며, 배정받은 공유 건만 읽거나 변경할 수 있다.
+모든 경로는 ADMIN 권한이 필요하다. `/admin/escalations` 경로는 배정받은 공유 건만,
+`/admin/emergency-review` 경로는 지정 검토자로 배정된 요청만 읽거나 변경할 수 있다.
 
 | 메서드 | 경로 | 동작 |
 |---|---|---|
@@ -48,35 +51,45 @@ EMERGENCY 민원을 담당 교사가 관리자에게 공유하고, 지정된 관
 | GET | `/admin/escalations/{escalationId}/risk` | 위험 분석 탭 조회 |
 | GET | `/admin/escalations/{escalationId}/history` | 처리 기록 탭 조회 |
 | POST | `/admin/escalations/{escalationId}/review` | `SHARED → UNDER_REVIEW` |
-| POST | `/admin/escalations/{escalationId}/risk-change-decision` | EMERGENCY 위험도 변경 승인·거부 |
 | POST | `/admin/escalations/{escalationId}/complete` | 결과 저장 후 `UNDER_REVIEW → COMPLETED` |
+| GET | `/admin/emergency-review` | 지정 검토자에게 배정된 재검토 요청 목록 |
+| GET | `/admin/emergency-review/{requestId}` | 지정 검토자의 Emergency 재검토 요청 조회 |
+| PATCH | `/admin/emergency-review/{requestId}` | 재검토 요청 승인·거부 및 안전 잠금 유지·해제 |
 
 목록과 상단 상세 조회는 화면에 필요한 요약 정보만 반환한다.
-`currentRiskLevel`은 관리자 승인으로 적용된 최신 교사 검토를 반영한다.
+`currentRiskLevel`은 Emergency 재검토 승인으로 적용된 최신 교사 검토를 반영한다.
 
 ```json
 {
   "escalationId": 1,
+  "emergencyReviewRequestId": 10,
   "complaintId": 1,
   "sharedBy": "Demo Teacher",
   "reason": "공동 검토 부탁드립니다.",
   "currentRiskLevel": "HIGH",
   "escalationStatus": "UNDER_REVIEW",
+  "riskReviewStatus": "APPLIED",
+  "safetyLock": true,
   "sharedAt": "2026-10-27T14:18:31"
 }
 ```
 
-검토 시작, 위험도 변경 결정, 처리 완료 응답은 상태 확인에 필요한 값만 반환한다.
+검토 시작과 처리 완료 응답은 공유 상태 확인에 필요한 값만 반환한다.
 
 ```json
 {
   "escalationId": 1,
+  "emergencyReviewRequestId": 10,
   "escalationStatus": "UNDER_REVIEW",
   "riskReviewStatus": "APPLIED",
   "currentRiskScore": 5,
-  "currentRiskLevel": "HIGH"
+  "currentRiskLevel": "HIGH",
+  "safetyLock": true
 }
 ```
+
+Emergency 재검토 요청은 관리자 공유와 독립적으로 생성할 수 있다. 승인으로 현재 위험도가
+하향되어도 지정 검토자가 명시적으로 해제하기 전까지 `safetyLock=true`를 유지한다.
 
 교사 화면과 마찬가지로 상단 정보와 세 탭을 별도 API로 조회한다. 아래는
 `GET /admin/escalations/{escalationId}/messages`의 공유 내용 응답 예시다.
@@ -104,10 +117,10 @@ EMERGENCY 민원을 담당 교사가 관리자에게 공유하고, 지정된 관
 - `MEDIATION_PACKAGE`가 선택되면 `mediationPackageIncluded=true`다. 현재는 별도 증빙 패키지 데이터 모델은 없다.
 - `/risk`는 교사 위험 분석 탭과 같은 `TeacherRiskResponse` 구조다.
 - `/history`는 교사 처리 기록 탭과 같은 `TeacherHistoryResponse` 구조다. 관리자 공유,
-  검토 시작, 교사의 위험도 변경 요청, 관리자 승인·거부, 처리 완료도 각각 `ESCALATION_SHARED`,
-  `ESCALATION_REVIEW_STARTED`, `ESCALATION_RISK_CHANGE_REQUESTED`,
-  `ESCALATION_RISK_CHANGE_APPROVED`, `ESCALATION_RISK_CHANGE_REJECTED`,
-  `ESCALATION_COMPLETED` 이벤트로 함께 기록된다.
+  검토 시작, 처리 완료는 각각 `ESCALATION_SHARED`, `ESCALATION_REVIEW_STARTED`,
+  `ESCALATION_COMPLETED` 이벤트로 기록된다. Emergency 재검토 요청·승인·거부·잠금 변경은
+  각각 `EMERGENCY_REVIEW_REQUESTED`, `EMERGENCY_REVIEW_APPROVED`,
+  `EMERGENCY_REVIEW_REJECTED`, `EMERGENCY_SAFETY_LOCK_UPDATED`로 기록된다.
 - 처리 기록의 이벤트별로 해당하지 않는 nullable 필드는 JSON 응답에서 제외된다.
 
 목록은 `status`, `riskLevel` 쿼리 파라미터로 필터링할 수 있다. 예:
@@ -121,20 +134,19 @@ EMERGENCY 민원을 담당 교사가 관리자에게 공유하고, 지정된 관
 
 `message`는 관리자가 해당 단계에서 남기는 메시지이며 필수이고 최대 500자다.
 
-EMERGENCY 위험도 변경 승인 요청:
+Emergency 재검토 승인 요청:
 
 ```json
 {
   "status": "APPLIED",
-  "message": "EMERGENCY 위험도 하향 조정을 승인합니다."
+  "safetyLock": true
 }
 ```
 
-`POST /admin/escalations/{escalationId}/risk-change-decision`은 `UNDER_REVIEW` 상태에서만
-호출할 수 있으며, 먼저 교사가 위험도 변경을 요청해야 한다. `status=APPLIED`이면 요청된
-점수로 `RiskReview`를 생성하지만 `escalationStatus`는 변경하지 않는다.
+`PATCH /admin/emergency-review/{requestId}`는 지정 검토자만 호출할 수 있다.
+`status=APPLIED`이면 요청된 점수로 `RiskReview`를 생성하지만 안전 잠금은 유지한다.
 
-EMERGENCY 위험도 변경 거부 요청:
+Emergency 재검토 거부 요청:
 
 ```json
 {
@@ -144,8 +156,20 @@ EMERGENCY 위험도 변경 거부 요청:
 ```
 
 `status=REJECTED`이면 실제 위험도와 `RiskReview`는 변경하지 않는다.
-`PENDING_ADMIN_APPROVAL`은 교사 요청 시 서버가 설정하는 상태이므로 관리자 결정 요청값으로
+`PENDING_ADMIN_APPROVAL`은 교사 요청 시 서버가 설정하는 상태이므로 검토자 결정 요청값으로
 사용할 수 없으며 409 `ESCALATION_STATE_INVALID`를 반환한다.
+
+결정 이후 안전 잠금만 해제하는 요청:
+
+```json
+{
+  "safetyLock": false
+}
+```
+
+`status`와 `safetyLock`은 하나 이상 전달해야 한다. 둘을 함께 보내면 결정과 잠금 상태를
+한 트랜잭션에서 반영한다. `message`는 승인·거부와 잠금 변경 모두 선택 사항이며,
+생략하거나 빈 문자열을 보내면 미입력으로 처리한다.
 
 처리 완료 요청:
 
@@ -155,28 +179,20 @@ EMERGENCY 위험도 변경 거부 요청:
 }
 ```
 
-검토 시작과 처리 완료는 `EscalationMessageRequest`, 위험도 변경 승인·거부는
-`RiskChangeDecisionRequest`를 사용하며 클라이언트는 version을 보내지 않는다.
+검토 시작과 처리 완료는 `EscalationMessageRequest`, Emergency 재검토 결정과 잠금 변경은
+`EmergencyReviewUpdateRequest`를 사용하며 클라이언트는 version을 보내지 않는다.
 공유 건은 JPA `@Version`으로 낙관적 잠금을 사용하므로 같은 행을 동시에 저장하면 서버에서
 충돌을 감지하여 409 `ESCALATION_VERSION_CONFLICT`를 반환한다.
 상태를 건너뛰거나 역행하면 409 `ESCALATION_STATE_INVALID`다. 미배정 관리자의 상세 조회는
 403 `ESCALATION_ACCESS_DENIED`다.
 
-## EMERGENCY 위험도 변경 승인
+## EMERGENCY 재검토
 
-현재 위험도가 EMERGENCY인 경우 교사는 먼저
-`POST /teacher/complaints/{complaintId}/risk-reviews`로 변경할 점수와 사유를 요청한다.
-연결된 관리자 공유 건이 없으면 409 `ADMIN_APPROVAL_REQUIRED`지만, 공유 건이 있으면 실제
-위험도는 변경하지 않고 `status=PENDING_ADMIN_APPROVAL`을 반환한다. 요청한 점수·등급·사유·
-시각은 관리자가 승인하거나 거부할 때까지 `ComplaintEscalation`에 저장된다.
-승인 대기 시점에는 `RiskReview`가 아직 생성되지 않으므로 `riskReviewId`는 JSON 응답에서
-제외된다. 관리자가 `APPLIED`로 승인할 때 `RiskReview`가 생성된다.
-
-관리자가 `risk-change-decision`에 `APPLIED`를 보내는 시점에 실제 `RiskReview`가 생성되어 위험도가
-변경되고 `riskReviewStatus=APPLIED`가 된다. 관리자가 거부하면 `REJECTED`가 되고 실제
-위험도는 EMERGENCY로 유지된다. 승인 대기 중에는 처리 완료할 수 없으며, 관리자가 승인이나
-거부로 결정한 뒤에만 `COMPLETED`로 전환할 수 있다. 교사가 거부 후 다시 요청하면 상태는
-`PENDING_ADMIN_APPROVAL`로 돌아간다.
+교사는 관리자 공유 여부와 무관하게
+`POST /teacher/complaints/{complaintId}/emergency-review`로 하향 점수와 사유를
+요청한다. 요청은 `EmergencyRiskReviewRequest`에 저장되고 `status=PENDING_ADMIN_APPROVAL`,
+`safetyLock=true`가 된다. 지정 검토자가 요청 ID 기반 PATCH API에서 승인하면 실제
+`RiskReview`가 생성되며, 같은 PATCH API로 명시적으로 해제할 때까지 안전 잠금이 유지된다.
 
 ## 주요 오류
 
@@ -190,7 +206,7 @@ EMERGENCY 위험도 변경 거부 요청:
 | 409 | `ESCALATION_NOT_ALLOWED` | EMERGENCY가 아니거나 다른 조건으로 이미 공유됨 |
 | 409 | `ESCALATION_STATE_INVALID` | 상태 순서 위반 |
 | 409 | `ESCALATION_VERSION_CONFLICT` | 서버에서 실제 동시 수정 충돌 감지 |
-| 409 | `ADMIN_APPROVAL_REQUIRED` | EMERGENCY 위험도 변경 승인 미완료 |
+| 409 | `EMERGENCY_REVIEW_DUPLICATE` | 처리 중이거나 안전 잠금이 유지 중인 재검토 요청 존재 |
 
 ## 개발 프로필 테스트 데이터
 

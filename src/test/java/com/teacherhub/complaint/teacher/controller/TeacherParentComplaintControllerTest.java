@@ -19,7 +19,7 @@ import com.teacherhub.complaint.teacher.service.TeacherRiskReviewService;
 import com.teacherhub.common.exception.GlobalExceptionHandler;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskReviewDirection;
-import com.teacherhub.escalation.enums.RiskReviewStatus;
+import com.teacherhub.risk.enums.RiskReviewStatus;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -129,6 +129,7 @@ class TeacherParentComplaintControllerTest {
         when(riskReviewService.review(7L, 42L, riskReviewRequest)).thenReturn(
                 new TeacherRiskReviewResponse(
                         null,
+                        300L,
                         42L,
                         12L,
                         7,
@@ -139,7 +140,8 @@ class TeacherParentComplaintControllerTest {
                         "하향 검토 사유",
                         "교사 이름",
                         now,
-                        RiskReviewStatus.PENDING_ADMIN_APPROVAL
+                        RiskReviewStatus.PENDING_ADMIN_APPROVAL,
+                        true
                 )
         );
 

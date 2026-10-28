@@ -9,11 +9,10 @@ import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.escalation.dto.EscalationMessageRequest;
-import com.teacherhub.escalation.dto.RiskChangeDecisionRequest;
 import com.teacherhub.escalation.entity.ComplaintEscalation;
 import com.teacherhub.escalation.enums.EscalationStatus;
 import com.teacherhub.escalation.enums.EscalationScope;
-import com.teacherhub.escalation.enums.RiskReviewStatus;
+import com.teacherhub.risk.enums.RiskReviewStatus;
 import com.teacherhub.escalation.exception.EscalationAccessDeniedException;
 import com.teacherhub.escalation.exception.EscalationStateException;
 import com.teacherhub.escalation.repository.ComplaintEscalationRepository;
@@ -23,10 +22,12 @@ import com.teacherhub.user.entity.User;
 import com.teacherhub.user.enums.UserRole;
 import com.teacherhub.user.repository.UserRepository;
 import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.entity.EmergencyRiskReviewRequest;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
+import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -48,6 +49,8 @@ class AdminEscalationServiceTest {
     private final ComplaintEventRepository eventRepository = mock(ComplaintEventRepository.class);
     private final ComplaintRiskTagRepository riskTagRepository = mock(ComplaintRiskTagRepository.class);
     private final RiskReviewRepository riskReviewRepository = mock(RiskReviewRepository.class);
+    private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository =
+            mock(EmergencyRiskReviewRequestRepository.class);
     private final TeacherRiskScale teacherRiskScale = mock(TeacherRiskScale.class);
     private final PiiMaskingService piiMaskingService = mock(PiiMaskingService.class);
     private final AdminEscalationService service = new AdminEscalationService(
@@ -57,6 +60,7 @@ class AdminEscalationServiceTest {
             eventRepository,
             riskTagRepository,
             riskReviewRepository,
+            emergencyReviewRequestRepository,
             teacherRiskScale,
             piiMaskingService
     );
@@ -101,8 +105,12 @@ class AdminEscalationServiceTest {
         when(escalationRepository.findDetailById(1L)).thenReturn(Optional.of(escalation));
         when(escalationRepository.saveAndFlush(any(ComplaintEscalation.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(riskReviewRepository.save(any(com.teacherhub.risk.entity.RiskReview.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(emergencyReviewRequestRepository
+                .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.empty());
+        when(emergencyReviewRequestRepository
+                .findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.empty());
     }
 
     @Test
@@ -122,6 +130,32 @@ class AdminEscalationServiceTest {
     void unassignedAdminCannotReadSharedCase() {
         assertThatThrownBy(() -> service.findOne(21L, 1L))
                 .isInstanceOf(EscalationAccessDeniedException.class);
+    }
+
+    @Test
+    void summaryContainsEmergencyReviewStatusAndSafetyLock() {
+        EmergencyRiskReviewRequest emergencyReview = new EmergencyRiskReviewRequest(
+                escalation.getComplaint(),
+                escalation.getRiskAnalysis(),
+                escalation.getSharedBy(),
+                admin,
+                7,
+                RiskLevel.EMERGENCY,
+                5,
+                RiskLevel.HIGH,
+                "Emergency 재검토 요청"
+        );
+        when(emergencyReviewRequestRepository
+                .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.of(emergencyReview));
+        when(riskReviewRepository.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
+                .thenReturn(Optional.empty());
+
+        var response = service.findOne(20L, 1L);
+
+        assertThat(response.riskReviewStatus())
+                .isEqualTo(RiskReviewStatus.PENDING_ADMIN_APPROVAL);
+        assertThat(response.safetyLock()).isTrue();
     }
 
     @Test
@@ -211,102 +245,34 @@ class AdminEscalationServiceTest {
         var response = service.complete(
                 20L,
                 1L,
-                new EscalationMessageRequest("위험도 하향 조정을 승인합니다.")
+                new EscalationMessageRequest("관리자 검토를 완료합니다.")
         );
 
         assertThat(response.escalationStatus()).isEqualTo(EscalationStatus.COMPLETED);
         assertThat(response.riskReviewStatus()).isNull();
-        assertThat(escalation.getResult()).isEqualTo("위험도 하향 조정을 승인합니다.");
+        assertThat(escalation.getResult()).isEqualTo("관리자 검토를 완료합니다.");
     }
 
     @Test
-    void riskChangeApprovalIsIndependentFromProcessingStatus() {
-        service.startReview(20L, 1L, new EscalationMessageRequest("검토를 시작합니다."));
-        escalation.requestRiskChange(
+    void pendingSeparatedEmergencyReviewMustBeDecidedBeforeCompletion() {
+        EmergencyRiskReviewRequest emergencyReview = new EmergencyRiskReviewRequest(
+                escalation.getComplaint(),
+                escalation.getRiskAnalysis(),
+                escalation.getSharedBy(),
+                admin,
                 7,
-                com.teacherhub.risk.enums.RiskLevel.EMERGENCY,
+                RiskLevel.EMERGENCY,
                 5,
-                com.teacherhub.risk.enums.RiskLevel.HIGH,
-                "위험도 하향 요청"
+                RiskLevel.HIGH,
+                "Emergency 재검토 요청"
         );
+        when(emergencyReviewRequestRepository
+                .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.of(emergencyReview));
+        when(riskReviewRepository.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
+                .thenReturn(Optional.empty());
 
-        var approved = service.decideRiskChange(
-                20L,
-                1L,
-                new RiskChangeDecisionRequest(
-                        RiskReviewStatus.APPLIED,
-                        "EMERGENCY 위험도 하향 조정을 승인합니다."
-                )
-        );
-
-        assertThat(approved.escalationStatus()).isEqualTo(EscalationStatus.UNDER_REVIEW);
-        assertThat(approved.riskReviewStatus())
-                .isEqualTo(RiskReviewStatus.APPLIED);
-        assertThat(approved.currentRiskScore()).isEqualTo(5);
-        assertThat(approved.currentRiskLevel()).isEqualTo(RiskLevel.HIGH);
-
-        var completed = service.complete(
-                20L,
-                1L,
-                new EscalationMessageRequest("관리자 검토를 종료합니다.")
-        );
-        assertThat(completed.escalationStatus()).isEqualTo(EscalationStatus.COMPLETED);
-        assertThat(completed.riskReviewStatus())
-                .isEqualTo(RiskReviewStatus.APPLIED);
-        verify(riskReviewRepository).save(any(com.teacherhub.risk.entity.RiskReview.class));
-        verify(eventRepository, times(4)).save(any(ComplaintEvent.class));
-    }
-
-    @Test
-    void rejectedRiskChangeDoesNotCreateRiskReview() {
         service.startReview(20L, 1L, new EscalationMessageRequest("검토를 시작합니다."));
-        escalation.requestRiskChange(
-                7,
-                com.teacherhub.risk.enums.RiskLevel.EMERGENCY,
-                5,
-                com.teacherhub.risk.enums.RiskLevel.HIGH,
-                "위험도 하향 요청"
-        );
-
-        var rejected = service.decideRiskChange(
-                20L,
-                1L,
-                new RiskChangeDecisionRequest(
-                        RiskReviewStatus.REJECTED,
-                        "현재 위험 요소 때문에 하향할 수 없습니다."
-                )
-        );
-
-        assertThat(rejected.escalationStatus()).isEqualTo(EscalationStatus.UNDER_REVIEW);
-        assertThat(rejected.riskReviewStatus())
-                .isEqualTo(RiskReviewStatus.REJECTED);
-        verify(riskReviewRepository, never()).save(any(com.teacherhub.risk.entity.RiskReview.class));
-    }
-
-    @Test
-    void adminCannotDecidePendingStatus() {
-        service.startReview(20L, 1L, new EscalationMessageRequest("검토를 시작합니다."));
-
-        assertThatThrownBy(() -> service.decideRiskChange(
-                20L,
-                1L,
-                new RiskChangeDecisionRequest(
-                        RiskReviewStatus.PENDING_ADMIN_APPROVAL,
-                        "승인 대기로 변경"
-                )
-        )).isInstanceOf(EscalationStateException.class);
-    }
-
-    @Test
-    void pendingRiskChangeMustBeDecidedBeforeCompletion() {
-        service.startReview(20L, 1L, new EscalationMessageRequest("검토를 시작합니다."));
-        escalation.requestRiskChange(
-                7,
-                com.teacherhub.risk.enums.RiskLevel.EMERGENCY,
-                5,
-                com.teacherhub.risk.enums.RiskLevel.HIGH,
-                "위험도 하향 요청"
-        );
 
         assertThatThrownBy(() -> service.complete(
                 20L,
