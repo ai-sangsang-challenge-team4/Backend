@@ -81,11 +81,11 @@ class RiskAnalysisControllerTest {
         for (int i = 0; i < exceptions.size(); i++) {
             doThrow(exceptions.get(i)).when(api).mask(7L, 10L);
             mvc.perform(post("/complaints/10/mask").principal(auth)).andExpect(status().is(statuses[i]))
-                    .andExpect(jsonPath("$.status").value("ERROR"))
                     .andExpect(jsonPath("$.code").value(codes[i]))
                     .andExpect(jsonPath("$.message").value(exceptions.get(i).getMessage()))
                     .andExpect(jsonPath("$.path").value("/complaints/10/mask"))
-                    .andExpect(jsonPath("$.timestamp").isNotEmpty());
+                    .andExpect(jsonPath("$.timestamp").isNotEmpty())
+                    .andExpect(jsonPath("$.status").doesNotExist());
         }
         doThrow(new RiskAnalysisNotFoundException("분석 결과가 없습니다.")).when(query).findFindings(7L, 20L);
         mvc.perform(get("/risk-analyses/20/findings").principal(auth)).andExpect(status().isNotFound())

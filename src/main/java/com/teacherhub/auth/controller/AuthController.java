@@ -5,7 +5,10 @@ import com.teacherhub.auth.dto.SignupResponse;
 import com.teacherhub.auth.dto.LoginRequest;
 import com.teacherhub.auth.dto.LoginResponse;
 import com.teacherhub.auth.service.AuthService;
+import com.teacherhub.common.exception.ErrorResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -33,19 +36,23 @@ public class AuthController {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "201",
-                    description = "회원가입 성공"
+                    description = "회원가입 성공",
+                    useReturnTypeSchema = true
             ),
             @ApiResponse(
                     responseCode = "400",
-                    description = "입력값 검증 실패"
+                    description = "입력값 검증 실패",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))
             ),
             @ApiResponse(
                     responseCode = "409",
-                    description = "이미 사용 중인 이메일 또는 교직원 번호"
+                    description = "이미 사용 중인 이메일 또는 교직원 번호",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))
             ),
             @ApiResponse(
                     responseCode = "500",
-                    description = "서버 내부 오류"
+                    description = "서버 내부 오류",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))
             )
     })
     @PostMapping("/signup")
@@ -60,31 +67,24 @@ public class AuthController {
                 .body(response);
     }
     @Operation(
-        summary = "로그인",
-        description = "이메일과 비밀번호를 확인하고 인증 토큰과 사용자 정보를 반환합니다."
-)
-@ApiResponses({
-        @ApiResponse(
-                responseCode = "200",
-                description = "로그인 성공"
-        ),
-        @ApiResponse(
-                responseCode = "400",
-                description = "이메일 또는 비밀번호 형식 오류"
-        ),
-        @ApiResponse(
-                responseCode = "401",
-                description = "이메일 또는 비밀번호 불일치"
-        ),
-        @ApiResponse(
-                responseCode = "403",
-                description = "비활성화되거나 이용할 수 없는 계정"
-        )
-})
-@PostMapping("/login")
-public ResponseEntity<LoginResponse> login(
-        @Valid @RequestBody LoginRequest request
-) {
-    return ResponseEntity.ok(authService.login(request));
-}
+            summary = "로그인",
+            description = "이메일과 비밀번호를 확인하고 JWT 액세스 토큰과 사용자 정보를 반환합니다."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "로그인 성공", useReturnTypeSchema = true),
+            @ApiResponse(responseCode = "400", description = "이메일 또는 비밀번호 형식 오류",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "이메일 또는 비밀번호 불일치",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "비활성화되거나 이용할 수 없는 계정",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "500", description = "예상하지 못한 서버 오류",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponse> login(
+            @Valid @RequestBody LoginRequest request
+    ) {
+        return ResponseEntity.ok(authService.login(request));
+    }
 }

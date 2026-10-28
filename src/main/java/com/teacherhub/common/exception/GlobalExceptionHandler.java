@@ -1,22 +1,30 @@
 package com.teacherhub.common.exception;
 
-import com.teacherhub.escalation.exception.*;
-import jakarta.servlet.http.HttpServletRequest;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.validation.FieldError;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.bind.MethodArgumentNotValidException;
-
-import java.time.OffsetDateTime;
 import com.teacherhub.complaint.exception.*;
+import com.teacherhub.escalation.exception.*;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
 import com.teacherhub.risk.exception.RiskReviewNotAllowedException;
 import com.teacherhub.risk.exception.RiskReviewReasonRequiredException;
 import com.teacherhub.user.exception.StudentNotFoundException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.validation.BindException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 @Slf4j
@@ -32,13 +40,76 @@ public class GlobalExceptionHandler {
                 .findFirst()
                 .orElse("요청 값이 올바르지 않습니다.");
 
-        return ResponseEntity.badRequest().body(new ErrorResponse(
-                "ERROR",
-                "VALIDATION_FAILED",
-                message,
-                OffsetDateTime.now(),
-                request.getRequestURI()
-        ));
+        return error(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message, request);
+    }
+
+    @ExceptionHandler(BindException.class)
+    public ResponseEntity<ErrorResponse> handleBindException(
+            BindException e,
+            HttpServletRequest request
+    ) {
+        String message = e.getBindingResult().getFieldErrors().stream()
+                .map(FieldError::getDefaultMessage)
+                .filter(errorMessage -> errorMessage != null && !errorMessage.isBlank())
+                .findFirst()
+                .orElse("요청 값이 올바르지 않습니다.");
+        return error(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message, request);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolation(
+            ConstraintViolationException e,
+            HttpServletRequest request
+    ) {
+        String message = e.getConstraintViolations().stream()
+                .map(violation -> violation.getMessage())
+                .filter(errorMessage -> errorMessage != null && !errorMessage.isBlank())
+                .findFirst()
+                .orElse("요청 값이 올바르지 않습니다.");
+        return error(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message, request);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableMessage(
+            HttpMessageNotReadableException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST_BODY", "요청 본문을 확인해주세요.", request);
+    }
+
+    @ExceptionHandler({
+            MissingServletRequestParameterException.class,
+            MethodArgumentTypeMismatchException.class
+    })
+    public ResponseEntity<ErrorResponse> handleInvalidRequestParameter(
+            Exception e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST_PARAMETER", "요청 파라미터를 확인해주세요.", request);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", "지원하지 않는 HTTP 메서드입니다.", request);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMediaTypeNotSupported(
+            HttpMediaTypeNotSupportedException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_MEDIA_TYPE", "지원하지 않는 Content-Type입니다.", request);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResourceFound(
+            NoResourceFoundException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.NOT_FOUND, "API_NOT_FOUND", "요청한 API를 찾을 수 없습니다.", request);
     }
 
     @ExceptionHandler(AdminNotFoundException.class)
@@ -83,6 +154,14 @@ public class GlobalExceptionHandler {
                 "다른 요청에서 데이터가 변경되었습니다. 최신 상태를 다시 조회해주세요.",
                 request
         );
+    }
+
+    @ExceptionHandler(EscalationVersionConflictException.class)
+    public ResponseEntity<ErrorResponse> handleEscalationVersionConflict(
+            EscalationVersionConflictException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.CONFLICT, "ESCALATION_VERSION_CONFLICT", e, request);
     }
 
     @ExceptionHandler(AdminApprovalRequiredException.class)
@@ -170,6 +249,39 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.CONFLICT, "MESSAGE_NOT_EDITABLE", e, request);
     }
 
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(
+            AccessDeniedException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "접근 권한이 없습니다.", request);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(
+            DataIntegrityViolationException e,
+            HttpServletRequest request
+    ) {
+        log.warn("Data conflict while handling request {}", request.getRequestURI(), e);
+        return error(HttpStatus.CONFLICT, "DATA_CONFLICT", "이미 존재하거나 현재 상태와 충돌하는 데이터입니다.", request);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(
+            IllegalArgumentException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e, request);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalState(
+            IllegalStateException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.CONFLICT, "INVALID_STATE", e, request);
+    }
+
     private ResponseEntity<ErrorResponse> error(HttpStatus status, String code, RuntimeException e, HttpServletRequest request) {
         return error(status, code, e.getMessage(), request);
     }
@@ -180,8 +292,9 @@ public class GlobalExceptionHandler {
             String message,
             HttpServletRequest request
     ) {
-        return ResponseEntity.status(status).body(new ErrorResponse(
-                "ERROR", code, message, OffsetDateTime.now(), request.getRequestURI()));
+        return ResponseEntity.status(status).body(
+                ErrorResponse.of(code, message, request.getRequestURI())
+        );
     }
 
     @ExceptionHandler(UnauthorizedException.class)
@@ -191,5 +304,19 @@ public class GlobalExceptionHandler {
     ) {
 
         return error(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", e, request);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleUnexpectedException(
+            Exception e,
+            HttpServletRequest request
+    ) {
+        log.error("Unexpected error while handling request {}", request.getRequestURI(), e);
+        return error(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "INTERNAL_SERVER_ERROR",
+                "서버 내부 오류가 발생했습니다.",
+                request
+        );
     }
 }
