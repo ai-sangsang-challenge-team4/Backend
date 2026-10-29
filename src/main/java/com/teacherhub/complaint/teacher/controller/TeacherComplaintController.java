@@ -37,6 +37,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springdoc.core.annotations.ParameterObject;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
@@ -76,9 +77,9 @@ public class TeacherComplaintController {
     }
 
     // 민원 상세 조회
-    @Operation(summary = "교사 민원 상세 조회", description = "담당 민원의 학생·학급·상태·위험도 정보를 조회합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "민원 상세 조회 성공", useReturnTypeSchema = true),
-            @ApiResponse(responseCode = "404", description = "민원 또는 위험 분석 결과를 찾을 수 없음",
+    @Operation(summary = "교사 민원 상세 조회", description = "담당 민원의 학생·학급·상태·위험도 정보를 조회합니다. 완료된 위험 분석이 없으면 riskLevel은 null입니다.", responses = {
+            @ApiResponse(responseCode = "200", description = "민원 상세 조회 성공. 완료된 분석이 없으면 riskLevel은 null", useReturnTypeSchema = true),
+            @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @GetMapping("/{complaintId}")
@@ -92,9 +93,9 @@ public class TeacherComplaintController {
     }
 
     // 민원 대화 조회 (완충요약버전)
-    @Operation(summary = "교사용 대화 내역 조회", description = "위험 메시지는 완충 요약하고 위험도별 허용 행동과 함께 반환하며 최신 학부모 문의를 읽음 처리합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "대화 내역 조회 성공", useReturnTypeSchema = true),
-            @ApiResponse(responseCode = "404", description = "민원 또는 위험 분석 결과를 찾을 수 없음",
+    @Operation(summary = "교사용 대화 내역 조회", description = "위험 메시지는 완충 요약하고 위험도별 허용 행동과 함께 반환하며 최신 학부모 문의를 읽음 처리합니다. 완료된 위험 분석이 없으면 대화는 정상 반환하고 allowedActions에 REQUEST_MANUAL_REVIEW를 제공합니다.", responses = {
+            @ApiResponse(responseCode = "200", description = "대화 내역 조회 성공. 분석이 없으면 수동 검토 액션을 반환", useReturnTypeSchema = true),
+            @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @GetMapping("/{complaintId}/messages")
@@ -125,9 +126,9 @@ public class TeacherComplaintController {
     }
 
     // 민원 위험 분석 조회
-    @Operation(summary = "민원 위험 분석 조회", description = "시스템 위험도, 교사 검토값과 감지된 위험 태그를 조회합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "위험 분석 조회 성공", useReturnTypeSchema = true),
-            @ApiResponse(responseCode = "404", description = "민원 또는 위험 분석 결과를 찾을 수 없음",
+    @Operation(summary = "민원 위험 분석 조회", description = "시스템 위험도, 교사 검토값과 감지된 위험 태그를 조회합니다. 완료된 위험 분석이 없으면 분석 관련 필드는 null, detectedFactors는 빈 배열로 반환합니다.", responses = {
+            @ApiResponse(responseCode = "200", description = "위험 분석 조회 성공. 분석이 없으면 nullable 필드와 빈 detectedFactors를 반환", useReturnTypeSchema = true),
+            @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @GetMapping("/{complaintId}/risk")
@@ -182,7 +183,7 @@ public class TeacherComplaintController {
 
 
     // AI 초안 생성
-    @Operation(summary = "교사 AI 답변 초안 생성", description = "현재 대화 이력을 기반으로 답변 초안을 생성합니다. 현재 제공자는 Mock 구현입니다.", responses = {
+    @Operation(summary = "교사 AI 답변 초안 생성", description = "현재 대화 이력을 기반으로 답변 초안을 생성합니다. HIGH에서는 가능하지만 유효 위험도가 EMERGENCY이거나 safetyLock이 활성화되면 차단합니다. 현재 제공자는 Mock 구현입니다.", responses = {
             @ApiResponse(responseCode = "201", description = "AI 답변 초안 생성 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
@@ -219,7 +220,7 @@ public class TeacherComplaintController {
     }
 
     // 답변 임시저장: 최초 저장 + 이후 수정
-    @Operation(summary = "교사 답변 초안 저장", description = "교사 답변 초안을 생성하거나 수정합니다.", responses = {
+    @Operation(summary = "교사 답변 초안 저장", description = "교사 답변 초안을 생성하거나 수정합니다. 유효 위험도가 EMERGENCY이거나 safetyLock이 활성화되면 차단합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "답변 초안 저장 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "400", description = "입력값 검증 실패",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
@@ -242,7 +243,7 @@ public class TeacherComplaintController {
     }
 
     // 답변 최종 제출
-    @Operation(summary = "교사 답변 최종 제출", description = "작성한 교사 답변을 학부모에게 전송하고 답변 차례를 학부모로 변경합니다.", responses = {
+    @Operation(summary = "교사 답변 최종 제출", description = "작성한 교사 답변을 학부모에게 전송하고 답변 차례를 학부모로 변경합니다. 답변만으로 상담이 자동 완료되지는 않으며, EMERGENCY 또는 safetyLock 상태에서는 차단합니다.", responses = {
             @ApiResponse(responseCode = "201", description = "교사 답변 제출 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "400", description = "입력값 검증 실패",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
@@ -266,6 +267,26 @@ public class TeacherComplaintController {
                         request,
                         idempotencyKey
                 ));
+    }
+
+    @Operation(
+            summary = "교사 상담 완료 처리",
+            description = "교사가 답변을 전송한 뒤 학부모 응답 대기 중인 문의를 완료 처리합니다. 답변 전송만으로는 자동 완료되지 않습니다.",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "상담 완료 처리 성공"),
+                    @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
+                            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    @ApiResponse(responseCode = "409", description = "완료할 수 없는 상태이거나 Emergency 답변 차단 상태임",
+                            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+            }
+    )
+    @PostMapping("/{complaintId}/close")
+    public ResponseEntity<Map<String, String>> closeComplaint(
+            @Parameter(hidden = true) Authentication authentication,
+            @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId
+    ) {
+        teacherResponseService.close(userId(authentication), complaintId);
+        return ResponseEntity.ok(Map.of("message", "상담이 완료 처리되었습니다."));
     }
 
     private Long userId(Authentication authentication) {

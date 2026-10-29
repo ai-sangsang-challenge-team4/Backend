@@ -49,9 +49,10 @@
 }
 ```
 
-전화번호(국내 휴대폰·일반 지역번호·070 및 일부 +82 형태), 이메일, 주민등록번호 형태를 정규식으로 치환한다. 이름·자유 형식 주소·계좌번호 등 모든 개인정보를 탐지하는 기능은 아니다. 200은 지원 패턴의 치환 성공을 뜻하며 외부 AI 전송에 안전하다는 보장은 아니다. 불확실성을 판정하는 로직이 없으므로 기존 명세의 422는 현재 제공하지 않는다.
+전화번호(국내 휴대폰·일반 지역번호·050 가상번호·070 및 일부 +82 형태, `-`·`.`·공백 구분), 이메일, 주민등록번호 형태를 정규식으로 치환한다. 이름·자유 형식 주소·계좌번호 등 모든 개인정보를 탐지하는 기능은 아니다. 200은 지원 패턴의 치환 성공을 뜻하며 외부 AI 전송에 안전하다는 보장은 아니다. 불확실성을 판정하는 로직이 없으므로 기존 명세의 422는 현재 제공하지 않는다.
 
 원문은 변경하지 않는다. 민원 수정 시 기존 maskedContent는 초기화된다. 전체 분석 API는 항상 현재 원문을 다시 마스킹하므로 mask API의 선행 호출은 선택 사항이다. 룰의 탐지 근거도 마스킹 후 저장·수정안 생성에 사용한다.
+제출 중 마스킹 자체가 실패하면 원문을 LLM에 전달하지 않고 해당 분석만 건너뛰며 원문 메시지 전송은 유지한다.
 
 ## 분석 실행 응답
 
@@ -286,12 +287,15 @@ Postman에서는 생성 후 DRAFT, send 성공 후 OPEN을 조회하고,
 | GET | `/complaints/{complaintId}/message-draft` | 학부모 추가 문의 임시저장 조회 |
 | POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 추가 문의 AI 위험 분석·수정 제안 생성 |
 | POST | `/complaints/{complaintId}/messages/{messageId}/send` | 분석된 추가 문의 전송 후 교사 차례로 변경 |
-| POST | `/complaints/{complaintId}/close` | 교사 답변 확인 후 민원 종료 |
+| POST | `/teacher/complaints/{complaintId}/close` | 교사가 답변 후 상담 완료 처리 |
 
 교사 답변 API 경로는 기존 값을 유지한다. AI 초안 생성 시 지금까지 전송된 전체 대화가
 입력 문맥이 되며, 임시저장과 최종 전송은 `complaint_messages`의 `TEACHER_REPLY` 행을
 사용한다. 교사 전송 후 민원은 계속 OPEN이고 `waitingFor=PARENT`가 된다. 따라서 학부모가
 추가 문의를 보내면 다시 `waitingFor=TEACHER`로 바뀌어 같은 분기 처리를 반복할 수 있다.
+답변 전송만으로 자동 완료되지 않으며, 교사가 별도 완료 API를 호출해야 CLOSED가 된다.
+완료된 문의에 학부모가 같은 사안의 추가 질문을 보내면 기존 문의를 OPEN으로 다시 열고
+`waitingFor=TEACHER`로 변경하며 `CLOSED → OPEN` 상태 변경 이력을 남긴다. 다른 주제는 새 문의로 생성한다.
 
 AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/response/ai-draft`는
 `complaintId`, `content`, `modelName`, `generatedAt`만 반환한다. 교사 답변 임시저장 및 제출
@@ -302,8 +306,9 @@ AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/
 `Idempotency-Key` 헤더가 필수다. 동일 교사가 같은 키와 동일 내용으로 재요청하면 최초 전송
 결과를 반환하며 메시지와 `MESSAGE_SENT` 이벤트를 중복 생성하지 않는다.
 
-Emergency safetyLock이 활성화되면 AI 초안 생성, 임시저장, 최종 전송과 High 템플릿 사용을
-서버에서 모두 차단한다. 차단 시 `RESPONSE_BLOCKED_BY_SAFETY_LOCK` 감사 이벤트를 남긴다.
+유효 위험도가 Emergency이거나 safetyLock이 활성화되면 AI 초안 생성, 임시저장, 최종 전송과
+상담 완료 처리를 서버에서 모두 차단한다. High에서는 safetyLock이 없으면 AI 초안 생성이 가능하다.
+차단 시 `RESPONSE_BLOCKED_BY_SAFETY_LOCK` 감사 이벤트를 남긴다.
 관리자는 재검토를 `APPLIED`로 승인하기 전 safetyLock을 해제할 수 없다.
 
 `GET /teacher/complaints/{complaintId}/messages`은 전송된 모든 메시지를 반환한다.

@@ -62,8 +62,9 @@ public class ParentMessageService {
     public ParentMessageResponse findDraft(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findParentComplaint(user, complaintId);
-        if (complaint.getStatus() != ComplaintStatus.OPEN
-                || complaint.getWaitingFor() != WaitingFor.PARENT) {
+        boolean canContinueOpenComplaint = complaint.getStatus() == ComplaintStatus.OPEN
+                && complaint.getWaitingFor() == WaitingFor.PARENT;
+        if (!canContinueOpenComplaint && complaint.getStatus() != ComplaintStatus.CLOSED) {
             throw new MessageDraftNotFoundException("현재 작성할 수 있는 추가 문의 초안이 없습니다.");
         }
         return ParentMessageResponse.from(findSavedDraft(complaintId, userId)
@@ -81,10 +82,18 @@ public class ParentMessageService {
         riskAnalysisService.analyzeMessageForSubmission(userId, complaintId, messageId);
         markLatestTeacherMessageRead(complaintId, user);
         message.send();
-        complaint.parentMessageSent();
+        ComplaintStatus previousStatus = complaint.parentMessageSent();
 
         ComplaintMessage saved = messageRepository.saveAndFlush(message);
         eventRepository.save(ComplaintEvent.messageSent(saved));
+        if (previousStatus == ComplaintStatus.CLOSED) {
+            eventRepository.save(ComplaintEvent.statusChanged(
+                    complaint,
+                    user,
+                    ComplaintStatus.CLOSED,
+                    ComplaintStatus.OPEN
+            ));
+        }
         return ParentMessageResponse.from(saved);
     }
 
@@ -100,20 +109,6 @@ public class ParentMessageService {
                         MessageStatus.DRAFT
                 )
         );
-    }
-
-    @Transactional
-    public void close(Long userId, Long complaintId) {
-        User user = findUser(userId);
-        Complaint complaint = findParentTurnForUpdate(user, complaintId);
-        markLatestTeacherMessageRead(complaintId, user);
-        complaint.close();
-        eventRepository.save(ComplaintEvent.statusChanged(
-                complaint,
-                user,
-                ComplaintStatus.OPEN,
-                ComplaintStatus.CLOSED
-        ));
     }
 
     private java.util.Optional<ComplaintMessage> findSavedDraft(Long complaintId, Long userId) {
@@ -149,10 +144,11 @@ public class ParentMessageService {
         Complaint complaint = complaintRepository.findForUpdate(complaintId)
                 .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
         complaintAccessPolicy.validateParentOwner(user, complaint);
-        if (complaint.getStatus() != ComplaintStatus.OPEN
-                || complaint.getWaitingFor() != WaitingFor.PARENT) {
+        boolean canContinueOpenComplaint = complaint.getStatus() == ComplaintStatus.OPEN
+                && complaint.getWaitingFor() == WaitingFor.PARENT;
+        if (!canContinueOpenComplaint && complaint.getStatus() != ComplaintStatus.CLOSED) {
             throw new MessageNotEditableException(
-                    "학부모가 추가 문의를 작성하거나 종료할 차례가 아닙니다."
+                    "학부모가 추가 문의를 작성할 수 있는 상태가 아닙니다."
             );
         }
         return complaint;

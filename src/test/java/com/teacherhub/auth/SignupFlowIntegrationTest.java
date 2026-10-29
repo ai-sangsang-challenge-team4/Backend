@@ -109,9 +109,11 @@ class SignupFlowIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(parentRequest))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.role").value("PARENT"));
+                .andExpect(jsonPath("$.role").value("PARENT"))
+                .andExpect(jsonPath("$.name").value("김학부모"));
 
         var parentUser = userRepository.findByEmail("new-parent@example.com").orElseThrow();
+        assertThat(parentUser.getName()).isEqualTo("김학부모");
         var parent = parentRepository.findByUserId(parentUser.getId()).orElseThrow();
         assertThat(parentStudentRepository.findByParent_Id(parent.getId()).orElseThrow().getStudent().getId())
                 .isEqualTo(student.getId());

@@ -38,7 +38,7 @@ import java.util.Map;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/complaints")
-@Tag(name = "Parent Complaint", description = "학부모 민원 작성, 조회, 추가 문의 및 종료 API")
+@Tag(name = "Parent Complaint", description = "학부모 민원 작성, 조회 및 추가 문의 API")
 @SecurityRequirement(name = "bearerAuth")
 @ApiResponses({
         @ApiResponse(responseCode = "401", description = "인증 토큰이 없거나 유효하지 않음",
@@ -56,7 +56,7 @@ public class ParentComplaintController {
     private final UserRepository userRepository;
 
     // 민원 작성
-    @Operation(summary = "민원 초안 생성", description = "자녀와 담당 교사를 선택하고 민원 초안을 생성합니다.", responses = {
+    @Operation(summary = "민원 초안 생성", description = "GET /users/me의 students 목록에서 자녀를 선택하고, 해당 studentId로 담당 교사를 조회한 뒤 민원 초안을 생성합니다.", responses = {
             @ApiResponse(responseCode = "201", description = "민원 초안 생성 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "400", description = "입력값 검증 실패 또는 잘못된 수신 교사",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
@@ -91,7 +91,7 @@ public class ParentComplaintController {
     }
 
     // 문의 대상 교사 조회
-    @Operation(summary = "문의 대상 교사 조회", description = "선택한 자녀의 현재 학급 담당 교사 목록을 조회합니다.", responses = {
+    @Operation(summary = "문의 대상 교사 조회", description = "GET /users/me의 students 목록에서 선택한 자녀의 studentId로 현재 학급 담당 교사 목록을 조회합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "문의 대상 교사 조회 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "400", description = "studentId 파라미터 오류",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
@@ -247,23 +247,6 @@ public class ParentComplaintController {
                 userId(authentication),
                 complaintId
         ));
-    }
-
-    // 교사 답변 확인 후 추가 문의 없이 종료
-    @Operation(summary = "민원 종료", description = "교사 답변을 확인한 뒤 추가 문의 없이 민원을 종료합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "민원 종료 성공", useReturnTypeSchema = true),
-            @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "종료 가능한 상태가 아님",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    })
-    @PostMapping("/{complaintId}/close")
-    public ResponseEntity<Map<String, String>> closeComplaint(
-            @Parameter(hidden = true) Authentication authentication,
-            @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId
-    ) {
-        parentMessageService.close(userId(authentication), complaintId);
-        return ResponseEntity.ok(Map.of("message", "민원이 종료되었습니다."));
     }
 
     private Long userId(Authentication authentication) {

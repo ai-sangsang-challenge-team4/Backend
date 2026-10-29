@@ -32,7 +32,7 @@ public class AuthController {
     @Operation(
             summary = "회원가입",
             description = "공통 계정 정보와 역할별 학교 정보를 운영 DB와 대조하여 회원가입을 진행합니다. "
-                    + "학부모는 학급·학생·자녀 이름을, 교사는 학교·교직원 번호를 입력합니다."
+                    + "학부모는 사용자 이름·학급·학생 번호·자녀 이름을, 교사는 학교·교직원 번호·교사 이름을 입력합니다."
     )
     @ApiResponses({
             @ApiResponse(

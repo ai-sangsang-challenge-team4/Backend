@@ -27,7 +27,10 @@ public class EmergencyReviewController {
     private final EmergencyReviewService emergencyReviewService;
     private final UserRepository userRepository;
 
-    @Operation(summary = "Emergency 재검토 요청")
+    @Operation(
+            summary = "Emergency 재검토 요청",
+            description = "처리 중인 요청이 없으면 이전 요청이 거부되어 안전 잠금이 유지 중이더라도 새 재검토를 요청할 수 있습니다."
+    )
     @PostMapping("/teacher/complaints/{complaintId}/emergency-review")
     public ResponseEntity<EmergencyReviewResponse> request(
             Authentication authentication,
@@ -39,7 +42,7 @@ public class EmergencyReviewController {
         );
     }
 
-    @Operation(summary = "최근 Emergency 재검토 요청 조회")
+    @Operation(summary = "최근 Emergency 재검토 요청 조회", description = "현재 안전 잠금 상태는 가장 최근 요청을 기준으로 확인합니다.")
     @GetMapping("/teacher/complaints/{complaintId}/emergency-review/current")
     public ResponseEntity<EmergencyReviewResponse> findCurrent(
             Authentication authentication,
@@ -71,7 +74,10 @@ public class EmergencyReviewController {
         );
     }
 
-    @Operation(summary = "지정 검토자의 Emergency 재검토 결정 및 안전 잠금 변경")
+    @Operation(
+            summary = "지정 검토자의 Emergency 재검토 결정 및 안전 잠금 변경",
+            description = "재요청이 승인(APPLIED)되면 같은 요청에서 safetyLock=false로 안전 잠금을 해제할 수 있습니다."
+    )
     @PatchMapping("/admin/emergency-review/{requestId}")
     public ResponseEntity<EmergencyReviewResponse> update(
             Authentication authentication,

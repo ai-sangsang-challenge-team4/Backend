@@ -159,6 +159,18 @@ class RiskAnalysisServiceTest {
     }
 
     @Test
+    void allowsSubmissionWithoutSendingOriginalToLlmWhenMaskingFails() {
+        Complaint complaint = draft();
+        when(masking.mask(complaint.getContent())).thenThrow(new IllegalStateException("masking failure"));
+
+        assertThatCode(() -> service.analyzeForSubmission(1L, 42L))
+                .doesNotThrowAnyException();
+
+        verifyNoInteractions(rules, llm, revisions);
+        verify(analyses, never()).save(any());
+    }
+
+    @Test
     void rejectsOtherUsersBeforeAnalysis() {
         draft();
         assertThatThrownBy(() -> service.analyze(2L, 42L))

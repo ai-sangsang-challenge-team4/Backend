@@ -282,8 +282,7 @@ public class ComplaintFlowIntegrationTest {
         assertThat(detail.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
         assertThat(risk.riskAnalysisId()).isEqualTo(submittedSummary.analysisId());
         assertThat(original.content()).isEqualTo(submittedContent);
-        assertThat(conversation.allowedActions())
-                .containsExactly(com.teacherhub.complaint.teacher.dto.AllowedAction.USE_RESPONSE_TEMPLATE);
+        assertThat(conversation.allowedActions()).isEmpty();
         assertThat(listItem.riskAnalysisId()).isEqualTo(submittedSummary.analysisId());
         assertThat(listItem.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
     }
@@ -509,7 +508,7 @@ public class ComplaintFlowIntegrationTest {
     private Student student;
 
     @Test
-    void continuesConversationWithParentAnalysisTeacherReplyAndParentClose() {
+    void teacherClosesConversationAndParentFollowUpReopensIt() {
         Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
                 createRequest("첫 번째 문의입니다.")
@@ -590,7 +589,7 @@ public class ComplaintFlowIntegrationTest {
                 .hasSize(2)
                 .allMatch(TeacherConversationResponse.Message::summarized);
 
-        parentMessageService.close(parentUser.getId(), complaintId);
+        teacherResponseService.close(teacherUser.getId(), complaintId);
         var closed = complaintRepository.findById(complaintId).orElseThrow();
         assertThat(closed.getStatus()).isEqualTo(ComplaintStatus.CLOSED);
         assertThat(closed.getWaitingFor())
@@ -598,6 +597,23 @@ public class ComplaintFlowIntegrationTest {
         assertThat(messageRepository.findByComplaintIdOrderByIdAsc(complaintId))
                 .allMatch(message -> message.getStatus()
                         == MessageStatus.READ);
+
+        var reopenedDraft = parentMessageService.saveDraft(
+                parentUser.getId(),
+                complaintId,
+                new com.teacherhub.complaint.parent.dto.message.ParentMessageRequest(
+                        "완료된 문의에 같은 사안으로 추가 질문합니다."
+                )
+        );
+        parentMessageService.submit(parentUser.getId(), complaintId, reopenedDraft.messageId());
+
+        var reopened = complaintRepository.findById(complaintId).orElseThrow();
+        assertThat(reopened.getStatus()).isEqualTo(ComplaintStatus.OPEN);
+        assertThat(reopened.getWaitingFor()).isEqualTo(WaitingFor.TEACHER);
+        assertThat(eventRepository.findByComplaintIdOrderByOccurredAtDescIdDesc(complaintId))
+                .filteredOn(event -> event.getEventType() == MessageEventType.STATUS_CHANGED)
+                .extracting(com.teacherhub.complaint.entity.ComplaintEvent::getNewStatus)
+                .contains(ComplaintStatus.CLOSED, ComplaintStatus.OPEN);
     }
 
     @Test

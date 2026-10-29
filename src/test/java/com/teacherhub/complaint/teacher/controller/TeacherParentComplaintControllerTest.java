@@ -177,6 +177,9 @@ class TeacherParentComplaintControllerTest {
                         .content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.complaintStatus").value("OPEN"));
+        mvc.perform(post("/teacher/complaints/42/close").principal(auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("상담이 완료 처리되었습니다."));
         mvc.perform(post("/teacher/complaints/42/risk-reviews")
                         .principal(auth)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -191,6 +194,7 @@ class TeacherParentComplaintControllerTest {
         verify(responseService).findDraft(7L, 42L);
         verify(responseService).saveDraft(7L, 42L, request);
         verify(responseService).submit(7L, 42L, request, "response-42-1");
+        verify(responseService).close(7L, 42L);
         verify(riskReviewService).review(7L, 42L, riskReviewRequest);
     }
 

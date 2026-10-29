@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Size;
 // 최초 문의
 @Schema(description = "민원 초안 생성 요청")
 public record ComplaintCreateRequest(
-        @Schema(description = "문의 대상 학생 ID", example = "10")
+        @Schema(description = "GET /users/me 응답의 students 목록에서 선택한 자녀의 studentId", example = "10")
         @NotNull(message = "학생을 선택해주세요.")
         Long studentId,
 

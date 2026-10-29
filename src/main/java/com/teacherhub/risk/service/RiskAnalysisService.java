@@ -91,8 +91,10 @@ public class RiskAnalysisService {
             boolean submitting
     ) {
         Complaint complaint = findOwnedComplaintForUpdate(userId, complaintId);
-        if (complaint.getStatus() != ComplaintStatus.OPEN
-                || complaint.getWaitingFor() != WaitingFor.PARENT) {
+        boolean canSubmitAdditionalMessage = complaint.getStatus() == ComplaintStatus.CLOSED
+                || (complaint.getStatus() == ComplaintStatus.OPEN
+                && complaint.getWaitingFor() == WaitingFor.PARENT);
+        if (!canSubmitAdditionalMessage) {
             throw new MessageNotEditableException("학부모가 추가 문의를 작성할 차례가 아닙니다.");
         }
         ComplaintMessage message = messageRepository.findById(messageId)
@@ -158,8 +160,18 @@ public class RiskAnalysisService {
             throw new ReanalysisLimitException();
         }
 
-        // LLM에 전달하기 전 개인정보 마스킹
-        String maskedContent = piiMaskingService.mask(originalContent);
+        // LLM에 전달하기 전 개인정보 마스킹. 제출 중 실패하면 원문을 LLM에 보내지 않고 분석만 건너뜁니다.
+        String maskedContent;
+        try {
+            maskedContent = piiMaskingService.mask(originalContent);
+        } catch (RuntimeException exception) {
+            if (submitting) {
+                log.warn("PII masking failed during submission; continuing without AI analysis. complaintId={}, messageId={}",
+                        complaint.getId(), message.getId(), exception);
+                return Optional.empty();
+            }
+            throw exception;
+        }
         message.updateMaskedContent(maskedContent);
 
         // Rule은 원문, LLM은 마스킹 사본을 사용해 병렬 탐지합니다.

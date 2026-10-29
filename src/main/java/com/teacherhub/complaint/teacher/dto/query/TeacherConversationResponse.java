@@ -12,10 +12,12 @@ import java.util.Map;
 
 import com.teacherhub.complaint.teacher.dto.AllowedAction;
 import com.teacherhub.user.enums.UserRole;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 // 교사용 대화 탭 읽기 응답
 public record TeacherConversationResponse(
         Long complaintId,
+        @Schema(description = "위험도별 허용 행동. 완료된 분석이 없으면 REQUEST_MANUAL_REVIEW")
         List<AllowedAction> allowedActions,
         List<Message> messages
 ) {

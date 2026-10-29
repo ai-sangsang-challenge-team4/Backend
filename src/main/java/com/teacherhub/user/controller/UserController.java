@@ -1,11 +1,13 @@
 package com.teacherhub.user.controller;
 
+import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.common.exception.ErrorResponse;
 import com.teacherhub.user.dto.UserInfoResponse;
 import com.teacherhub.user.consent.dto.PolicyConsentRequest;
 import com.teacherhub.user.consent.dto.PolicyConsentResponse;
 import com.teacherhub.user.consent.service.PolicyConsentService;
 import com.teacherhub.user.service.UserService;
+import com.teacherhub.user.repository.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -14,7 +16,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,10 +37,11 @@ public class UserController {
 
     private final UserService userService;
     private final PolicyConsentService policyConsentService;
+    private final UserRepository userRepository;
 
     @Operation(
             summary = "내 계정 정보 조회",
-            description = "로그인한 사용자의 계정 정보를 조회합니다."
+            description = "로그인한 사용자의 계정 정보와 연결된 자녀 목록을 함께 조회합니다. 학부모가 아니면 students는 빈 배열입니다."
     )
     @ApiResponses({
             @ApiResponse(
@@ -64,10 +67,10 @@ public class UserController {
     })
     @GetMapping("/me")
     public ResponseEntity<UserInfoResponse> getMyInfo(
-            @AuthenticationPrincipal Long userId
+            Authentication authentication
     ) {
         return ResponseEntity.ok(
-                userService.getMyInfo(userId)
+                userService.getMyInfo(userId(authentication))
         );
     }
 
@@ -84,9 +87,18 @@ public class UserController {
     })
     @PostMapping("/me/policy-consents")
     public ResponseEntity<PolicyConsentResponse> agreeToCurrentPolicy(
-            @AuthenticationPrincipal Long userId,
+            Authentication authentication,
             @Valid @RequestBody PolicyConsentRequest request
     ) {
-        return ResponseEntity.ok(policyConsentService.agreeAll(userId));
+        return ResponseEntity.ok(policyConsentService.agreeAll(userId(authentication)));
+    }
+
+    private Long userId(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new UnauthorizedException("로그인이 필요합니다.");
+        }
+        return userRepository.findByEmail(authentication.getName())
+                .orElseThrow(() -> new UnauthorizedException("사용자를 찾을 수 없습니다."))
+                .getId();
     }
 }
