@@ -79,4 +79,20 @@ jobs:
         run: sudo /usr/local/sbin/deploy-teacherhub
 
       - name: Verify public HTTPS endpoint
-        run: curl --fail --silent --show-error --retry 5 --retry-delay 2 https://teacherhub.duckdns.org/health
+        shell: bash
+        run: |
+          response="$(
+            curl --fail --silent --show-error \
+              --retry 5 \
+              --retry-delay 2 \
+              --retry-connrefused \
+              --write-out $'\n%{http_code}' \
+              https://teacherhub.duckdns.org/health
+          )"
+
+          status_code="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+
+          test "$status_code" = "200"
+          printf '%s' "$body" |
+            grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"'
