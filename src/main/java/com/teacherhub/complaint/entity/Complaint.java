@@ -131,16 +131,24 @@ public class Complaint {
         this.waitingFor = WaitingFor.PARENT;
     }
 
-    public void parentMessageSent() {
+    public ComplaintStatus parentMessageSent() {
+        ComplaintStatus previousStatus = status;
+        if (status == ComplaintStatus.CLOSED) {
+            this.status = ComplaintStatus.OPEN;
+            this.waitingFor = WaitingFor.TEACHER;
+            this.closedAt = null;
+            return previousStatus;
+        }
         if (status != ComplaintStatus.OPEN || waitingFor != WaitingFor.PARENT) {
             throw new IllegalStateException("학부모가 추가 문의를 작성할 차례가 아닙니다.");
         }
         this.waitingFor = WaitingFor.TEACHER;
+        return previousStatus;
     }
 
-    public void close() {
+    public void closeByTeacher() {
         if (status != ComplaintStatus.OPEN || waitingFor != WaitingFor.PARENT) {
-            throw new IllegalStateException("교사의 답변을 확인한 민원만 종료할 수 있습니다.");
+            throw new IllegalStateException("교사 답변 전송 후 학부모 응답 대기 중인 민원만 종료할 수 있습니다.");
         }
         this.status = ComplaintStatus.CLOSED;
         this.waitingFor = WaitingFor.NONE;

@@ -175,6 +175,22 @@ public class ComplaintEvent {
         return event;
     }
 
+    public static ComplaintEvent responseBlockedByEmergencyPolicy(
+            Complaint complaint,
+            User actor,
+            String operation
+    ) {
+        ComplaintEvent event = new ComplaintEvent(
+                complaint,
+                actor,
+                MessageEventType.RESPONSE_BLOCKED_BY_SAFETY_LOCK,
+                "COMPLAINT",
+                complaint.getId()
+        );
+        event.reason = "Emergency 위험도 또는 안전 잠금으로 " + operation + " 작업이 차단되었습니다.";
+        return event;
+    }
+
     public static ComplaintEvent responseTemplateAdopted(
             Complaint complaint,
             User actor,

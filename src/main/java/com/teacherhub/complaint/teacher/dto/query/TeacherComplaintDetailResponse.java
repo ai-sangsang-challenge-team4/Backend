@@ -7,6 +7,7 @@ import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.school.entity.SchoolClass;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
 
@@ -22,6 +23,7 @@ public record TeacherComplaintDetailResponse(
         ComplaintStatus status,
         WaitingFor waitingFor,
         LocalDateTime submittedAt,
+        @Schema(description = "최신 유효 위험도. 완료된 위험 분석이 없으면 null", nullable = true)
         RiskLevel riskLevel
 ) {
     public static TeacherComplaintDetailResponse from(

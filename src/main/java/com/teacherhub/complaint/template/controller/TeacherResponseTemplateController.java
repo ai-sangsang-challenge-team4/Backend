@@ -1,5 +1,6 @@
 package com.teacherhub.complaint.template.controller;
 
+import com.teacherhub.common.exception.ErrorResponse;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.template.dto.ResponseTemplateAdoptionRequest;
 import com.teacherhub.complaint.template.dto.ResponseTemplateAdoptionResponse;
@@ -7,6 +8,9 @@ import com.teacherhub.complaint.template.dto.ResponseTemplateResponse;
 import com.teacherhub.complaint.template.service.TeacherResponseTemplateService;
 import com.teacherhub.user.repository.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -27,7 +31,17 @@ public class TeacherResponseTemplateController {
     private final TeacherResponseTemplateService templateService;
     private final UserRepository userRepository;
 
-    @Operation(summary = "사용 가능한 High 답변 템플릿 조회")
+    @Operation(
+            summary = "사용 가능한 High 답변 템플릿 조회",
+            description = "완료된 위험 분석이 없으면 오류 대신 빈 배열을 반환합니다.",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "템플릿 조회 성공. 분석이 없으면 빈 배열 반환", useReturnTypeSchema = true),
+                    @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
+                            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    @ApiResponse(responseCode = "409", description = "답변 대기 상태가 아니거나 안전 잠금 중임",
+                            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+            }
+    )
     @GetMapping
     public ResponseEntity<List<ResponseTemplateResponse>> findAvailable(
             Authentication authentication,

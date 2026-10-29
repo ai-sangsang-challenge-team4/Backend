@@ -17,7 +17,7 @@ public class TeacherSupportPolicy {
 
     public List<AllowedAction> allowedActions(RiskLevel riskLevel) {
         return switch (riskLevel) {
-            case LOW, MEDIUM -> List.of(AllowedAction.USE_RESPONSE_TEMPLATE);
+            case LOW, MEDIUM -> List.of();
             case HIGH -> List.of(
                     AllowedAction.USE_RESPONSE_TEMPLATE,
                     AllowedAction.CREATE_EVIDENCE_PACKAGE,

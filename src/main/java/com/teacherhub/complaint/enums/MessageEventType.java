@@ -11,7 +11,7 @@ public enum MessageEventType {
     ORIGINAL_VIEWED,
     // AI 초안 생성
     AI_DRAFT_GENERATED,
-    // Emergency 안전 잠금으로 교사 답변 작업 차단
+    // Emergency 위험도 또는 안전 잠금으로 교사 답변 작업 차단
     RESPONSE_BLOCKED_BY_SAFETY_LOCK,
     // High 제한형 답변 템플릿 채택
     RESPONSE_TEMPLATE_ADOPTED,

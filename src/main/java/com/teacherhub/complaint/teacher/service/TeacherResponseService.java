@@ -21,6 +21,9 @@ import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseRequest;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseSubmissionResponse;
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
+import com.teacherhub.risk.repository.RiskAnalysisRepository;
+import com.teacherhub.risk.repository.RiskReviewRepository;
+import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +45,8 @@ public class TeacherResponseService {
     private final ComplaintAccessPolicy complaintAccessPolicy;
     private final TeacherSupportContentProvider supportContentProvider;
     private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository;
+    private final RiskAnalysisRepository riskAnalysisRepository;
+    private final RiskReviewRepository riskReviewRepository;
 
     @Transactional(noRollbackFor = ResponseNotEditableException.class)
     // 교사 AI 초안 생성
@@ -129,7 +134,7 @@ public class TeacherResponseService {
         if (existing.isPresent()) {
             return existingSubmission(existing.get(), complaintId, request);
         }
-        ensureSafetyUnlocked(complaint, user, "답변 전송");
+        ensureResponseAllowed(complaint, user, "답변 전송");
         ensureEditable(complaint);
         ComplaintMessage response = messageRepository
                 .findFirstByComplaintIdAndSenderIdAndTypeAndStatusOrderByIdDesc(
@@ -157,10 +162,24 @@ public class TeacherResponseService {
         return TeacherResponseSubmissionResponse.from(saved);
     }
 
+    @Transactional(noRollbackFor = ResponseNotEditableException.class)
+    public void close(Long userId, Long complaintId) {
+        User user = findUser(userId);
+        Complaint complaint = findComplaintForUpdate(user, complaintId);
+        ensureResponseAllowed(complaint, user, "상담 완료 처리");
+        complaint.closeByTeacher();
+        eventRepository.save(ComplaintEvent.statusChanged(
+                complaint,
+                user,
+                ComplaintStatus.OPEN,
+                ComplaintStatus.CLOSED
+        ));
+    }
+
     // 민원 조회 및 교사 권한 검증
     private Complaint findEditableComplaintForUpdate(User user, Long complaintId, String operation) {
         Complaint complaint = findComplaintForUpdate(user, complaintId);
-        ensureSafetyUnlocked(complaint, user, operation);
+        ensureResponseAllowed(complaint, user, operation);
         ensureEditable(complaint);
         return complaint;
     }
@@ -172,21 +191,37 @@ public class TeacherResponseService {
         return complaint;
     }
 
-    private void ensureSafetyUnlocked(Complaint complaint, User user, String operation) {
+    private void ensureResponseAllowed(Complaint complaint, User user, String operation) {
         Long complaintId = complaint.getId();
-        if (emergencyReviewRequestRepository
+        boolean safetyLock = emergencyReviewRequestRepository
                 .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(complaintId)
                 .map(com.teacherhub.risk.entity.EmergencyRiskReviewRequest::isSafetyLock)
-                .orElse(false)) {
-            eventRepository.save(ComplaintEvent.responseBlockedBySafetyLock(
+                .orElse(false);
+        boolean emergencyRisk = effectiveRiskLevel(complaintId) == RiskLevel.EMERGENCY;
+        if (safetyLock || emergencyRisk) {
+            eventRepository.save(ComplaintEvent.responseBlockedByEmergencyPolicy(
                     complaint,
                     user,
                     operation
             ));
             throw new ResponseNotEditableException(
-                    "Emergency 안전 잠금이 유지되는 동안 " + operation + "을(를) 수행할 수 없습니다. 재검토 절차를 확인해주세요."
+                    "Emergency 위험도 또는 안전 잠금이 유지되는 동안 " + operation
+                            + "을(를) 수행할 수 없습니다. 재검토 절차를 확인해주세요."
             );
         }
+    }
+
+    private RiskLevel effectiveRiskLevel(Long complaintId) {
+        return riskAnalysisRepository
+                .findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                        complaintId,
+                        MessageStatus.DRAFT
+                )
+                .map(analysis -> riskReviewRepository
+                        .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(analysis.getId())
+                        .map(review -> review.getReviewedLevel())
+                        .orElse(analysis.getRiskLevel()))
+                .orElse(null);
     }
 
     private void ensureEditable(Complaint complaint) {

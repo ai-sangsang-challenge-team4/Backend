@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ParentMessageControllerTest {
 
     @Test
-    void routesDraftSendAndCloseWithCurrentTurnInResponse() throws Exception {
+    void routesDraftAndSendWithCurrentTurnInResponse() throws Exception {
         var queryService = mock(ComplaintQueryService.class);
         var complaintService = mock(ParentComplaintService.class);
         var messageService = mock(ParentMessageService.class);
@@ -72,12 +72,7 @@ class ParentMessageControllerTest {
                 .andExpect(jsonPath("$.status").value("SENT"))
                 .andExpect(jsonPath("$.waitingFor").value("TEACHER"));
 
-        mvc.perform(post("/complaints/42/close").principal(auth))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("민원이 종료되었습니다."));
-
         verify(messageService).saveDraft(7L, 42L, new ParentMessageRequest("추가 문의"));
         verify(messageService).submit(7L, 42L, 30L);
-        verify(messageService).close(7L, 42L);
     }
 }
