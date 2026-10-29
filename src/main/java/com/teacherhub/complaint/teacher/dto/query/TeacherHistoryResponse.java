@@ -12,17 +12,33 @@ import java.util.List;
 // 교사 화면 처리 기록 탭
 public record TeacherHistoryResponse(
         Long complaintId,
+        boolean logComplete,
+        List<MissingLog> missingLogs,
         List<HistoryEvent> events
 ) {
+    public TeacherHistoryResponse(Long complaintId, List<HistoryEvent> events) {
+        this(complaintId, true, List.of(), events);
+    }
+
     public static TeacherHistoryResponse from(
             Long complaintId,
-            List<ComplaintEvent> events
+            List<ComplaintEvent> events,
+            List<MissingLog> missingLogs
     ) {
         return new TeacherHistoryResponse(
                 complaintId,
+                missingLogs.isEmpty(),
+                List.copyOf(missingLogs),
                 events.stream().map(HistoryEvent::from).toList()
         );
     }
+
+    public record MissingLog(
+            MessageEventType expectedType,
+            String referenceType,
+            Long referenceId,
+            String description
+    ) {}
 
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -31,6 +47,8 @@ public record TeacherHistoryResponse(
             MessageEventType type,
             LocalDateTime occurredAt,
             String actorName,
+            String referenceType,
+            Long referenceId,
             ComplaintStatus previousStatus,
             ComplaintStatus newStatus,
             Integer riskScore,
@@ -45,6 +63,8 @@ public record TeacherHistoryResponse(
                     event.getEventType(),
                     event.getOccurredAt(),
                     event.getActorName(),
+                    event.getReferenceType(),
+                    event.getReferenceId(),
                     event.getPreviousStatus(),
                     event.getNewStatus(),
                     event.getRiskScore(),

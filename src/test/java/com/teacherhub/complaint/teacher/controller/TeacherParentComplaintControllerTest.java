@@ -226,6 +226,8 @@ class TeacherParentComplaintControllerTest {
                         com.teacherhub.user.enums.UserRole.PARENT,
                         "학부모 이름",
                         "완충 요약",
+                        com.teacherhub.complaint.enums.MessageStatus.READ,
+                        submittedAt,
                         submittedAt,
                         true
                 ))
@@ -255,6 +257,8 @@ class TeacherParentComplaintControllerTest {
         mvc.perform(get("/teacher/complaints/42/messages").principal(auth))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.messages[0].senderRole").value("PARENT"))
+                .andExpect(jsonPath("$.messages[0].status").value("READ"))
+                .andExpect(jsonPath("$.messages[0].readAt").isNotEmpty())
                 .andExpect(jsonPath("$.messages[0].summarized").value(true));
 
         verify(service).findDetail(7L, 42L);

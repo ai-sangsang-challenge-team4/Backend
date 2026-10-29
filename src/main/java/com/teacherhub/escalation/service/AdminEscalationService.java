@@ -8,6 +8,7 @@ import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
+import com.teacherhub.complaint.history.service.ComplaintHistoryService;
 import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
@@ -55,6 +56,7 @@ public class AdminEscalationService {
     private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository;
     private final TeacherRiskScale teacherRiskScale;
     private final PiiMaskingService piiMaskingService;
+    private final ComplaintHistoryService complaintHistoryService;
 
     public List<AdminEscalationSummaryResponse> findAll(
             Long userId,
@@ -140,12 +142,7 @@ public class AdminEscalationService {
         User admin = findAdmin(userId);
         ComplaintEscalation escalation = findAssigned(escalationId, admin);
 
-        return TeacherHistoryResponse.from(
-                escalation.getComplaint().getId(),
-                eventRepository.findByComplaintIdOrderByOccurredAtDescIdDesc(
-                        escalation.getComplaint().getId()
-                )
-        );
+        return complaintHistoryService.findHistory(escalation.getComplaint().getId());
     }
 
     @Transactional

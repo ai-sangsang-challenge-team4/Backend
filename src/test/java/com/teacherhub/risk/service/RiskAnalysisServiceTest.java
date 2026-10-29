@@ -103,13 +103,28 @@ class RiskAnalysisServiceTest {
     }
 
     @Test
-    void rejectsThirdNewAnalysisBeforeCallingDetectors() {
+    void skipsUnavailableThirdAnalysisDuringSubmission() {
         draft();
         when(analyses.countByMessageIdAndCompletedTrue(isNull())).thenReturn(2L);
-        assertThatThrownBy(() -> service.analyzeForSubmission(1L, 42L))
-                .isInstanceOf(com.teacherhub.complaint.exception.ReanalysisLimitException.class);
+        assertThatCode(() -> service.analyzeForSubmission(1L, 42L))
+                .doesNotThrowAnyException();
         verifyNoInteractions(rules, masking, llm, revisions);
         verify(analyses, never()).save(any());
+    }
+
+    @Test
+    void allowsSubmissionWhenLlmAnalysisFails() {
+        Complaint complaint = draft();
+        when(rules.detect(complaint.getContent())).thenReturn(List.of());
+        when(masking.mask(complaint.getContent())).thenReturn("masked");
+        when(llm.analyze("masked")).thenThrow(new IllegalStateException("AI failure"));
+
+        assertThatCode(() -> service.analyzeForSubmission(1L, 42L))
+                .doesNotThrowAnyException();
+
+        assertThat(complaint.getMaskedContent()).isEqualTo("masked");
+        verify(analyses, never()).save(any());
+        verifyNoInteractions(revisions);
     }
 
     @Test

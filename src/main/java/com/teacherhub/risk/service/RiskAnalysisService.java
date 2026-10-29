@@ -24,6 +24,7 @@ import com.teacherhub.risk.entity.*;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
@@ -32,6 +33,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 // 민원 위험 분석
 
@@ -53,25 +55,25 @@ public class RiskAnalysisService {
             Long userId,
             Long complaintId
     ) {
-        return analyzeInitialMessage(userId, complaintId, false);
+        return analyzeInitialMessage(userId, complaintId, false).orElseThrow();
     }
 
     @Transactional
-    public RiskSummaryResponse analyzeForSubmission(Long userId, Long complaintId) {
-        return analyzeInitialMessage(userId, complaintId, true);
+    public void analyzeForSubmission(Long userId, Long complaintId) {
+        analyzeInitialMessage(userId, complaintId, true);
     }
 
     @Transactional
     public RiskSummaryResponse analyzeMessage(Long userId, Long complaintId, Long messageId) {
-        return analyzeAdditionalMessage(userId, complaintId, messageId, false);
+        return analyzeAdditionalMessage(userId, complaintId, messageId, false).orElseThrow();
     }
 
     @Transactional
-    public RiskSummaryResponse analyzeMessageForSubmission(Long userId, Long complaintId, Long messageId) {
-        return analyzeAdditionalMessage(userId, complaintId, messageId, true);
+    public void analyzeMessageForSubmission(Long userId, Long complaintId, Long messageId) {
+        analyzeAdditionalMessage(userId, complaintId, messageId, true);
     }
 
-    private RiskSummaryResponse analyzeInitialMessage(Long userId, Long complaintId, boolean submitting) {
+    private Optional<RiskSummaryResponse> analyzeInitialMessage(Long userId, Long complaintId, boolean submitting) {
         Complaint complaint = findOwnedComplaintForUpdate(userId, complaintId);
         if (complaint.getStatus() != ComplaintStatus.DRAFT) {
             throw new ComplaintNotDraftException("작성 중인 최초 민원만 AI 검토할 수 있습니다.");
@@ -79,7 +81,7 @@ public class RiskAnalysisService {
         return analyze(complaint, complaint.initialMessage(), submitting);
     }
 
-    private RiskSummaryResponse analyzeAdditionalMessage(
+    private Optional<RiskSummaryResponse> analyzeAdditionalMessage(
             Long userId,
             Long complaintId,
             Long messageId,
@@ -121,7 +123,7 @@ public class RiskAnalysisService {
         return complaint;
     }
 
-    private RiskSummaryResponse analyze(
+    private Optional<RiskSummaryResponse> analyze(
             Complaint complaint,
             ComplaintMessage message,
             boolean submitting
@@ -138,14 +140,18 @@ public class RiskAnalysisService {
                 message.getId(), originalContent);
 
         if (existing.isPresent()) {
-            return summary(existing.get());
+            return Optional.of(summary(existing.get()));
         }
 
         long completedCount = analysisRepository.countByMessageIdAndCompletedTrue(message.getId());
-        if (submitting && completedCount == 0) throw new AnalysisRequiredException();
         if (!submitting && completedCount > 0) throw new FinalAnalysisOnSubmitException();
 
         if (completedCount >= RiskAnalysis.MAX_COMPLETED_ANALYSES) {
+            if (submitting) {
+                log.warn("AI analysis limit reached during submission; continuing without a new analysis. complaintId={}, messageId={}",
+                        complaint.getId(), message.getId());
+                return Optional.empty();
+            }
             throw new ReanalysisLimitException();
         }
 
@@ -157,7 +163,17 @@ public class RiskAnalysisService {
         message.updateMaskedContent(maskedContent);
 
         // 7. LLM으로 위험 태그와 위험 표현 분석
-        LlmRiskAnalysisResult result = llmRiskAnalyzer.analyze(maskedContent);
+        LlmRiskAnalysisResult result;
+        try {
+            result = llmRiskAnalyzer.analyze(maskedContent);
+        } catch (RuntimeException exception) {
+            if (submitting) {
+                log.warn("AI analysis failed during submission; continuing with the original content. complaintId={}, messageId={}",
+                        complaint.getId(), message.getId(), exception);
+                return Optional.empty();
+            }
+            throw exception;
+        }
 
         // 8. 규칙 기반 및 LLM 위험 태그 결과 병합
         // 룰 근거는 원문에서 추출될 수 있으므로 수정안 생성기에 전달하기 전에 마스킹
@@ -190,7 +206,7 @@ public class RiskAnalysisService {
         ));
 
         // 상세 근거와 수정 제안은 별도 GET으로 조회합니다.
-        return summary(savedAnalysis);
+        return Optional.of(summary(savedAnalysis));
     }
 
 

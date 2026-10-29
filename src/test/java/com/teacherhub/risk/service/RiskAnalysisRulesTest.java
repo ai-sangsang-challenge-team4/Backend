@@ -141,6 +141,11 @@ class RiskAnalysisRulesTest {
         var captured = org.mockito.ArgumentCaptor.forClass(com.teacherhub.risk.entity.RiskAnalysis.class);
         verify(analyses).save(captured.capture());
         assertThat(captured.getValue().isCompleted()).isFalse();
+
+        clearInvocations(revisions);
+        assertThatCode(() -> service.analyzeForSubmission(1L, 42L))
+                .doesNotThrowAnyException();
+        verifyNoInteractions(revisions);
     }
 
     @Test

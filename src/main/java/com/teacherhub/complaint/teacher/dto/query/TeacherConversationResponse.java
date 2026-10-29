@@ -2,6 +2,7 @@ package com.teacherhub.complaint.teacher.dto.query;
 
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintMessage;
+import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.enums.MessageType;
 
 import java.time.LocalDateTime;
@@ -45,7 +46,9 @@ public record TeacherConversationResponse(
             UserRole senderRole,
             String senderName,
             String content,
+            MessageStatus status,
             LocalDateTime sentAt,
+            LocalDateTime readAt,
             boolean summarized
     ) {
         public static Message from(
@@ -61,9 +64,11 @@ public record TeacherConversationResponse(
                             : UserRole.TEACHER,
                     message.getSender().getName(),
                     content,
+                    message.getStatus(),
                     message.getSentAt() == null
                             ? initialSubmittedAt
                             : message.getSentAt(),
+                    message.getReadAt(),
                     summarized
             );
         }

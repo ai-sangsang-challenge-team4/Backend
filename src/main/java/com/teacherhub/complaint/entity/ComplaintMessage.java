@@ -98,14 +98,16 @@ public class ComplaintMessage {
         this.sentAt = LocalDateTime.now();
     }
 
-    public void markRead() {
+    public boolean markRead() {
         if (status == MessageStatus.DRAFT) {
             throw new IllegalStateException("전송되지 않은 메시지는 읽음 처리할 수 없습니다.");
         }
-        this.status = MessageStatus.READ;
-        if (this.readAt == null) {
-            this.readAt = LocalDateTime.now();
+        if (status == MessageStatus.READ) {
+            return false;
         }
+        this.status = MessageStatus.READ;
+        this.readAt = LocalDateTime.now();
+        return true;
     }
 
     public boolean isDraft() {

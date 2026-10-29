@@ -16,6 +16,8 @@
 | GET | `/risk-analyses/{analysisId}/detector-results` | 전체 태그의 Rule·LLM 감지 여부·출처별 근거·LLM 신뢰도 조회 | 200 |
 | GET | `/risk-tags` | 위험 태그 기준 목록 조회, 민원 분석과 별개 | 200 |
 | POST | `/teacher/complaints/{complaintId}/risk-reviews` | 교사가 1~7점 위험도를 검토하고, EMERGENCY 변경은 관리자 승인을 요청 | 201 |
+| POST | `/teacher/complaints/{complaintId}/messages/{messageId}/original-views` | 담당 교사가 전송된 학부모 메시지 원문을 열람하고 감사 로그 저장 | 200 |
+| GET | `/teacher/complaints/{complaintId}/history` | 통합 이력과 로그 누락 여부 조회 | 200 |
 | POST | `/teacher/complaints/{complaintId}/emergency-review` | 공유 여부와 무관하게 EMERGENCY 하향 재검토 요청 | 201 |
 | GET | `/teacher/complaints/{complaintId}/emergency-review/current` | 최근 재검토 요청과 안전 잠금 상태 조회 | 200 |
 | GET | `/admin/emergency-review` | 지정 검토자에게 배정된 재검토 요청 목록 | 200 |
@@ -113,12 +115,12 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 - 사용자에게 수정안을 보여주는 AI 검토는 학부모 메시지별 1회만 수행한다.
 - AI 검토 후 내용이 변경됐다면 제출 시 최종 내용의 위험도를 내부적으로 한 번 더 분석한다. 이 분석은 새 수정안을 생성하지 않는다.
 - 내용이 변경되지 않았다면 기존 검토 결과를 재사용한다. 따라서 학부모 메시지별 성공한 AI 분석은 최대 2회다.
-- 분석과 제출 처리 중에는 DRAFT이며 실패 시 제출 전체가 롤백된다.
+- 분석과 제출 처리 중에는 DRAFT를 유지한다. 권한·상태·입력·저장 오류는 제출을 롤백하지만, LLM 분석 실패는 원문 전송을 막지 않는다.
 - 동일 내용 저장은 contentVersion을 올리지 않는다. 같은 버전 분석 재요청은 저장 결과를 반환하고 AI 호출/횟수를 추가하지 않는다.
 - PATCH 후 바로 POST send를 호출한다. 서버는 최종 문장이 분석 원문과 같으면 재사용하고, 다르면 한 번 재분석한다. 수정했다가 원문으로 되돌린 경우도 재사용한다.
 - 수정 후 POST risk-analysis 호출은 409 FINAL_ANALYSIS_ON_SUBMIT. 최종 재분석은 send 내부에서만 실행하고 새 수정안을 생성하지 않는다. 최대 성공 분석 2회 제한은 유지한다.
-- POST `/complaints/{complaintId}/send`: Bearer 인증 필요, 본문 없음. 최초 분석이 없으면 409 ANALYSIS_REQUIRED. 변경된 내용의 최종 분석은 서버가 자동 처리하며 성공 후에만 교사가 지정된다.
-- 최초 민원 제출 성공 시 200이며 상태 및 이력은 DRAFT → OPEN, waitingFor는 TEACHER다. 최초 분석 후 수정하지 않은 경우에도 바로 제출할 수 있다.
+- POST `/complaints/{complaintId}/send`: Bearer 인증 필요, 본문 없음. 최초 분석이 없어도 서버가 최종 분석을 시도하며, LLM 분석 또는 수정안 생성 실패 이후에도 원문을 전송할 수 있다.
+- 최초 민원 제출 성공 시 200이며 상태 및 이력은 DRAFT → OPEN, waitingFor는 TEACHER다.
 - 분석·수정·제출은 동일 민원 행의 비관적 쓰기 잠금으로 동시 실행을 직렬화한다. 현재 동기 처리이므로 AI 호출 동안 잠금이 유지된다.
 
 DB에는 risk_analyses의 original_content/completed/revision_reason/ai_revision 컬럼과 risk_analysis_expressions 테이블이 추가된다. 기존 분석에는 전체 재사용 응답이 없으므로 completed 기본값은 false이며 재사용·완료 횟수에서 제외된다. 기존 데이터를 유지하는 배포에서는 이 정책을 고려해 스키마를 반영해야 한다.
@@ -290,8 +292,11 @@ AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/
 `GET /teacher/complaints/{complaintId}/messages`은 전송된 모든 메시지를 반환한다.
 학부모 메시지는 메시지별 최신 자동 위험 분석이 LOW일 때 원문을, LOW보다 높을 때 완충
 요약을 반환한다. 최초 민원과 후속 문의에 동일한 규칙을 적용한다. 교사 메시지는 원문을
-반환하고 임시저장 DRAFT는 대화 내역에서 제외한다.
+반환하고 임시저장 DRAFT는 대화 내역에서 제외한다. 완충 요약 생성이 실패하거나 빈 결과를
+반환하면 해당 메시지는 원문과 `summarized=false`로 반환한다.
 
 `GET /teacher/complaints/{complaintId}/history`는 `ComplaintEventType`과 함께
-`complaint_events`에 저장된 통합 이력을 발생 시각 역순으로 반환한다. 기존
+`complaint_events`에 저장된 통합 이력을 발생 시각 역순으로 반환한다. 메시지 최초 읽음은
+`MESSAGE_READ`로 저장한다. 현재 메시지·민원 상태, 완료 분석, 위험도 검토, 관리자 공유와
+이벤트를 대조하며 누락이 있으면 `logComplete=false`와 `missingLogs`를 반환한다. 기존
 `complaint_status_history`, `complaint_original_view_logs` 테이블은 사용하지 않는다.

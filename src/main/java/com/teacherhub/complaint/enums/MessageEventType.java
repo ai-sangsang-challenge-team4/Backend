@@ -13,6 +13,8 @@ public enum MessageEventType {
     AI_DRAFT_GENERATED,
     // 메세지 전송
     MESSAGE_SENT,
+    // 메세지 읽음
+    MESSAGE_READ,
     // 관리자 공유
     ESCALATION_SHARED,
     // 관리자 검토 시작

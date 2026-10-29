@@ -123,7 +123,7 @@ public class TeacherResponseService {
         if (response.getId() != null) {
             response.updateDraft(request.content());
         }
-        markLatestParentMessageRead(complaintId);
+        markLatestParentMessageRead(complaintId, user);
         response.send();
         complaint.teacherMessageSent();
         ComplaintMessage saved = messageRepository.saveAndFlush(response);
@@ -163,11 +163,12 @@ public class TeacherResponseService {
                 .collect(Collectors.joining("\n\n"));
     }
 
-    private void markLatestParentMessageRead(Long complaintId) {
+    private void markLatestParentMessageRead(Long complaintId, User actor) {
         messageRepository.findFirstByComplaintIdAndTypeAndStatusNotOrderByIdDesc(
                 complaintId,
                 MessageType.PARENT_INQUIRY,
                 MessageStatus.DRAFT
-        ).ifPresent(ComplaintMessage::markRead);
+        ).filter(ComplaintMessage::markRead)
+                .ifPresent(message -> eventRepository.save(ComplaintEvent.messageRead(message, actor)));
     }
 }

@@ -37,7 +37,7 @@ public class AiController {
 
     @Operation(
             summary = "LLM 분석",
-            description = "민원 내용을 LLM에 전달하여 AI 분석 결과를 반환합니다. 현재 Mock 응답을 사용합니다.",
+            description = "민원 내용의 개인정보를 마스킹한 뒤 LLM에 전달하여 AI 분석 결과를 반환합니다. 현재 Mock 응답을 사용합니다.",
             responses = {
                     @ApiResponse(responseCode = "200", description = "LLM 분석 성공", useReturnTypeSchema = true),
                     @ApiResponse(responseCode = "400", description = "입력값 검증 실패",

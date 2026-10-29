@@ -169,6 +169,16 @@ public class ComplaintEvent {
         );
     }
 
+    public static ComplaintEvent messageRead(ComplaintMessage message, User actor) {
+        return new ComplaintEvent(
+                message.getComplaint(),
+                actor,
+                MessageEventType.MESSAGE_READ,
+                "COMPLAINT_MESSAGE",
+                message.getId()
+        );
+    }
+
     public static ComplaintEvent escalationChanged(
             Complaint complaint,
             User actor,

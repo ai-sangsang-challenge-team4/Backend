@@ -7,6 +7,8 @@ import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.enums.MessageType;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
+import com.teacherhub.complaint.history.service.ComplaintHistoryService;
+import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.escalation.dto.EscalationMessageRequest;
 import com.teacherhub.escalation.entity.ComplaintEscalation;
@@ -53,6 +55,7 @@ class AdminEscalationServiceTest {
             mock(EmergencyRiskReviewRequestRepository.class);
     private final TeacherRiskScale teacherRiskScale = mock(TeacherRiskScale.class);
     private final PiiMaskingService piiMaskingService = mock(PiiMaskingService.class);
+    private final ComplaintHistoryService complaintHistoryService = mock(ComplaintHistoryService.class);
     private final AdminEscalationService service = new AdminEscalationService(
             escalationRepository,
             userRepository,
@@ -62,7 +65,8 @@ class AdminEscalationServiceTest {
             riskReviewRepository,
             emergencyReviewRequestRepository,
             teacherRiskScale,
-            piiMaskingService
+            piiMaskingService,
+            complaintHistoryService
     );
 
     private User admin;
@@ -111,6 +115,8 @@ class AdminEscalationServiceTest {
         when(emergencyReviewRequestRepository
                 .findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(42L))
                 .thenReturn(Optional.empty());
+        when(complaintHistoryService.findHistory(42L))
+                .thenReturn(new TeacherHistoryResponse(42L, List.of()));
     }
 
     @Test
