@@ -20,12 +20,12 @@ import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherOriginalViewResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
+import com.teacherhub.complaint.teacher.dto.AllowedAction;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
 import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
-import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
@@ -43,6 +43,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -72,13 +73,13 @@ public class TeacherComplaintQueryService {
                 .findTopByStudent_IdOrderBySchoolClass_AcademicYearDesc(complaint.getStudent().getId())
                 .orElseThrow(() -> new IllegalStateException("학생의 학급 정보를 찾을 수 없습니다."))
                 .getSchoolClass();
-        RiskAnalysis analysis = requiredAnalysis(complaint);
+        RiskAnalysis analysis = latestAnalysis(complaint).orElse(null);
         return TeacherComplaintDetailResponse.from(
                 complaint,
                 schoolClass,
                 submittedAt(complaint),
                 analysis,
-                latestReview(analysis)
+                analysis == null ? null : latestReview(analysis)
         );
     }
 
@@ -86,8 +87,8 @@ public class TeacherComplaintQueryService {
     public TeacherConversationResponse findConversation(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findTeacherComplaint(user, complaintId);
-        RiskAnalysis analysis = requiredAnalysis(complaint);
-        RiskReview latestReview = latestReview(analysis);
+        RiskAnalysis analysis = latestAnalysis(complaint).orElse(null);
+        RiskReview latestReview = analysis == null ? null : latestReview(analysis);
         boolean safetyLock = isSafetyLocked(complaintId);
         markLatestParentMessageRead(complaintId, user);
         List<ComplaintMessage> messages = messageRepository
@@ -102,13 +103,15 @@ public class TeacherComplaintQueryService {
         return TeacherConversationResponse.from(
                 complaint,
                 bufferedSummaries,
-                supportPolicy.allowedActions(
-                        safetyLock
-                                ? RiskLevel.EMERGENCY
-                                : latestReview == null
-                                ? analysis.getRiskLevel()
-                                : latestReview.getReviewedLevel()
-                ),
+                analysis == null && !safetyLock
+                        ? List.of(AllowedAction.REQUEST_MANUAL_REVIEW)
+                        : supportPolicy.allowedActions(
+                                safetyLock
+                                        ? RiskLevel.EMERGENCY
+                                        : latestReview == null
+                                        ? analysis.getRiskLevel()
+                                        : latestReview.getReviewedLevel()
+                        ),
                 submittedAt(complaint),
                 messages
         );
@@ -181,14 +184,19 @@ public class TeacherComplaintQueryService {
     public TeacherRiskResponse findRisk(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findTeacherComplaint(user, complaintId);
-        RiskAnalysis analysis = requiredAnalysis(complaint);
+        RiskAnalysis analysis = latestAnalysis(complaint).orElse(null);
+        boolean safetyLock = isSafetyLocked(complaintId);
+
+        if (analysis == null) {
+            return TeacherRiskResponse.unavailable(complaintId, safetyLock);
+        }
 
         return TeacherRiskResponse.from(
                 analysis,
                 complaintRiskTagRepository.findByRiskAnalysisId(analysis.getId()),
                 latestReview(analysis),
                 teacherRiskScale.initialScoreFor(analysis.getRiskLevel()),
-                isSafetyLocked(complaintId)
+                safetyLock
         );
     }
 
@@ -225,15 +233,12 @@ public class TeacherComplaintQueryService {
                 .orElseThrow(() -> new IllegalStateException("민원 제출 이력을 찾을 수 없습니다."));
     }
 
-    private RiskAnalysis requiredAnalysis(Complaint complaint) {
+    private Optional<RiskAnalysis> latestAnalysis(Complaint complaint) {
         return riskAnalysisRepository
                 .findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
                         complaint.getId(),
                         MessageStatus.DRAFT
-                )
-                .orElseThrow(() -> new RiskAnalysisNotFoundException(
-                        "완료된 위험 분석 결과를 찾을 수 없습니다."
-                ));
+                );
     }
 
     private RiskReview latestReview(RiskAnalysis analysis) {
@@ -244,8 +249,9 @@ public class TeacherComplaintQueryService {
 
     private boolean isSafetyLocked(Long complaintId) {
         return emergencyReviewRequestRepository
-                .findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(complaintId)
-                .isPresent();
+                .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(complaintId)
+                .map(com.teacherhub.risk.entity.EmergencyRiskReviewRequest::isSafetyLock)
+                .orElse(false);
     }
 
     private Map<Long, RiskLevel> latestRiskByMessage(Long complaintId) {

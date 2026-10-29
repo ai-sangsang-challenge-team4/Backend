@@ -113,7 +113,7 @@ class AdminEscalationServiceTest {
                 .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
                 .thenReturn(Optional.empty());
         when(emergencyReviewRequestRepository
-                .findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(42L))
+                .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
                 .thenReturn(Optional.empty());
         when(complaintHistoryService.findHistory(42L))
                 .thenReturn(new TeacherHistoryResponse(42L, List.of()));

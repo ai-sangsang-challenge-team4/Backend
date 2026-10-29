@@ -19,6 +19,8 @@ import com.teacherhub.complaint.template.entity.ResponseTemplateVersion;
 import com.teacherhub.complaint.template.repository.ResponseTemplateAdoptionRepository;
 import com.teacherhub.complaint.template.repository.ResponseTemplateVersionRepository;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.entity.EmergencyRiskReviewRequest;
+import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
@@ -31,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -53,7 +56,12 @@ public class TeacherResponseTemplateService {
 
     @Transactional(noRollbackFor = ResponseNotEditableException.class)
     public List<ResponseTemplateResponse> findAvailable(Long userId, Long complaintId) {
-        Complaint complaint = findHighUnlockedComplaint(userId, complaintId);
+        Complaint complaint = findUnlockedComplaint(findUser(userId), complaintId, false);
+        var analysis = latestCompletedAnalysis(complaintId);
+        if (analysis.isEmpty()) {
+            return List.of();
+        }
+        requireHighRisk(analysis.get());
         return latestActiveVersions().stream()
                 .map(version -> ResponseTemplateResponse.from(
                         version,
@@ -70,7 +78,9 @@ public class TeacherResponseTemplateService {
             ResponseTemplateAdoptionRequest request
     ) {
         User user = findUser(userId);
-        Complaint complaint = findHighUnlockedComplaint(user, complaintId, true);
+        Complaint complaint = findUnlockedComplaint(user, complaintId, true);
+        requireHighRisk(latestCompletedAnalysis(complaintId)
+                .orElseThrow(() -> new ResponseNotEditableException("완료된 위험 분석이 필요합니다.")));
         ResponseTemplateVersion version = versionRepository.findById(versionId)
                 .filter(ResponseTemplateVersion::isActive)
                 .filter(candidate -> candidate.getTemplate().getRiskLevel() == RiskLevel.HIGH)
@@ -92,11 +102,7 @@ public class TeacherResponseTemplateService {
         return ResponseTemplateAdoptionResponse.from(saved);
     }
 
-    private Complaint findHighUnlockedComplaint(Long userId, Long complaintId) {
-        return findHighUnlockedComplaint(findUser(userId), complaintId, false);
-    }
-
-    private Complaint findHighUnlockedComplaint(User user, Long complaintId, boolean forUpdate) {
+    private Complaint findUnlockedComplaint(User user, Long complaintId, boolean forUpdate) {
         Complaint complaint = (forUpdate
                 ? complaintRepository.findForUpdate(complaintId)
                 : complaintRepository.findDetailById(complaintId))
@@ -107,17 +113,24 @@ public class TeacherResponseTemplateService {
             throw new ResponseNotEditableException("답변 대기 중인 민원에서만 제한형 템플릿을 사용할 수 있습니다.");
         }
         if (emergencyReviewRequestRepository
-                .findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(complaintId)
-                .isPresent()) {
+                .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(complaintId)
+                .map(EmergencyRiskReviewRequest::isSafetyLock)
+                .orElse(false)) {
             eventRepository.save(ComplaintEvent.responseBlockedBySafetyLock(complaint, user, "High 답변 템플릿 사용"));
             throw new ResponseNotEditableException("Emergency 안전 잠금 중에는 답변 템플릿을 사용할 수 없습니다.");
         }
-        var analysis = riskAnalysisRepository
+        return complaint;
+    }
+
+    private Optional<RiskAnalysis> latestCompletedAnalysis(Long complaintId) {
+        return riskAnalysisRepository
                 .findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
                         complaintId,
                         MessageStatus.DRAFT
-                )
-                .orElseThrow(() -> new ResponseNotEditableException("완료된 위험 분석이 필요합니다."));
+                );
+    }
+
+    private void requireHighRisk(RiskAnalysis analysis) {
         var review = riskReviewRepository
                 .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(analysis.getId())
                 .orElse(null);
@@ -125,7 +138,6 @@ public class TeacherResponseTemplateService {
         if (effectiveLevel != RiskLevel.HIGH) {
             throw new ResponseNotEditableException("High 위험도 민원에서만 제한형 템플릿을 사용할 수 있습니다.");
         }
-        return complaint;
     }
 
     private List<ResponseTemplateVersion> latestActiveVersions() {

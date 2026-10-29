@@ -43,10 +43,12 @@ class TeacherResponseServiceTest {
     void safetyLockBlocksGenerationBeforeProviderCallAndCreatesAuditEvent() {
         User teacher = mock(User.class);
         Complaint complaint = editableComplaint();
+        EmergencyRiskReviewRequest activeLock = mock(EmergencyRiskReviewRequest.class);
         when(users.findById(7L)).thenReturn(Optional.of(teacher));
         when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
-        when(emergencyReviews.findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(42L))
-                .thenReturn(Optional.of(mock(EmergencyRiskReviewRequest.class)));
+        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.of(activeLock));
+        when(activeLock.isSafetyLock()).thenReturn(true);
         when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         assertThatThrownBy(() -> service.generateAiDraft(7L, 42L))

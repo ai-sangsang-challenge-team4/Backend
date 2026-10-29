@@ -175,8 +175,9 @@ public class TeacherResponseService {
     private void ensureSafetyUnlocked(Complaint complaint, User user, String operation) {
         Long complaintId = complaint.getId();
         if (emergencyReviewRequestRepository
-                .findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(complaintId)
-                .isPresent()) {
+                .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(complaintId)
+                .map(com.teacherhub.risk.entity.EmergencyRiskReviewRequest::isSafetyLock)
+                .orElse(false)) {
             eventRepository.save(ComplaintEvent.responseBlockedBySafetyLock(
                     complaint,
                     user,

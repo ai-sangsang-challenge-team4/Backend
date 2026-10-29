@@ -42,7 +42,11 @@ public record TeacherComplaintDetailResponse(
                 complaint.getStatus(),
                 complaint.getWaitingFor(),
                 submittedAt,
-                latestReview == null ? analysis.getRiskLevel() : latestReview.getReviewedLevel()
+                analysis == null
+                        ? null
+                        : latestReview == null
+                        ? analysis.getRiskLevel()
+                        : latestReview.getReviewedLevel()
         );
     }
 }

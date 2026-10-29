@@ -83,10 +83,13 @@ public class EmergencyReviewService {
         }
 
         if (requestRepository
-                .findActiveByComplaintId(complaintId, RiskReviewStatus.PENDING_ADMIN_APPROVAL)
+                .findFirstByComplaintIdAndStatusOrderByRequestedAtDescIdDesc(
+                        complaintId,
+                        RiskReviewStatus.PENDING_ADMIN_APPROVAL
+                )
                 .isPresent()) {
             throw new EmergencyReviewDuplicateException(
-                    "이미 처리 중이거나 안전 잠금이 유지 중인 Emergency 재검토 요청이 있습니다."
+                    "이미 처리 중인 Emergency 재검토 요청이 있습니다."
             );
         }
 
@@ -240,8 +243,9 @@ public class EmergencyReviewService {
 
     public boolean isSafetyLocked(Long complaintId) {
         return requestRepository
-                .findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(complaintId)
-                .isPresent();
+                .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(complaintId)
+                .map(EmergencyRiskReviewRequest::isSafetyLock)
+                .orElse(false);
     }
 
     @Transactional
@@ -254,7 +258,7 @@ public class EmergencyReviewService {
             throw new RiskReviewNotAllowedException("Emergency 위험도에서만 안전 잠금을 활성화할 수 있습니다.");
         }
 
-        var active = requestRepository.findActiveByComplaintId(
+        var active = requestRepository.findFirstByComplaintIdAndStatusOrderByRequestedAtDescIdDesc(
                 complaint.getId(),
                 RiskReviewStatus.PENDING_ADMIN_APPROVAL
         );

@@ -98,7 +98,7 @@ class EmergencyReviewServiceTest {
                 .thenReturn(Optional.of(analysis));
         when(reviewRepository.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
                 .thenReturn(Optional.empty());
-        when(requestRepository.findActiveByComplaintId(
+        when(requestRepository.findFirstByComplaintIdAndStatusOrderByRequestedAtDescIdDesc(
                 42L,
                 RiskReviewStatus.PENDING_ADMIN_APPROVAL
         )).thenReturn(Optional.empty());
@@ -152,8 +152,8 @@ class EmergencyReviewServiceTest {
     }
 
     @Test
-    void rejectsDuplicateWhilePendingOrSafetyLockIsActive() {
-        when(requestRepository.findActiveByComplaintId(
+    void rejectsDuplicateWhilePending() {
+        when(requestRepository.findFirstByComplaintIdAndStatusOrderByRequestedAtDescIdDesc(
                 42L,
                 RiskReviewStatus.PENDING_ADMIN_APPROVAL
         )).thenReturn(Optional.of(mock(EmergencyRiskReviewRequest.class)));
@@ -165,6 +165,44 @@ class EmergencyReviewServiceTest {
         )).isInstanceOf(EmergencyReviewDuplicateException.class);
 
         verify(requestRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void rejectedRequestCanBeRetriedThenApprovedAndUnlocked() {
+        EmergencyRiskReviewRequest rejected = request();
+        when(requestRepository.findForUpdate(300L)).thenReturn(Optional.of(rejected));
+
+        service.update(
+                20L,
+                300L,
+                new EmergencyReviewUpdateRequest(RiskReviewStatus.REJECTED, null, "근거가 부족합니다.")
+        );
+
+        assertThat(rejected.getStatus()).isEqualTo(RiskReviewStatus.REJECTED);
+        assertThat(rejected.isSafetyLock()).isTrue();
+
+        service.request(
+                10L,
+                42L,
+                new EmergencyReviewCreateRequest(5, "보완된 근거로 다시 요청합니다.", null)
+        );
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EmergencyRiskReviewRequest.class);
+        verify(requestRepository, times(2)).saveAndFlush(captor.capture());
+        EmergencyRiskReviewRequest retried = captor.getAllValues().get(1);
+        when(requestRepository.findForUpdate(301L)).thenReturn(Optional.of(retried));
+
+        service.update(
+                20L,
+                301L,
+                new EmergencyReviewUpdateRequest(RiskReviewStatus.APPLIED, false, "승인 후 잠금을 해제합니다.")
+        );
+        when(requestRepository.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.of(retried));
+
+        assertThat(retried.getStatus()).isEqualTo(RiskReviewStatus.APPLIED);
+        assertThat(retried.isSafetyLock()).isFalse();
+        assertThat(service.isSafetyLocked(42L)).isFalse();
     }
 
     @Test

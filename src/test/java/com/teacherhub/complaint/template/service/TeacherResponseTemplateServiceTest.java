@@ -59,7 +59,7 @@ class TeacherResponseTemplateServiceTest {
         when(complaints.findDetailById(42L)).thenReturn(Optional.of(complaint));
         when(complaint.getStatus()).thenReturn(ComplaintStatus.OPEN);
         when(complaint.getWaitingFor()).thenReturn(WaitingFor.TEACHER);
-        when(emergencyReviews.findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(42L))
+        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
                 .thenReturn(Optional.empty());
         when(analyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
                 42L,
@@ -90,5 +90,24 @@ class TeacherResponseTemplateServiceTest {
             assertThat(response.requiredVariables()).containsExactly("parentName", "nextAction");
         });
         verifyNoInteractions(adoptions, events);
+    }
+
+    @Test
+    void returnsEmptyTemplatesWhenSubmissionHasNoCompletedAnalysis() {
+        User teacher = mock(User.class);
+        Complaint complaint = mock(Complaint.class);
+        when(users.findById(7L)).thenReturn(Optional.of(teacher));
+        when(complaints.findDetailById(42L)).thenReturn(Optional.of(complaint));
+        when(complaint.getStatus()).thenReturn(ComplaintStatus.OPEN);
+        when(complaint.getWaitingFor()).thenReturn(WaitingFor.TEACHER);
+        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.empty());
+        when(analyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                42L,
+                MessageStatus.DRAFT
+        )).thenReturn(Optional.empty());
+
+        assertThat(service.findAvailable(7L, 42L)).isEmpty();
+        verifyNoInteractions(versions, reviews, adoptions, events);
     }
 }

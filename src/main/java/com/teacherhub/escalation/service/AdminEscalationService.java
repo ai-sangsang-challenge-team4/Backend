@@ -130,10 +130,11 @@ public class AdminEscalationService {
                 latestReview,
                 teacherRiskScale.initialScoreFor(escalation.getRiskAnalysis().getRiskLevel()),
                 emergencyReviewRequestRepository
-                        .findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(
+                        .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(
                                 escalation.getComplaint().getId()
                         )
-                        .isPresent()
+                        .map(com.teacherhub.risk.entity.EmergencyRiskReviewRequest::isSafetyLock)
+                        .orElse(false)
         );
     }
 
