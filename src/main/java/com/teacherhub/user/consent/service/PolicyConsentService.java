@@ -1,0 +1,44 @@
+package com.teacherhub.user.consent.service;
+
+import com.teacherhub.common.exception.UnauthorizedException;
+import com.teacherhub.user.consent.dto.PolicyConsentResponse;
+import com.teacherhub.user.consent.entity.UserPolicyConsent;
+import com.teacherhub.user.consent.repository.UserPolicyConsentRepository;
+import com.teacherhub.user.entity.User;
+import com.teacherhub.user.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional(readOnly = true)
+public class PolicyConsentService {
+
+    private final UserPolicyConsentRepository consentRepository;
+    private final UserRepository userRepository;
+    private final String currentPolicyVersion;
+
+    public PolicyConsentService(
+            UserPolicyConsentRepository consentRepository,
+            UserRepository userRepository,
+            @Value("${teacherhub.policy.version:2026-10-29-v1}") String currentPolicyVersion
+    ) {
+        this.consentRepository = consentRepository;
+        this.userRepository = userRepository;
+        this.currentPolicyVersion = currentPolicyVersion;
+    }
+
+    @Transactional
+    public PolicyConsentResponse agreeAll(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException("사용자를 찾을 수 없습니다."));
+
+        return consentRepository.findByUserIdAndPolicyVersion(userId, currentPolicyVersion)
+                .map(PolicyConsentResponse::from)
+                .orElseGet(() -> PolicyConsentResponse.from(
+                        consentRepository.saveAndFlush(
+                                new UserPolicyConsent(user, currentPolicyVersion)
+                        )
+                ));
+    }
+}

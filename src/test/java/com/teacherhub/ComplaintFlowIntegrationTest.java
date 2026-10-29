@@ -70,7 +70,8 @@ public class ComplaintFlowIntegrationTest {
         assertThat(riskAnalysisRepository.countByComplaintIdAndCompletedTrue(id)).isEqualTo(2);
         var finalAnalysis = riskAnalysisRepository.findByComplaintIdOrderByIdAsc(id).get(1);
         assertThat(finalAnalysis.getContentVersion()).isEqualTo(4);
-        assertThat(finalAnalysis.getOriginalContent()).isEqualTo("최종 제출 내용");
+        assertThat(finalAnalysis.getContentHash()).hasSize(64);
+        assertThat(finalAnalysis.getMessage().getContent()).isEqualTo("최종 제출 내용");
         assertThat(finalAnalysis.getAiRevision()).isNull();
         assertThat(complaintRepository.findById(id).orElseThrow().getStatus()).isEqualTo(ComplaintStatus.OPEN);
     }

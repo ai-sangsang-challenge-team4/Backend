@@ -1,6 +1,8 @@
 package com.teacherhub.risk.dto.response;
 
 import com.teacherhub.risk.enums.RiskTagCode;
+import com.teacherhub.risk.enums.RiskTagState;
+import com.teacherhub.risk.dto.detection.EvidenceSpan;
 
 import java.util.List;
 
@@ -12,16 +14,28 @@ public record RiskDetectorResponse(
 ) {
     public record TagResult(
             RiskTagCode code,
-            boolean finalDetected,
+            RiskTagState finalState,
             Detection rule,
             Detection llm
-    ) {}
+    ) {
+        public boolean finalDetected() {
+            return finalState == RiskTagState.PRESENT;
+        }
+    }
 
     public record Detection(
-            boolean detected,
+            RiskTagState state,
             Double confidence,
-            List<String> evidences
-    ) {}
+            List<EvidenceSpan> evidenceSpans
+    ) {
+        public boolean detected() {
+            return state == RiskTagState.PRESENT;
+        }
+
+        public List<String> evidences() {
+            return evidenceSpans.stream().map(EvidenceSpan::text).toList();
+        }
+    }
 
     public record LlmInfo(
             String modelName,

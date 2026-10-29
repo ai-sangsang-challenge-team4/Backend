@@ -16,6 +16,7 @@ import com.teacherhub.risk.entity.EmergencyRiskReviewRequest;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.enums.RiskReviewDirection;
 import com.teacherhub.risk.exception.EmergencyReviewAccessDeniedException;
 import com.teacherhub.risk.exception.EmergencyReviewDuplicateException;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
@@ -128,6 +129,29 @@ class EmergencyReviewServiceTest {
     }
 
     @Test
+    void raisingRiskToEmergencyAppliesAndEnablesSafetyLock() {
+        when(escalationRepository.findByComplaintId(42L)).thenReturn(Optional.empty());
+        RiskReview emergencyReview = new RiskReview(
+                analysis,
+                teacher,
+                6,
+                RiskLevel.HIGH,
+                7,
+                RiskLevel.EMERGENCY,
+                RiskReviewDirection.RAISED,
+                "Emergency 상향 검토"
+        );
+
+        var response = service.activateSafetyLock(teacherUser, complaint, emergencyReview);
+
+        assertThat(response.status()).isEqualTo(RiskReviewStatus.APPLIED);
+        assertThat(response.safetyLock()).isTrue();
+        assertThat(response.requestedRiskLevel()).isEqualTo(RiskLevel.EMERGENCY);
+        verify(requestRepository).saveAndFlush(any(EmergencyRiskReviewRequest.class));
+        verify(eventRepository).save(any(ComplaintEvent.class));
+    }
+
+    @Test
     void rejectsDuplicateWhilePendingOrSafetyLockIsActive() {
         when(requestRepository.findActiveByComplaintId(
                 42L,
@@ -178,10 +202,17 @@ class EmergencyReviewServiceTest {
                 new EmergencyReviewUpdateRequest(null, false, null)
         )).isInstanceOf(EmergencyReviewAccessDeniedException.class);
 
+        assertThatThrownBy(() -> service.update(
+                20L,
+                300L,
+                new EmergencyReviewUpdateRequest(null, false, "승인 전 해제 시도")
+        )).isInstanceOf(com.teacherhub.escalation.exception.EscalationStateException.class)
+                .hasMessageContaining("승인 전");
+
         var response = service.update(
                 20L,
                 300L,
-                new EmergencyReviewUpdateRequest(null, false, null)
+                new EmergencyReviewUpdateRequest(RiskReviewStatus.APPLIED, false, "하향 검토 승인 및 잠금 해제")
         );
         assertThat(response.safetyLock()).isFalse();
     }

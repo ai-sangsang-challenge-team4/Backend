@@ -116,7 +116,7 @@ class TeacherParentComplaintControllerTest {
         when(responseService.saveDraft(7L, 42L, request)).thenReturn(
                 new TeacherResponseDraftResponse(10L, 42L, "수정한 답변", now, now)
         );
-        when(responseService.submit(7L, 42L, request)).thenReturn(
+        when(responseService.submit(7L, 42L, request, "response-42-1")).thenReturn(
                 new TeacherResponseSubmissionResponse(
                         10L,
                         42L,
@@ -172,6 +172,7 @@ class TeacherParentComplaintControllerTest {
                 .andExpect(jsonPath("$.content").value("수정한 답변"));
         mvc.perform(post("/teacher/complaints/42/responses")
                         .principal(auth)
+                        .header("Idempotency-Key", "response-42-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
@@ -189,7 +190,7 @@ class TeacherParentComplaintControllerTest {
         verify(responseService).generateAiDraft(7L, 42L);
         verify(responseService).findDraft(7L, 42L);
         verify(responseService).saveDraft(7L, 42L, request);
-        verify(responseService).submit(7L, 42L, request);
+        verify(responseService).submit(7L, 42L, request, "response-42-1");
         verify(riskReviewService).review(7L, 42L, riskReviewRequest);
     }
 

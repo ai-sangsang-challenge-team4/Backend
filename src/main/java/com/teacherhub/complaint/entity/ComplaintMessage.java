@@ -14,7 +14,13 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 
 @Entity
-@Table(name = "complaint_messages")
+@Table(
+        name = "complaint_messages",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_complaint_message_sender_idempotency",
+                columnNames = {"sender_id", "idempotency_key"}
+        )
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ComplaintMessage {
@@ -56,6 +62,9 @@ public class ComplaintMessage {
     private LocalDateTime sentAt;
     private LocalDateTime readAt;
 
+    @Column(name = "idempotency_key", length = 100)
+    private String idempotencyKey;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -96,6 +105,14 @@ public class ComplaintMessage {
         requireDraft();
         this.status = MessageStatus.SENT;
         this.sentAt = LocalDateTime.now();
+    }
+
+    public void assignIdempotencyKey(String idempotencyKey) {
+        requireDraft();
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new IllegalArgumentException("멱등 키가 필요합니다.");
+        }
+        this.idempotencyKey = idempotencyKey;
     }
 
     public boolean markRead() {

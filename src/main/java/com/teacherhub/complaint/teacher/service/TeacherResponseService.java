@@ -20,6 +20,7 @@ import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseDraftResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseRequest;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseSubmissionResponse;
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
+import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.stream.Collectors;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -39,12 +41,13 @@ public class TeacherResponseService {
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
     private final TeacherSupportContentProvider supportContentProvider;
+    private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository;
 
-    @Transactional
+    @Transactional(noRollbackFor = ResponseNotEditableException.class)
     // 교사 AI 초안 생성
     public TeacherAiDraftResponse generateAiDraft(Long userId, Long complaintId) {
         User user = findUser(userId);
-        Complaint complaint = findEditableComplaintForUpdate(user, complaintId);
+        Complaint complaint = findEditableComplaintForUpdate(user, complaintId, "AI 초안 생성");
         var generated = supportContentProvider.createResponseDraft(conversationContext(complaint));
         ComplaintEvent event = eventRepository.save(ComplaintEvent.aiDraftGenerated(complaint));
         return TeacherAiDraftResponse.from(complaint.getId(), generated, event.getOccurredAt());
@@ -68,14 +71,14 @@ public class TeacherResponseService {
     }
 
     // 답변 초안 저장
-    @Transactional
+    @Transactional(noRollbackFor = ResponseNotEditableException.class)
     public TeacherResponseDraftResponse saveDraft(
             Long userId,
             Long complaintId,
             TeacherResponseRequest request
     ) {
         User user = findUser(userId);
-        Complaint complaint = findEditableComplaintForUpdate(user, complaintId);
+        Complaint complaint = findEditableComplaintForUpdate(user, complaintId, "답변 임시저장");
         ComplaintMessage draft = messageRepository
                 .findFirstByComplaintIdAndSenderIdAndTypeAndStatusOrderByIdDesc(
                         complaintId,
@@ -98,14 +101,36 @@ public class TeacherResponseService {
     }
 
     // 답변 최종 제출
-    @Transactional
+    @Transactional(noRollbackFor = ResponseNotEditableException.class)
     public TeacherResponseSubmissionResponse submit(
             Long userId,
             Long complaintId,
             TeacherResponseRequest request
     ) {
+        return submit(userId, complaintId, request, UUID.randomUUID().toString());
+    }
+
+    @Transactional(noRollbackFor = ResponseNotEditableException.class)
+    public TeacherResponseSubmissionResponse submit(
+            Long userId,
+            Long complaintId,
+            TeacherResponseRequest request,
+            String idempotencyKey
+    ) {
         User user = findUser(userId);
-        Complaint complaint = findEditableComplaintForUpdate(user, complaintId);
+        String normalizedKey = normalizeIdempotencyKey(idempotencyKey);
+        var existing = messageRepository.findBySenderIdAndIdempotencyKey(user.getId(), normalizedKey);
+        if (existing.isPresent()) {
+            return existingSubmission(existing.get(), complaintId, request);
+        }
+
+        Complaint complaint = findComplaintForUpdate(user, complaintId);
+        existing = messageRepository.findIdempotentForUpdate(user.getId(), normalizedKey);
+        if (existing.isPresent()) {
+            return existingSubmission(existing.get(), complaintId, request);
+        }
+        ensureSafetyUnlocked(complaint, user, "답변 전송");
+        ensureEditable(complaint);
         ComplaintMessage response = messageRepository
                 .findFirstByComplaintIdAndSenderIdAndTypeAndStatusOrderByIdDesc(
                         complaintId,
@@ -124,6 +149,7 @@ public class TeacherResponseService {
             response.updateDraft(request.content());
         }
         markLatestParentMessageRead(complaintId, user);
+        response.assignIdempotencyKey(normalizedKey);
         response.send();
         complaint.teacherMessageSent();
         ComplaintMessage saved = messageRepository.saveAndFlush(response);
@@ -132,15 +158,66 @@ public class TeacherResponseService {
     }
 
     // 민원 조회 및 교사 권한 검증
-    private Complaint findEditableComplaintForUpdate(User user, Long complaintId) {
+    private Complaint findEditableComplaintForUpdate(User user, Long complaintId, String operation) {
+        Complaint complaint = findComplaintForUpdate(user, complaintId);
+        ensureSafetyUnlocked(complaint, user, operation);
+        ensureEditable(complaint);
+        return complaint;
+    }
+
+    private Complaint findComplaintForUpdate(User user, Long complaintId) {
         Complaint complaint = complaintRepository.findForUpdate(complaintId)
                 .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
         complaintAccessPolicy.validateAssignedTeacher(user, complaint);
+        return complaint;
+    }
+
+    private void ensureSafetyUnlocked(Complaint complaint, User user, String operation) {
+        Long complaintId = complaint.getId();
+        if (emergencyReviewRequestRepository
+                .findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(complaintId)
+                .isPresent()) {
+            eventRepository.save(ComplaintEvent.responseBlockedBySafetyLock(
+                    complaint,
+                    user,
+                    operation
+            ));
+            throw new ResponseNotEditableException(
+                    "Emergency 안전 잠금이 유지되는 동안 " + operation + "을(를) 수행할 수 없습니다. 재검토 절차를 확인해주세요."
+            );
+        }
+    }
+
+    private void ensureEditable(Complaint complaint) {
         if (complaint.getStatus() != ComplaintStatus.OPEN
                 || complaint.getWaitingFor() != WaitingFor.TEACHER) {
             throw new ResponseNotEditableException("접수되어 답변 대기 중인 민원만 답변할 수 있습니다.");
         }
-        return complaint;
+    }
+
+    private TeacherResponseSubmissionResponse existingSubmission(
+            ComplaintMessage sent,
+            Long complaintId,
+            TeacherResponseRequest request
+    ) {
+        if (!sent.getComplaint().getId().equals(complaintId)
+                || sent.getType() != MessageType.TEACHER_REPLY
+                || !sent.isSent()
+                || !sent.getContent().equals(request.content())) {
+            throw new ResponseNotEditableException("동일한 멱등 키가 다른 답변 요청에 사용되었습니다.");
+        }
+        return TeacherResponseSubmissionResponse.from(sent);
+    }
+
+    private String normalizeIdempotencyKey(String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new IllegalArgumentException("Idempotency-Key 헤더가 필요합니다.");
+        }
+        String normalized = idempotencyKey.trim();
+        if (normalized.length() > 100) {
+            throw new IllegalArgumentException("Idempotency-Key는 100자 이하로 입력해주세요.");
+        }
+        return normalized;
     }
 
     private Complaint findTeacherComplaint(User user, Long complaintId) {

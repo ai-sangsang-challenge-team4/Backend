@@ -3,6 +3,7 @@ package com.teacherhub.risk.entity;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.util.ContentFingerprint;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -46,9 +47,9 @@ public class RiskAnalysis {
     @Column(nullable = false)
     private LocalDateTime analyzedAt;
 
-    // 이 분석이 수행될 당시의 민원 내용 스냅샷
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String originalContent;
+    // 원문은 ComplaintMessage에만 보관하고, 동일 내용 분석 재사용을 위한 지문만 저장합니다.
+    @Column(nullable = false, length = 64)
+    private String contentHash;
 
     public static final int MAX_COMPLETED_ANALYSES = 2;
 
@@ -92,7 +93,7 @@ public class RiskAnalysis {
         this.message = message;
         this.complaint = message.getComplaint();
         this.contentVersion = message.getContentVersion();
-        this.originalContent = message.getContent();
+        this.contentHash = ContentFingerprint.sha256(message.getContent());
         this.riskScore = riskScore;
         this.riskLevel = riskLevel;
         this.modelName = modelName;

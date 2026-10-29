@@ -130,9 +130,12 @@ public class TeacherRiskReviewService {
                 saved.getReviewedLevel(),
                 saved.getReason()
         ));
+        boolean safetyLock = reviewedLevel == RiskLevel.EMERGENCY
+                ? emergencyReviewService.activateSafetyLock(user, complaint, saved).safetyLock()
+                : emergencyReviewService.isSafetyLocked(complaintId);
         return TeacherRiskReviewResponse.from(
                 saved,
-                emergencyReviewService.isSafetyLocked(complaintId)
+                safetyLock
         );
     }
 

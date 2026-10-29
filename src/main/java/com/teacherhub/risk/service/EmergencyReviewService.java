@@ -171,6 +171,13 @@ public class EmergencyReviewService {
         if (update.status() == RiskReviewStatus.PENDING_ADMIN_APPROVAL) {
             throw new EscalationStateException("승인 대기 상태는 검토자가 결정할 수 없습니다.");
         }
+        if (Boolean.FALSE.equals(update.safetyLock())
+                && request.getStatus() != RiskReviewStatus.APPLIED
+                && update.status() != RiskReviewStatus.APPLIED) {
+            throw new EscalationStateException(
+                    "Emergency 재검토 승인 전에는 안전 잠금을 해제할 수 없습니다."
+            );
+        }
 
         String message = normalizeMessage(update.message());
         MessageEventType decisionEventType = null;
@@ -235,6 +242,48 @@ public class EmergencyReviewService {
         return requestRepository
                 .findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(complaintId)
                 .isPresent();
+    }
+
+    @Transactional
+    public EmergencyReviewResponse activateSafetyLock(
+            User actor,
+            Complaint complaint,
+            RiskReview emergencyReview
+    ) {
+        if (emergencyReview.getReviewedLevel() != RiskLevel.EMERGENCY) {
+            throw new RiskReviewNotAllowedException("Emergency 위험도에서만 안전 잠금을 활성화할 수 있습니다.");
+        }
+
+        var active = requestRepository.findActiveByComplaintId(
+                complaint.getId(),
+                RiskReviewStatus.PENDING_ADMIN_APPROVAL
+        );
+        if (active.isPresent()) {
+            return EmergencyReviewResponse.from(active.get());
+        }
+
+        User reviewer = findReviewer(complaint.getId(), null);
+        EmergencyRiskReviewRequest safetyLock = new EmergencyRiskReviewRequest(
+                complaint,
+                emergencyReview.getRiskAnalysis(),
+                emergencyReview.getReviewedBy(),
+                reviewer,
+                emergencyReview.getPreviousScore(),
+                emergencyReview.getPreviousLevel(),
+                emergencyReview.getReviewedScore(),
+                emergencyReview.getReviewedLevel(),
+                emergencyReview.getReason()
+        );
+        safetyLock.approve("Emergency 위험도 상향에 따라 안전 잠금이 자동 활성화되었습니다.");
+        EmergencyRiskReviewRequest saved = requestRepository.saveAndFlush(safetyLock);
+        eventRepository.save(ComplaintEvent.emergencyReviewChanged(
+                complaint,
+                actor,
+                saved.getId(),
+                MessageEventType.EMERGENCY_SAFETY_LOCK_UPDATED,
+                "Emergency 위험도 상향에 따라 안전 잠금이 자동 활성화되었습니다."
+        ));
+        return EmergencyReviewResponse.from(saved);
     }
 
     private void validateUpdate(EmergencyReviewUpdateRequest update) {

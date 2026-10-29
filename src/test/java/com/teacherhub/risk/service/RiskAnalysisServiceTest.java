@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static com.teacherhub.risk.enums.RiskTagCode.PROFANITY;
 import static org.assertj.core.api.Assertions.*;
@@ -75,10 +77,10 @@ class RiskAnalysisServiceTest {
 
         var response = service.analyze(1L, 42L);
 
-        var order = inOrder(rules, masking, llm, analyses, detections, revisions);
-        order.verify(rules).detect("original private content");
-        order.verify(masking).mask("original private content");
-        order.verify(llm).analyze("masked");
+        verify(masking).mask("original private content");
+        verify(rules).detect("original private content");
+        verify(llm).analyze("masked");
+        var order = inOrder(analyses, detections, revisions);
         order.verify(analyses).save(any());
         order.verify(detections).saveAll(any());
         var evaluation = org.mockito.ArgumentCaptor.forClass(com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation.class);
@@ -100,6 +102,35 @@ class RiskAnalysisServiceTest {
         assertThat(complaint.getContent()).isEqualTo("original private content");
         assertThat(complaint.getMaskedContent()).isEqualTo("masked");
         verify(detections).saveAll(any());
+    }
+
+    @Test
+    void startsRuleAndLlmDetectionInParallel() {
+        Complaint complaint = draft();
+        CountDownLatch bothStarted = new CountDownLatch(2);
+        when(masking.mask(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tags.findAll()).thenReturn(java.util.Arrays.stream(RiskTagCode.values())
+                .map(code -> new RiskTag(code, code.name(), 1)).toList());
+        when(analyses.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(revisions.generate(anyString(), any())).thenReturn(
+                new RevisionResult(new FinalRevision("reason", "revision"), List.of()));
+        when(rules.detect(complaint.getContent())).thenAnswer(invocation -> {
+            bothStarted.countDown();
+            assertThat(bothStarted.await(2, TimeUnit.SECONDS)).isTrue();
+            return List.of();
+        });
+        when(llm.analyze(complaint.getContent())).thenAnswer(invocation -> {
+            bothStarted.countDown();
+            assertThat(bothStarted.await(2, TimeUnit.SECONDS)).isTrue();
+            return new com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult(
+                    List.of(),
+                    new com.teacherhub.risk.dto.llm.LlmAnalysisMetadata("parallel-test", 0.0)
+            );
+        });
+
+        assertThatCode(() -> service.analyze(1L, 42L)).doesNotThrowAnyException();
+        verify(rules).detect(complaint.getContent());
+        verify(llm).analyze(complaint.getContent());
     }
 
     @Test

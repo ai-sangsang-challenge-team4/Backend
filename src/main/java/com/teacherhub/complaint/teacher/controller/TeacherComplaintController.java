@@ -255,13 +255,16 @@ public class TeacherComplaintController {
     public ResponseEntity<TeacherResponseSubmissionResponse> submitResponse(
             @Parameter(hidden = true) Authentication authentication,
             @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId,
+            @Parameter(description = "중복 전송 방지용 멱등 키", example = "response-42-20261029-001")
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody TeacherResponseRequest request
     ) {
         return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
                 .body(teacherResponseService.submit(
                         userId(authentication),
                         complaintId,
-                        request
+                        request,
+                        idempotencyKey
                 ));
     }
 

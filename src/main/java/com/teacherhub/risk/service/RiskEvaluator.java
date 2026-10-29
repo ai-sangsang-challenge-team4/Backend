@@ -1,9 +1,11 @@
 package com.teacherhub.risk.service;
 
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
+import com.teacherhub.risk.dto.detection.EvidenceSpan;
 import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskTagCode;
+import com.teacherhub.risk.enums.RiskTagState;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,13 +24,17 @@ public class RiskEvaluator {
 
     public record FinalRiskTagResponse(
             RiskTagCode code,
-            boolean detected,
-            boolean ruleDetected,
-            boolean llmDetected,
+            RiskTagState state,
+            RiskTagState ruleState,
+            RiskTagState llmState,
             Double confidence,
-            String evidence,
+            List<EvidenceSpan> evidenceSpans,
             String reason
     ) {
+        public FinalRiskTagResponse {
+            evidenceSpans = evidenceSpans == null ? List.of() : List.copyOf(evidenceSpans);
+        }
+
         public FinalRiskTagResponse(
                 RiskTagCode code,
                 boolean detected,
@@ -38,6 +44,45 @@ public class RiskEvaluator {
                 String evidence
         ) {
             this(code, detected, ruleDetected, llmDetected, confidence, evidence, null);
+        }
+
+        public FinalRiskTagResponse(
+                RiskTagCode code,
+                boolean detected,
+                boolean ruleDetected,
+                boolean llmDetected,
+                Double confidence,
+                String evidence,
+                String reason
+        ) {
+            this(
+                    code,
+                    detected ? RiskTagState.PRESENT : RiskTagState.ABSENT,
+                    ruleDetected ? RiskTagState.PRESENT : RiskTagState.ABSENT,
+                    llmDetected ? RiskTagState.PRESENT : RiskTagState.ABSENT,
+                    confidence,
+                    evidence == null || evidence.isBlank()
+                            ? List.of()
+                            : List.of(EvidenceSpan.unlocated(evidence)),
+                    reason
+            );
+        }
+
+        public boolean detected() {
+            return state == RiskTagState.PRESENT;
+        }
+
+        public boolean ruleDetected() {
+            return ruleState == RiskTagState.PRESENT;
+        }
+
+        public boolean llmDetected() {
+            return llmState == RiskTagState.PRESENT;
+        }
+
+        public String evidence() {
+            return evidenceSpans.stream().map(EvidenceSpan::text).distinct()
+                    .reduce((left, right) -> left + "\n" + right).orElse(null);
         }
     }
 
@@ -53,23 +98,22 @@ public class RiskEvaluator {
                     RiskTagDetectionResult rule = rules.get(code);
                     RiskTagDetectionResult llm = llms.get(code);
 
-                    boolean ruleDetected = rule != null && rule.detected();
+                    RiskTagState ruleState = normalizedState(code, rule);
+                    RiskTagState llmState = normalizedState(code, llm);
+                    RiskTagState finalState = mergeState(code, rule, llm, ruleState, llmState);
 
-                    boolean llmDetected = llm != null && llm.detected();
-
-                    String evidence = Stream.of(rule, llm)
-                            .filter(result ->
-                                    result != null && result.detected()
-                            )
-                            .map(RiskTagDetectionResult::evidence)
-                            .filter(value ->
-                                    value != null && !value.isBlank()
-                            )
+                    List<EvidenceSpan> evidenceSpans = Stream.of(rule, llm)
+                            .filter(Objects::nonNull)
+                            .filter(result -> result.state() == RiskTagState.PRESENT
+                                    || result.state() == RiskTagState.BOUNDARY)
+                            .flatMap(result -> result.evidenceSpans().stream())
                             .distinct()
-                            .collect(Collectors.joining("\n"));
+                            .toList();
 
                     String reason = Stream.of(rule, llm)
-                            .filter(result -> result != null && result.detected())
+                            .filter(result -> result != null
+                                    && (result.state() == RiskTagState.PRESENT
+                                    || result.state() == RiskTagState.BOUNDARY))
                             .map(RiskTagDetectionResult::reason)
                             .filter(value -> value != null && !value.isBlank())
                             .distinct()
@@ -77,15 +121,47 @@ public class RiskEvaluator {
 
                     return new FinalRiskTagResponse(
                             code,
-                            ruleDetected || llmDetected,
-                            ruleDetected,
-                            llmDetected,
+                            finalState,
+                            ruleState,
+                            llmState,
                             llm == null ? null : llm.confidence(),
-                            evidence.isEmpty() ? null : evidence,
+                            evidenceSpans,
                             reason.isEmpty() ? null : reason
                     );
                 })
                 .toList();
+    }
+
+    private RiskTagState normalizedState(RiskTagCode code, RiskTagDetectionResult result) {
+        if (result == null) {
+            return code == RiskTagCode.REPEAT ? RiskTagState.UNKNOWN : RiskTagState.ABSENT;
+        }
+        if (result.state() == RiskTagState.PRESENT && result.evidenceSpans().isEmpty()) {
+            return RiskTagState.BOUNDARY;
+        }
+        return result.state();
+    }
+
+    private RiskTagState mergeState(
+            RiskTagCode code,
+            RiskTagDetectionResult rule,
+            RiskTagDetectionResult llm,
+            RiskTagState ruleState,
+            RiskTagState llmState
+    ) {
+        if (ruleState == RiskTagState.PRESENT || llmState == RiskTagState.PRESENT) {
+            return RiskTagState.PRESENT;
+        }
+        if (ruleState == RiskTagState.BOUNDARY || llmState == RiskTagState.BOUNDARY) {
+            return RiskTagState.BOUNDARY;
+        }
+        if (rule == null && llm == null) {
+            return code == RiskTagCode.REPEAT ? RiskTagState.UNKNOWN : RiskTagState.ABSENT;
+        }
+        if (ruleState == RiskTagState.UNKNOWN || llmState == RiskTagState.UNKNOWN) {
+            return RiskTagState.UNKNOWN;
+        }
+        return RiskTagState.ABSENT;
     }
 
     // 위험 태그 결과를 코드별로 인덱싱
@@ -106,11 +182,11 @@ public class RiskEvaluator {
             RiskTagDetectionResult left,
             RiskTagDetectionResult right
     ) {
-        boolean detected = left.detected() || right.detected();
+        RiskTagState state = mergeDuplicateState(left.state(), right.state());
 
         // 하나라도 감지됐다면 감지된 결과만 우선 사용
         var preferred = Stream.of(left, right)
-                .filter(result -> result.detected() == detected)
+                .filter(result -> result.state() == state)
                 .toList();
 
         Double confidence = preferred.stream()
@@ -119,11 +195,10 @@ public class RiskEvaluator {
                 .max(Double::compareTo)
                 .orElse(null);
 
-        String evidence = preferred.stream()
-                .map(RiskTagDetectionResult::evidence)
-                .filter(value -> value != null && !value.isBlank())
+        List<EvidenceSpan> evidenceSpans = preferred.stream()
+                .flatMap(result -> result.evidenceSpans().stream())
                 .distinct()
-                .collect(Collectors.joining("\n"));
+                .toList();
 
         String reason = preferred.stream()
                 .map(RiskTagDetectionResult::reason)
@@ -133,11 +208,18 @@ public class RiskEvaluator {
 
         return new RiskTagDetectionResult(
                 left.code(),
-                detected,
+                state,
                 confidence,
-                evidence.isBlank() ? null : evidence,
+                evidenceSpans,
                 reason.isBlank() ? null : reason
         );
+    }
+
+    private RiskTagState mergeDuplicateState(RiskTagState left, RiskTagState right) {
+        if (left == RiskTagState.PRESENT || right == RiskTagState.PRESENT) return RiskTagState.PRESENT;
+        if (left == RiskTagState.BOUNDARY || right == RiskTagState.BOUNDARY) return RiskTagState.BOUNDARY;
+        if (left == RiskTagState.UNKNOWN || right == RiskTagState.UNKNOWN) return RiskTagState.UNKNOWN;
+        return RiskTagState.ABSENT;
     }
 
     // 위험 태그 결과를 기반으로 시스템 점수 계산

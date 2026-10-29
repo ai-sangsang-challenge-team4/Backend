@@ -56,11 +56,11 @@ public class RiskAnalysisQueryService {
         var results = resultRepository.findByRiskAnalysisId(analysisId).stream()
                 .sorted(Comparator.comparing(tag -> tag.getRiskTag().getCode()))
                 .map(tag -> new RiskDetectorResponse.TagResult(tag.getRiskTag().getCode(),
-                        tag.isFinalDetected(),
-                        new RiskDetectorResponse.Detection(tag.isRuleDetected(), null,
-                                evidences(tag.getRuleEvidence())),
-                        new RiskDetectorResponse.Detection(tag.isLlmDetected(), tag.getConfidence(),
-                                evidences(tag.getLlmEvidence())))).toList();
+                        tag.effectiveFinalState(),
+                        new RiskDetectorResponse.Detection(tag.effectiveRuleState(), null,
+                                sourceSpans(tag.getRuleEvidenceSpans(), tag.getRuleEvidence())),
+                        new RiskDetectorResponse.Detection(tag.effectiveLlmState(), tag.getConfidence(),
+                                sourceSpans(tag.getLlmEvidenceSpans(), tag.getLlmEvidence())))).toList();
 
         return new RiskDetectorResponse(analysisId, results,
 
@@ -85,6 +85,21 @@ public class RiskAnalysisQueryService {
     private List<String> evidences(String value) {
         return value == null || value.isBlank() ? List.of()
                 : value.lines().filter(line -> !line.isBlank()).distinct().toList();
+    }
+
+    private List<com.teacherhub.risk.dto.detection.EvidenceSpan> spans(String value) {
+        return evidences(value).stream()
+                .map(com.teacherhub.risk.dto.detection.EvidenceSpan::unlocated)
+                .toList();
+    }
+
+    private List<com.teacherhub.risk.dto.detection.EvidenceSpan> sourceSpans(
+            List<com.teacherhub.risk.entity.RiskEvidenceSpan> persisted,
+            String legacyEvidence
+    ) {
+        return persisted == null || persisted.isEmpty()
+                ? spans(legacyEvidence)
+                : persisted.stream().map(com.teacherhub.risk.entity.RiskEvidenceSpan::toDto).toList();
     }
 
 }
