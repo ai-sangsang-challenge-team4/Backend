@@ -13,18 +13,19 @@ import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
+import com.teacherhub.complaint.history.service.ComplaintHistoryService;
 import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.teacher.dto.query.TeacherComplaintDetailResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherOriginalViewResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
+import com.teacherhub.complaint.teacher.dto.AllowedAction;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
 import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
-import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
@@ -34,6 +35,7 @@ import com.teacherhub.school.repository.StudentClassRepository;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,10 +43,11 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 public class TeacherComplaintQueryService {
 
@@ -58,6 +61,7 @@ public class TeacherComplaintQueryService {
     private final StudentClassRepository studentClassRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
+    private final ComplaintHistoryService complaintHistoryService;
     private final TeacherSupportContentProvider supportContentProvider;
     private final TeacherSupportPolicy supportPolicy;
     private final TeacherRiskScale teacherRiskScale;
@@ -69,63 +73,110 @@ public class TeacherComplaintQueryService {
                 .findTopByStudent_IdOrderBySchoolClass_AcademicYearDesc(complaint.getStudent().getId())
                 .orElseThrow(() -> new IllegalStateException("학생의 학급 정보를 찾을 수 없습니다."))
                 .getSchoolClass();
-        RiskAnalysis analysis = requiredAnalysis(complaint);
+        RiskAnalysis analysis = latestAnalysis(complaint).orElse(null);
         return TeacherComplaintDetailResponse.from(
                 complaint,
                 schoolClass,
                 submittedAt(complaint),
                 analysis,
-                latestReview(analysis)
+                analysis == null ? null : latestReview(analysis)
         );
     }
 
+    @Transactional
     public TeacherConversationResponse findConversation(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findTeacherComplaint(user, complaintId);
-        RiskAnalysis analysis = requiredAnalysis(complaint);
-        RiskReview latestReview = latestReview(analysis);
+        RiskAnalysis analysis = latestAnalysis(complaint).orElse(null);
+        RiskReview latestReview = analysis == null ? null : latestReview(analysis);
         boolean safetyLock = isSafetyLocked(complaintId);
+        markLatestParentMessageRead(complaintId, user);
         List<ComplaintMessage> messages = messageRepository
                 .findByComplaintIdAndStatusNotOrderByIdAsc(complaintId, MessageStatus.DRAFT);
         Map<Long, RiskLevel> latestRiskByMessage = latestRiskByMessage(complaintId);
-        Map<Long, String> bufferedSummaries = messages.stream()
-                .filter(message -> message.getType() == MessageType.PARENT_INQUIRY)
-                .filter(message -> latestRiskByMessage.get(message.getId()) != null)
-                .filter(message -> latestRiskByMessage.get(message.getId()) != RiskLevel.LOW)
-                .collect(Collectors.toMap(
-                        ComplaintMessage::getId,
-                        message -> supportContentProvider.createBufferedSummary(message.getContent())
-                ));
+        Map<Long, String> bufferedSummaries = createBufferedSummaries(
+                complaintId,
+                messages,
+                latestRiskByMessage
+        );
 
         return TeacherConversationResponse.from(
                 complaint,
                 bufferedSummaries,
-                supportPolicy.allowedActions(
-                        safetyLock
-                                ? RiskLevel.EMERGENCY
-                                : latestReview == null
-                                ? analysis.getRiskLevel()
-                                : latestReview.getReviewedLevel()
-                ),
+                analysis == null && !safetyLock
+                        ? List.of(AllowedAction.REQUEST_MANUAL_REVIEW)
+                        : supportPolicy.allowedActions(
+                                safetyLock
+                                        ? RiskLevel.EMERGENCY
+                                        : latestReview == null
+                                        ? analysis.getRiskLevel()
+                                        : latestReview.getReviewedLevel()
+                        ),
                 submittedAt(complaint),
                 messages
         );
     }
 
+    private Map<Long, String> createBufferedSummaries(
+            Long complaintId,
+            List<ComplaintMessage> messages,
+            Map<Long, RiskLevel> latestRiskByMessage
+    ) {
+        Map<Long, String> summaries = new HashMap<>();
+        messages.stream()
+                .filter(message -> message.getType() == MessageType.PARENT_INQUIRY)
+                .filter(message -> latestRiskByMessage.get(message.getId()) != null)
+                .filter(message -> latestRiskByMessage.get(message.getId()) != RiskLevel.LOW)
+                .forEach(message -> {
+                    try {
+                        String summary = supportContentProvider.createBufferedSummary(message.getContent());
+                        if (summary != null && !summary.isBlank()) {
+                            summaries.put(message.getId(), summary);
+                        }
+                    } catch (RuntimeException exception) {
+                        log.warn("Buffered summary generation failed; returning the original message. complaintId={}, messageId={}",
+                                complaintId, message.getId(), exception);
+                    }
+                });
+        return summaries;
+    }
+
+    private void markLatestParentMessageRead(Long complaintId, User actor) {
+        messageRepository.findFirstByComplaintIdAndTypeAndStatusNotOrderByIdDesc(
+                complaintId,
+                MessageType.PARENT_INQUIRY,
+                MessageStatus.DRAFT
+        ).filter(ComplaintMessage::markRead)
+                .ifPresent(message -> eventRepository.save(ComplaintEvent.messageRead(message, actor)));
+    }
+
     @Transactional
-    public TeacherOriginalViewResponse viewOriginal(Long userId, Long complaintId) {
+    public TeacherOriginalViewResponse viewOriginal(Long userId, Long complaintId, Long messageId) {
         User user = findUser(userId);
         Complaint complaint = findTeacherComplaint(user, complaintId);
-        RiskAnalysis analysis = requiredAnalysis(complaint);
+        ComplaintMessage message = messageRepository.findById(messageId)
+                .filter(candidate -> candidate.getComplaint().getId().equals(complaintId))
+                .filter(candidate -> candidate.getType() == MessageType.PARENT_INQUIRY)
+                .filter(candidate -> candidate.getStatus() != MessageStatus.DRAFT)
+                .orElseThrow(() -> new ComplaintNotFoundException("전송된 메시지 원문을 찾을 수 없습니다."));
+        return recordOriginalView(complaint, message, user);
+    }
+
+    private TeacherOriginalViewResponse recordOriginalView(
+            Complaint complaint,
+            ComplaintMessage message,
+            User user
+    ) {
         ComplaintEvent event = eventRepository.save(ComplaintEvent.originalViewed(
                 complaint,
                 user,
-                analysis.getMessage().getId()
+                message.getId()
         ));
 
         return new TeacherOriginalViewResponse(
                 complaint.getId(),
-                analysis.getOriginalContent(),
+                message.getId(),
+                message.getContent(),
                 event.getOccurredAt()
         );
     }
@@ -133,14 +184,19 @@ public class TeacherComplaintQueryService {
     public TeacherRiskResponse findRisk(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findTeacherComplaint(user, complaintId);
-        RiskAnalysis analysis = requiredAnalysis(complaint);
+        RiskAnalysis analysis = latestAnalysis(complaint).orElse(null);
+        boolean safetyLock = isSafetyLocked(complaintId);
+
+        if (analysis == null) {
+            return TeacherRiskResponse.unavailable(complaintId, safetyLock);
+        }
 
         return TeacherRiskResponse.from(
                 analysis,
                 complaintRiskTagRepository.findByRiskAnalysisId(analysis.getId()),
                 latestReview(analysis),
                 teacherRiskScale.initialScoreFor(analysis.getRiskLevel()),
-                isSafetyLocked(complaintId)
+                safetyLock
         );
     }
 
@@ -148,10 +204,7 @@ public class TeacherComplaintQueryService {
         User user = findUser(userId);
         Complaint complaint = findTeacherComplaint(user, complaintId);
 
-        return TeacherHistoryResponse.from(
-                complaint.getId(),
-                eventRepository.findByComplaintIdOrderByOccurredAtDescIdDesc(complaintId)
-        );
+        return complaintHistoryService.findHistory(complaint.getId());
     }
 
     private Complaint findTeacherComplaint(User user, Long complaintId) {
@@ -180,15 +233,12 @@ public class TeacherComplaintQueryService {
                 .orElseThrow(() -> new IllegalStateException("민원 제출 이력을 찾을 수 없습니다."));
     }
 
-    private RiskAnalysis requiredAnalysis(Complaint complaint) {
+    private Optional<RiskAnalysis> latestAnalysis(Complaint complaint) {
         return riskAnalysisRepository
                 .findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
                         complaint.getId(),
                         MessageStatus.DRAFT
-                )
-                .orElseThrow(() -> new RiskAnalysisNotFoundException(
-                        "완료된 위험 분석 결과를 찾을 수 없습니다."
-                ));
+                );
     }
 
     private RiskReview latestReview(RiskAnalysis analysis) {
@@ -199,8 +249,9 @@ public class TeacherComplaintQueryService {
 
     private boolean isSafetyLocked(Long complaintId) {
         return emergencyReviewRequestRepository
-                .findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(complaintId)
-                .isPresent();
+                .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(complaintId)
+                .map(com.teacherhub.risk.entity.EmergencyRiskReviewRequest::isSafetyLock)
+                .orElse(false);
     }
 
     private Map<Long, RiskLevel> latestRiskByMessage(Long complaintId) {

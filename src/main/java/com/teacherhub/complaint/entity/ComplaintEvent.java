@@ -159,11 +159,54 @@ public class ComplaintEvent {
         );
     }
 
+    public static ComplaintEvent responseBlockedBySafetyLock(
+            Complaint complaint,
+            User actor,
+            String operation
+    ) {
+        ComplaintEvent event = new ComplaintEvent(
+                complaint,
+                actor,
+                MessageEventType.RESPONSE_BLOCKED_BY_SAFETY_LOCK,
+                "COMPLAINT",
+                complaint.getId()
+        );
+        event.reason = "Emergency 안전 잠금으로 " + operation + " 작업이 차단되었습니다.";
+        return event;
+    }
+
+    public static ComplaintEvent responseTemplateAdopted(
+            Complaint complaint,
+            User actor,
+            Long templateVersionId,
+            String templateVersion
+    ) {
+        ComplaintEvent event = new ComplaintEvent(
+                complaint,
+                actor,
+                MessageEventType.RESPONSE_TEMPLATE_ADOPTED,
+                "RESPONSE_TEMPLATE_VERSION",
+                templateVersionId
+        );
+        event.reason = "High 제한형 답변 템플릿 채택: " + templateVersion;
+        return event;
+    }
+
     public static ComplaintEvent messageSent(ComplaintMessage message) {
         return new ComplaintEvent(
                 message.getComplaint(),
                 message.getSender(),
                 MessageEventType.MESSAGE_SENT,
+                "COMPLAINT_MESSAGE",
+                message.getId()
+        );
+    }
+
+    public static ComplaintEvent messageRead(ComplaintMessage message, User actor) {
+        return new ComplaintEvent(
+                message.getComplaint(),
+                actor,
+                MessageEventType.MESSAGE_READ,
                 "COMPLAINT_MESSAGE",
                 message.getId()
         );

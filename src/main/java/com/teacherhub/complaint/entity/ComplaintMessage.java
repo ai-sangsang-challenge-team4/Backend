@@ -14,7 +14,13 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 
 @Entity
-@Table(name = "complaint_messages")
+@Table(
+        name = "complaint_messages",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_complaint_message_sender_idempotency",
+                columnNames = {"sender_id", "idempotency_key"}
+        )
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ComplaintMessage {
@@ -55,6 +61,9 @@ public class ComplaintMessage {
 
     private LocalDateTime sentAt;
     private LocalDateTime readAt;
+
+    @Column(name = "idempotency_key", length = 100)
+    private String idempotencyKey;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
@@ -98,14 +107,24 @@ public class ComplaintMessage {
         this.sentAt = LocalDateTime.now();
     }
 
-    public void markRead() {
+    public void assignIdempotencyKey(String idempotencyKey) {
+        requireDraft();
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new IllegalArgumentException("멱등 키가 필요합니다.");
+        }
+        this.idempotencyKey = idempotencyKey;
+    }
+
+    public boolean markRead() {
         if (status == MessageStatus.DRAFT) {
             throw new IllegalStateException("전송되지 않은 메시지는 읽음 처리할 수 없습니다.");
         }
-        this.status = MessageStatus.READ;
-        if (this.readAt == null) {
-            this.readAt = LocalDateTime.now();
+        if (status == MessageStatus.READ) {
+            return false;
         }
+        this.status = MessageStatus.READ;
+        this.readAt = LocalDateTime.now();
+        return true;
     }
 
     public boolean isDraft() {

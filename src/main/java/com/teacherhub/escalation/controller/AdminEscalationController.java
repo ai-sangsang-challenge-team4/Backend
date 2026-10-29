@@ -112,7 +112,7 @@ public class AdminEscalationController {
     }
 
     // 처리 기록 탭 조회
-    @Operation(summary = "관리자 처리 이력 조회", description = "공유 민원의 상태 변경, 위험도 검토 및 관리자 처리 이벤트를 조회합니다.", responses = {
+    @Operation(summary = "관리자 처리 이력 조회", description = "공유 민원의 상태 변경, 위험도 검토 및 관리자 처리 이벤트와 로그 누락 여부를 조회합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "처리 이력 조회 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "공유 건을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))

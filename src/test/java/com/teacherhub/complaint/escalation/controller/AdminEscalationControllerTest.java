@@ -62,6 +62,8 @@ class AdminEscalationControllerTest {
                         MessageEventType.STATUS_CHANGED,
                         LocalDateTime.of(2026, 10, 27, 10, 0),
                         "Demo Teacher",
+                        "COMPLAINT",
+                        42L,
                         ComplaintStatus.DRAFT,
                         ComplaintStatus.OPEN,
                         null,

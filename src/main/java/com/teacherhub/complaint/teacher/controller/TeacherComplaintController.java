@@ -92,7 +92,7 @@ public class TeacherComplaintController {
     }
 
     // 민원 대화 조회 (완충요약버전)
-    @Operation(summary = "교사용 대화 내역 조회", description = "위험 메시지는 완충 요약하고 위험도별 허용 행동과 함께 반환합니다.", responses = {
+    @Operation(summary = "교사용 대화 내역 조회", description = "위험 메시지는 완충 요약하고 위험도별 허용 행동과 함께 반환하며 최신 학부모 문의를 읽음 처리합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "대화 내역 조회 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "민원 또는 위험 분석 결과를 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
@@ -107,20 +107,21 @@ public class TeacherComplaintController {
         );
     }
 
-    // 민원 원문 조회
-    @Operation(summary = "민원 원문 열람", description = "완충 요약 대신 원문을 조회하고 원문 열람 감사 이벤트를 저장합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "원문 조회 및 열람 기록 저장 성공", useReturnTypeSchema = true),
-            @ApiResponse(responseCode = "404", description = "민원 또는 위험 분석 결과를 찾을 수 없음",
+    @Operation(summary = "메시지 원문 열람", description = "지정한 전송 메시지의 원문을 조회하고 원문 열람 감사 이벤트를 저장합니다.", responses = {
+            @ApiResponse(responseCode = "200", description = "메시지 원문 조회 및 열람 기록 저장 성공", useReturnTypeSchema = true),
+            @ApiResponse(responseCode = "404", description = "민원 또는 전송 메시지를 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
-    @PostMapping("/{complaintId}/original-views")
-    public ResponseEntity<TeacherOriginalViewResponse> viewOriginal(
+    @PostMapping("/{complaintId}/messages/{messageId}/original-views")
+    public ResponseEntity<TeacherOriginalViewResponse> viewMessageOriginal(
             @Parameter(hidden = true) Authentication authentication,
-            @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId
+            @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId,
+            @Parameter(description = "메시지 ID", example = "101") @PathVariable Long messageId
     ) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
-                .body(teacherComplaintQueryService.viewOriginal(userId(authentication), complaintId));
+                .body(teacherComplaintQueryService.viewOriginal(
+                        userId(authentication), complaintId, messageId));
     }
 
     // 민원 위험 분석 조회
@@ -164,7 +165,7 @@ public class TeacherComplaintController {
     }
 
     // 민원 히스토리 조회
-    @Operation(summary = "민원 처리 이력 조회", description = "상태 변경, 분석, 원문 열람, 메시지 전송 및 관리자 공유 이벤트를 조회합니다.", responses = {
+    @Operation(summary = "민원 처리 이력 조회", description = "상태 변경, 분석, 원문·메시지 열람, 메시지 전송 및 관리자 공유 이벤트와 로그 누락 여부를 조회합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "처리 이력 조회 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
@@ -254,13 +255,16 @@ public class TeacherComplaintController {
     public ResponseEntity<TeacherResponseSubmissionResponse> submitResponse(
             @Parameter(hidden = true) Authentication authentication,
             @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId,
+            @Parameter(description = "중복 전송 방지용 멱등 키", example = "response-42-20261029-001")
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody TeacherResponseRequest request
     ) {
         return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
                 .body(teacherResponseService.submit(
                         userId(authentication),
                         complaintId,
-                        request
+                        request,
+                        idempotencyKey
                 ));
     }
 

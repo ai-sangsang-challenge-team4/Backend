@@ -79,7 +79,7 @@ public class ParentMessageService {
         ComplaintMessage message = findOwnedDraft(userId, complaintId, messageId);
 
         riskAnalysisService.analyzeMessageForSubmission(userId, complaintId, messageId);
-        markLatestTeacherMessageRead(complaintId);
+        markLatestTeacherMessageRead(complaintId, user);
         message.send();
         complaint.parentMessageSent();
 
@@ -88,9 +88,11 @@ public class ParentMessageService {
         return ParentMessageResponse.from(saved);
     }
 
+    @Transactional
     public ComplaintConversationResponse findConversation(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findParentComplaint(user, complaintId);
+        markLatestTeacherMessageRead(complaintId, user);
         return ComplaintConversationResponse.from(
                 complaint,
                 messageRepository.findByComplaintIdAndStatusNotOrderByIdAsc(
@@ -104,7 +106,7 @@ public class ParentMessageService {
     public void close(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findParentTurnForUpdate(user, complaintId);
-        markLatestTeacherMessageRead(complaintId);
+        markLatestTeacherMessageRead(complaintId, user);
         complaint.close();
         eventRepository.save(ComplaintEvent.statusChanged(
                 complaint,
@@ -134,12 +136,13 @@ public class ParentMessageService {
                 ));
     }
 
-    private void markLatestTeacherMessageRead(Long complaintId) {
+    private void markLatestTeacherMessageRead(Long complaintId, User actor) {
         messageRepository.findFirstByComplaintIdAndTypeAndStatusNotOrderByIdDesc(
                 complaintId,
                 MessageType.TEACHER_REPLY,
                 MessageStatus.DRAFT
-        ).ifPresent(ComplaintMessage::markRead);
+        ).filter(ComplaintMessage::markRead)
+                .ifPresent(message -> eventRepository.save(ComplaintEvent.messageRead(message, actor)));
     }
 
     private Complaint findParentTurnForUpdate(User user, Long complaintId) {

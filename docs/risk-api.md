@@ -13,14 +13,18 @@
 | POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 학부모 추가 문의 메시지의 위험 분석·수정안 생성 | 200 |
 | GET | `/risk-analyses/{analysisId}` | 저장된 분석의 점수·등급 조회 | 200 |
 | GET | `/risk-analyses/{analysisId}/findings` | 최종 감지 태그·근거·태그별 수정 제안·최종 수정본 조회 | 200 |
-| GET | `/risk-analyses/{analysisId}/detector-results` | 전체 태그의 Rule·LLM 감지 여부·출처별 근거·LLM 신뢰도 조회 | 200 |
+| GET | `/risk-analyses/{analysisId}/detector-results` | 전체 태그의 Rule·LLM 상태·출처별 evidence span·LLM 신뢰도 조회 | 200 |
 | GET | `/risk-tags` | 위험 태그 기준 목록 조회, 민원 분석과 별개 | 200 |
 | POST | `/teacher/complaints/{complaintId}/risk-reviews` | 교사가 1~7점 위험도를 검토하고, EMERGENCY 변경은 관리자 승인을 요청 | 201 |
+| POST | `/teacher/complaints/{complaintId}/messages/{messageId}/original-views` | 담당 교사가 전송된 학부모 메시지 원문을 열람하고 감사 로그 저장 | 200 |
+| GET | `/teacher/complaints/{complaintId}/history` | 통합 이력과 로그 누락 여부 조회 | 200 |
 | POST | `/teacher/complaints/{complaintId}/emergency-review` | 공유 여부와 무관하게 EMERGENCY 하향 재검토 요청 | 201 |
 | GET | `/teacher/complaints/{complaintId}/emergency-review/current` | 최근 재검토 요청과 안전 잠금 상태 조회 | 200 |
 | GET | `/admin/emergency-review` | 지정 검토자에게 배정된 재검토 요청 목록 | 200 |
 | GET | `/admin/emergency-review/{requestId}` | 지정 검토자의 재검토 요청 조회 | 200 |
 | PATCH | `/admin/emergency-review/{requestId}` | 지정 검토자의 위험도 하향 승인·거부 및 안전 잠금 유지·해제 | 200 |
+| GET | `/teacher/complaints/{complaintId}/response-templates` | High 민원의 최신 활성 제한형 템플릿 조회 | 200 |
+| POST | `/teacher/complaints/{complaintId}/response-templates/{versionId}/adoptions` | 템플릿 변수 치환·교사 최종 편집본 채택 로그 저장 | 201 |
 | POST | `/teacher/complaints/{complaintId}/escalation` | EMERGENCY 민원을 관리자에게 공유 | 201 |
 | GET | `/admin/escalations` | 배정된 관리자 공유 건 조회 | 200 |
 
@@ -63,7 +67,8 @@ POST `/complaints/{complaintId}/risk-analysis`와 GET `/risk-analyses/{analysisI
 }
 ```
 
-POST는 마스킹, Rule·LLM 탐지, 병합, 점수 계산과 수정안 생성·저장을 수행한다.
+POST는 마스킹 후 원문 Rule 탐지와 마스킹 사본 LLM 탐지를 병렬 실행하고,
+병합, 점수 계산과 수정안 생성·저장을 수행한다.
 응답에는 요약만 포함하며, 근거와 태그별 수정 제안 및 전체 수정본은
 `GET /risk-analyses/{analysisId}/findings`로 조회한다.
 Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회한다.
@@ -113,15 +118,15 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 - 사용자에게 수정안을 보여주는 AI 검토는 학부모 메시지별 1회만 수행한다.
 - AI 검토 후 내용이 변경됐다면 제출 시 최종 내용의 위험도를 내부적으로 한 번 더 분석한다. 이 분석은 새 수정안을 생성하지 않는다.
 - 내용이 변경되지 않았다면 기존 검토 결과를 재사용한다. 따라서 학부모 메시지별 성공한 AI 분석은 최대 2회다.
-- 분석과 제출 처리 중에는 DRAFT이며 실패 시 제출 전체가 롤백된다.
+- 분석과 제출 처리 중에는 DRAFT를 유지한다. 권한·상태·입력·저장 오류는 제출을 롤백하지만, LLM 분석 실패는 원문 전송을 막지 않는다.
 - 동일 내용 저장은 contentVersion을 올리지 않는다. 같은 버전 분석 재요청은 저장 결과를 반환하고 AI 호출/횟수를 추가하지 않는다.
 - PATCH 후 바로 POST send를 호출한다. 서버는 최종 문장이 분석 원문과 같으면 재사용하고, 다르면 한 번 재분석한다. 수정했다가 원문으로 되돌린 경우도 재사용한다.
 - 수정 후 POST risk-analysis 호출은 409 FINAL_ANALYSIS_ON_SUBMIT. 최종 재분석은 send 내부에서만 실행하고 새 수정안을 생성하지 않는다. 최대 성공 분석 2회 제한은 유지한다.
-- POST `/complaints/{complaintId}/send`: Bearer 인증 필요, 본문 없음. 최초 분석이 없으면 409 ANALYSIS_REQUIRED. 변경된 내용의 최종 분석은 서버가 자동 처리하며 성공 후에만 교사가 지정된다.
-- 최초 민원 제출 성공 시 200이며 상태 및 이력은 DRAFT → OPEN, waitingFor는 TEACHER다. 최초 분석 후 수정하지 않은 경우에도 바로 제출할 수 있다.
+- POST `/complaints/{complaintId}/send`: Bearer 인증 필요, 본문 없음. 최초 분석이 없어도 서버가 최종 분석을 시도하며, LLM 분석 또는 수정안 생성 실패 이후에도 원문을 전송할 수 있다.
+- 최초 민원 제출 성공 시 200이며 상태 및 이력은 DRAFT → OPEN, waitingFor는 TEACHER다.
 - 분석·수정·제출은 동일 민원 행의 비관적 쓰기 잠금으로 동시 실행을 직렬화한다. 현재 동기 처리이므로 AI 호출 동안 잠금이 유지된다.
 
-DB에는 risk_analyses의 original_content/completed/revision_reason/ai_revision 컬럼과 risk_analysis_expressions 테이블이 추가된다. 기존 분석에는 전체 재사용 응답이 없으므로 completed 기본값은 false이며 재사용·완료 횟수에서 제외된다. 기존 데이터를 유지하는 배포에서는 이 정책을 고려해 스키마를 반영해야 한다.
+DB에는 risk_analyses의 content_hash/completed/revision_reason/ai_revision 컬럼과 risk_analysis_expressions 테이블이 추가된다. 원문은 complaint_messages.content에만 보관하고, risk_analyses에는 동일 내용 분석을 재사용하기 위한 SHA-256 지문만 저장한다. 기존 분석에는 전체 재사용 응답이 없으므로 completed 기본값은 false이며 재사용·완료 횟수에서 제외된다. 기존 데이터를 유지하는 배포에서는 이 정책을 고려해 스키마를 반영해야 한다.
 
 ## 오류
 
@@ -187,8 +192,11 @@ findings는 finalDetected=true인 태그만 반환한다. 감지가 없으면 �
 finalRevision은 null이다. 최초 분석과 제출 분석은 서로 다른 분석 ID로 조회한다.
 탐지기와 수정안 생성기는 아직 Mock이므로 실제 문맥에 맞는 수정은 외부 AI 연동이 필요하다.
 
-detector-results는 results(code, finalDetected, rule, llm)와 llm(modelName, temperature)을 반환한다.
-rule/llm에는 detected, confidence, evidences가 있다. 규칙 탐지 confidence는 null이다.
+detector-results는 results(code, finalState, rule, llm)와 llm(modelName, temperature)을 반환한다.
+상태는 `PRESENT`, `ABSENT`, `BOUNDARY`, `UNKNOWN` 중 하나다. rule/llm에는 state,
+confidence, evidenceSpans가 있고 각 span은 text, start, end를 반환한다. 위치를 확정할 수 없는
+근거는 start/end가 null이다. 근거 없이 PRESENT만 반환된 결과는 BOUNDARY로 낮추며,
+이력 정보가 없는 REPEAT는 UNKNOWN으로 보존한다. 규칙 탐지 confidence는 null이다.
 모든 위험 코드(미감지 포함)를 반환한다. 기존 소유권 검증과 401/403/404 정책은 세 조회 모두 적용한다.
 미완료 분석은 조회하지 않는다.
 
@@ -196,11 +204,14 @@ rule/llm에는 detected, confidence, evidences가 있다. 규칙 탐지 confiden
 
 - risk_tag_revision_suggestions: id, risk_analysis_id(FK), code, original_expression,
   suggested_expression, reason, suggestion_order. RiskAnalysis의 cascade/orphanRemoval로 함께 관리한다.
-- complaint_risk_tags: rule_evidence, llm_evidence(TEXT, nullable) 추가.
+- complaint_risk_tags: rule_state, llm_state, final_state와 기존 호환용 탐지 boolean을 함께 유지한다.
+- complaint_risk_evidence_spans, complaint_risk_rule_evidence_spans,
+  complaint_risk_llm_evidence_spans: 최종·Rule·LLM 근거의 text/start/end를 저장한다.
   기존 evidence는 분석 당시 병합 근거로 유지한다. 기존 confidence는 LLM 신뢰도다.
 - risk_analyses의 revision_reason/ai_revision은 전체 수정본으로 유지한다.
 
-기존 데이터를 유지하는 배포에서는 위 스키마 변경을 반영해야 한다.
+기존 데이터를 유지하는 배포에서는 Flyway V1 마이그레이션이 기존 boolean 값을 enum 상태로
+백필하고 신규 테이블·인덱스를 생성한다.
 기존 병합 evidence만으로 출처를 복원할 수 없으므로 기존 행의 출처별 근거는 빈 배열,
 태그별 수정 제안도 빈 배열로 반환한다. 과거 기록을 다시 분석하여 채우지 않는다.
 
@@ -287,11 +298,22 @@ AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/
 요청은 `{"content":"수정한 최종 답변"}`만 전달하며 `aiDraftId`는 사용하지 않는다.
 히스토리에는 초안 내용 대신 `AI_DRAFT_GENERATED` 이벤트만 저장한다.
 
+최종 제출 `POST /teacher/complaints/{complaintId}/responses`에는 최대 100자의
+`Idempotency-Key` 헤더가 필수다. 동일 교사가 같은 키와 동일 내용으로 재요청하면 최초 전송
+결과를 반환하며 메시지와 `MESSAGE_SENT` 이벤트를 중복 생성하지 않는다.
+
+Emergency safetyLock이 활성화되면 AI 초안 생성, 임시저장, 최종 전송과 High 템플릿 사용을
+서버에서 모두 차단한다. 차단 시 `RESPONSE_BLOCKED_BY_SAFETY_LOCK` 감사 이벤트를 남긴다.
+관리자는 재검토를 `APPLIED`로 승인하기 전 safetyLock을 해제할 수 없다.
+
 `GET /teacher/complaints/{complaintId}/messages`은 전송된 모든 메시지를 반환한다.
 학부모 메시지는 메시지별 최신 자동 위험 분석이 LOW일 때 원문을, LOW보다 높을 때 완충
 요약을 반환한다. 최초 민원과 후속 문의에 동일한 규칙을 적용한다. 교사 메시지는 원문을
-반환하고 임시저장 DRAFT는 대화 내역에서 제외한다.
+반환하고 임시저장 DRAFT는 대화 내역에서 제외한다. 완충 요약 생성이 실패하거나 빈 결과를
+반환하면 해당 메시지는 원문과 `summarized=false`로 반환한다.
 
 `GET /teacher/complaints/{complaintId}/history`는 `ComplaintEventType`과 함께
-`complaint_events`에 저장된 통합 이력을 발생 시각 역순으로 반환한다. 기존
+`complaint_events`에 저장된 통합 이력을 발생 시각 역순으로 반환한다. 메시지 최초 읽음은
+`MESSAGE_READ`로 저장한다. 현재 메시지·민원 상태, 완료 분석, 위험도 검토, 관리자 공유와
+이벤트를 대조하며 누락이 있으면 `logComplete=false`와 `missingLogs`를 반환한다. 기존
 `complaint_status_history`, `complaint_original_view_logs` 테이블은 사용하지 않는다.

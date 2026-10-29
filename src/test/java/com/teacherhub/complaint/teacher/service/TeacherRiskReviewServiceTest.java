@@ -10,6 +10,7 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest;
 import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.dto.EmergencyReviewResponse;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskReviewStatus;
@@ -119,6 +120,51 @@ class TeacherRiskReviewServiceTest {
         assertThat(response.safetyLock()).isTrue();
         assertThat(response.riskReviewId()).isNull();
         verify(riskReviewRepository, never()).save(any());
+    }
+
+    @Test
+    void raisingRiskToEmergencyActivatesSafetyLockImmediately() {
+        when(analysis.getRiskLevel()).thenReturn(RiskLevel.HIGH);
+        when(riskScale.initialScoreFor(RiskLevel.HIGH)).thenReturn(6);
+        when(riskScale.levelFor(7)).thenReturn(RiskLevel.EMERGENCY);
+        when(riskReviewRepository.save(any(RiskReview.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(emergencyReviewService.activateSafetyLock(
+                eq(teacherUser),
+                eq(complaint),
+                any(RiskReview.class)
+        )).thenReturn(new EmergencyReviewResponse(
+                301L,
+                42L,
+                100L,
+                6,
+                RiskLevel.HIGH,
+                7,
+                RiskLevel.EMERGENCY,
+                "Emergency 상향 검토",
+                RiskReviewStatus.APPLIED,
+                true,
+                20L,
+                "관리자",
+                LocalDateTime.of(2026, 10, 29, 14, 0),
+                LocalDateTime.of(2026, 10, 29, 14, 0),
+                LocalDateTime.of(2026, 10, 29, 14, 0)
+        ));
+
+        var response = service.review(
+                10L,
+                42L,
+                new TeacherRiskReviewRequest(7, "Emergency 상향 검토")
+        );
+
+        assertThat(response.riskLevel()).isEqualTo(RiskLevel.EMERGENCY);
+        assertThat(response.status()).isEqualTo(RiskReviewStatus.APPLIED);
+        assertThat(response.safetyLock()).isTrue();
+        verify(emergencyReviewService).activateSafetyLock(
+                eq(teacherUser),
+                eq(complaint),
+                any(RiskReview.class)
+        );
     }
 
     private EmergencyReviewResponse emergencyReviewResponse() {

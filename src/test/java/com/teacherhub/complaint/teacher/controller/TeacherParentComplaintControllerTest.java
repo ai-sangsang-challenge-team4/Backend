@@ -116,7 +116,7 @@ class TeacherParentComplaintControllerTest {
         when(responseService.saveDraft(7L, 42L, request)).thenReturn(
                 new TeacherResponseDraftResponse(10L, 42L, "수정한 답변", now, now)
         );
-        when(responseService.submit(7L, 42L, request)).thenReturn(
+        when(responseService.submit(7L, 42L, request, "response-42-1")).thenReturn(
                 new TeacherResponseSubmissionResponse(
                         10L,
                         42L,
@@ -172,6 +172,7 @@ class TeacherParentComplaintControllerTest {
                 .andExpect(jsonPath("$.content").value("수정한 답변"));
         mvc.perform(post("/teacher/complaints/42/responses")
                         .principal(auth)
+                        .header("Idempotency-Key", "response-42-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
@@ -189,7 +190,7 @@ class TeacherParentComplaintControllerTest {
         verify(responseService).generateAiDraft(7L, 42L);
         verify(responseService).findDraft(7L, 42L);
         verify(responseService).saveDraft(7L, 42L, request);
-        verify(responseService).submit(7L, 42L, request);
+        verify(responseService).submit(7L, 42L, request, "response-42-1");
         verify(riskReviewService).review(7L, 42L, riskReviewRequest);
     }
 
@@ -226,6 +227,8 @@ class TeacherParentComplaintControllerTest {
                         com.teacherhub.user.enums.UserRole.PARENT,
                         "학부모 이름",
                         "완충 요약",
+                        com.teacherhub.complaint.enums.MessageStatus.READ,
+                        submittedAt,
                         submittedAt,
                         true
                 ))
@@ -255,6 +258,8 @@ class TeacherParentComplaintControllerTest {
         mvc.perform(get("/teacher/complaints/42/messages").principal(auth))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.messages[0].senderRole").value("PARENT"))
+                .andExpect(jsonPath("$.messages[0].status").value("READ"))
+                .andExpect(jsonPath("$.messages[0].readAt").isNotEmpty())
                 .andExpect(jsonPath("$.messages[0].summarized").value(true));
 
         verify(service).findDetail(7L, 42L);

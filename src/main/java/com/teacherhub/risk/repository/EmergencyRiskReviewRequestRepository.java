@@ -17,18 +17,9 @@ public interface EmergencyRiskReviewRequestRepository
 
     @EntityGraph(attributePaths = {"complaint", "riskAnalysis", "requestedBy.user", "reviewer"})
     Optional<EmergencyRiskReviewRequest>
-    findFirstByComplaintIdAndSafetyLockTrueOrderByRequestedAtDescIdDesc(Long complaintId);
-
-    @EntityGraph(attributePaths = {"complaint", "riskAnalysis", "requestedBy.user", "reviewer"})
-    @Query("""
-            select r from EmergencyRiskReviewRequest r
-            where r.complaint.id = :complaintId
-              and (r.status = :pendingStatus or r.safetyLock = true)
-            order by r.requestedAt desc, r.id desc
-            """)
-    Optional<EmergencyRiskReviewRequest> findActiveByComplaintId(
-            @Param("complaintId") Long complaintId,
-            @Param("pendingStatus") RiskReviewStatus pendingStatus
+    findFirstByComplaintIdAndStatusOrderByRequestedAtDescIdDesc(
+            Long complaintId,
+            RiskReviewStatus status
     );
 
     @EntityGraph(attributePaths = {"complaint", "riskAnalysis", "requestedBy.user", "reviewer"})

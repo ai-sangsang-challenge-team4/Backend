@@ -225,11 +225,6 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.CONFLICT, "FINAL_ANALYSIS_ON_SUBMIT", e, request);
     }
 
-    @ExceptionHandler(AnalysisRequiredException.class)
-    public ResponseEntity<ErrorResponse> handleAnalysisRequired(AnalysisRequiredException e, HttpServletRequest request) {
-        return error(HttpStatus.CONFLICT, "ANALYSIS_REQUIRED", e, request);
-    }
-
     @ExceptionHandler(ReanalysisLimitException.class)
     public ResponseEntity<ErrorResponse> handleReanalysisLimit(ReanalysisLimitException e, HttpServletRequest request) {
         return error(HttpStatus.CONFLICT, "REANALYSIS_LIMIT_REACHED", e, request);

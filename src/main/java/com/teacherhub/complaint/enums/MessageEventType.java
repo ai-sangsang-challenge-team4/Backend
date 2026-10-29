@@ -11,8 +11,14 @@ public enum MessageEventType {
     ORIGINAL_VIEWED,
     // AI 초안 생성
     AI_DRAFT_GENERATED,
+    // Emergency 안전 잠금으로 교사 답변 작업 차단
+    RESPONSE_BLOCKED_BY_SAFETY_LOCK,
+    // High 제한형 답변 템플릿 채택
+    RESPONSE_TEMPLATE_ADOPTED,
     // 메세지 전송
     MESSAGE_SENT,
+    // 메세지 읽음
+    MESSAGE_READ,
     // 관리자 공유
     ESCALATION_SHARED,
     // 관리자 검토 시작

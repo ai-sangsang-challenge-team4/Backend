@@ -16,6 +16,7 @@ import com.teacherhub.risk.entity.EmergencyRiskReviewRequest;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.enums.RiskReviewDirection;
 import com.teacherhub.risk.exception.EmergencyReviewAccessDeniedException;
 import com.teacherhub.risk.exception.EmergencyReviewDuplicateException;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
@@ -97,7 +98,7 @@ class EmergencyReviewServiceTest {
                 .thenReturn(Optional.of(analysis));
         when(reviewRepository.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
                 .thenReturn(Optional.empty());
-        when(requestRepository.findActiveByComplaintId(
+        when(requestRepository.findFirstByComplaintIdAndStatusOrderByRequestedAtDescIdDesc(
                 42L,
                 RiskReviewStatus.PENDING_ADMIN_APPROVAL
         )).thenReturn(Optional.empty());
@@ -128,8 +129,31 @@ class EmergencyReviewServiceTest {
     }
 
     @Test
-    void rejectsDuplicateWhilePendingOrSafetyLockIsActive() {
-        when(requestRepository.findActiveByComplaintId(
+    void raisingRiskToEmergencyAppliesAndEnablesSafetyLock() {
+        when(escalationRepository.findByComplaintId(42L)).thenReturn(Optional.empty());
+        RiskReview emergencyReview = new RiskReview(
+                analysis,
+                teacher,
+                6,
+                RiskLevel.HIGH,
+                7,
+                RiskLevel.EMERGENCY,
+                RiskReviewDirection.RAISED,
+                "Emergency 상향 검토"
+        );
+
+        var response = service.activateSafetyLock(teacherUser, complaint, emergencyReview);
+
+        assertThat(response.status()).isEqualTo(RiskReviewStatus.APPLIED);
+        assertThat(response.safetyLock()).isTrue();
+        assertThat(response.requestedRiskLevel()).isEqualTo(RiskLevel.EMERGENCY);
+        verify(requestRepository).saveAndFlush(any(EmergencyRiskReviewRequest.class));
+        verify(eventRepository).save(any(ComplaintEvent.class));
+    }
+
+    @Test
+    void rejectsDuplicateWhilePending() {
+        when(requestRepository.findFirstByComplaintIdAndStatusOrderByRequestedAtDescIdDesc(
                 42L,
                 RiskReviewStatus.PENDING_ADMIN_APPROVAL
         )).thenReturn(Optional.of(mock(EmergencyRiskReviewRequest.class)));
@@ -141,6 +165,44 @@ class EmergencyReviewServiceTest {
         )).isInstanceOf(EmergencyReviewDuplicateException.class);
 
         verify(requestRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void rejectedRequestCanBeRetriedThenApprovedAndUnlocked() {
+        EmergencyRiskReviewRequest rejected = request();
+        when(requestRepository.findForUpdate(300L)).thenReturn(Optional.of(rejected));
+
+        service.update(
+                20L,
+                300L,
+                new EmergencyReviewUpdateRequest(RiskReviewStatus.REJECTED, null, "근거가 부족합니다.")
+        );
+
+        assertThat(rejected.getStatus()).isEqualTo(RiskReviewStatus.REJECTED);
+        assertThat(rejected.isSafetyLock()).isTrue();
+
+        service.request(
+                10L,
+                42L,
+                new EmergencyReviewCreateRequest(5, "보완된 근거로 다시 요청합니다.", null)
+        );
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EmergencyRiskReviewRequest.class);
+        verify(requestRepository, times(2)).saveAndFlush(captor.capture());
+        EmergencyRiskReviewRequest retried = captor.getAllValues().get(1);
+        when(requestRepository.findForUpdate(301L)).thenReturn(Optional.of(retried));
+
+        service.update(
+                20L,
+                301L,
+                new EmergencyReviewUpdateRequest(RiskReviewStatus.APPLIED, false, "승인 후 잠금을 해제합니다.")
+        );
+        when(requestRepository.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.of(retried));
+
+        assertThat(retried.getStatus()).isEqualTo(RiskReviewStatus.APPLIED);
+        assertThat(retried.isSafetyLock()).isFalse();
+        assertThat(service.isSafetyLocked(42L)).isFalse();
     }
 
     @Test
@@ -178,10 +240,17 @@ class EmergencyReviewServiceTest {
                 new EmergencyReviewUpdateRequest(null, false, null)
         )).isInstanceOf(EmergencyReviewAccessDeniedException.class);
 
+        assertThatThrownBy(() -> service.update(
+                20L,
+                300L,
+                new EmergencyReviewUpdateRequest(null, false, "승인 전 해제 시도")
+        )).isInstanceOf(com.teacherhub.escalation.exception.EscalationStateException.class)
+                .hasMessageContaining("승인 전");
+
         var response = service.update(
                 20L,
                 300L,
-                new EmergencyReviewUpdateRequest(null, false, null)
+                new EmergencyReviewUpdateRequest(RiskReviewStatus.APPLIED, false, "하향 검토 승인 및 잠금 해제")
         );
         assertThat(response.safetyLock()).isFalse();
     }

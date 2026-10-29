@@ -82,10 +82,10 @@ public class TeacherRiskReviewService {
         RiskReviewDirection direction = direction(previousScore, request.riskScore());
         String reason = normalizeReason(request.reason());
 
-        // 하향 조정에 대한 검토 사유가 없는 경우
-        if (direction == RiskReviewDirection.LOWERED && reason == null) {
+        // 위험도를 변경할 때는 상향·하향 모두 검토 사유가 필요합니다.
+        if (direction != RiskReviewDirection.UNCHANGED && reason == null) {
             throw new RiskReviewReasonRequiredException(
-                    "위험도를 하향 조정할 때는 검토 사유가 필요합니다."
+                    "위험도를 변경할 때는 검토 사유가 필요합니다."
             );
         }
 
@@ -130,9 +130,12 @@ public class TeacherRiskReviewService {
                 saved.getReviewedLevel(),
                 saved.getReason()
         ));
+        boolean safetyLock = reviewedLevel == RiskLevel.EMERGENCY
+                ? emergencyReviewService.activateSafetyLock(user, complaint, saved).safetyLock()
+                : emergencyReviewService.isSafetyLocked(complaintId);
         return TeacherRiskReviewResponse.from(
                 saved,
-                emergencyReviewService.isSafetyLocked(complaintId)
+                safetyLock
         );
     }
 

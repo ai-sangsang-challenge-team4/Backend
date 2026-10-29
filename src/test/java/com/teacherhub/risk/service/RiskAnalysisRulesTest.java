@@ -88,12 +88,16 @@ class RiskAnalysisRulesTest {
                 new RiskTagDetectionResult(PROFANITY, false, 0.1, "not detected")
         ));
         assertThat(result.tags()).extracting(FinalRiskTagResponse::code).containsExactly(RiskTagCode.values());
-        assertThat(result.tags()).contains(
-                new FinalRiskTagResponse(PROFANITY, true, true, false, 0.1, "rule only"),
-                new FinalRiskTagResponse(THREAT, true, true, true, 0.9,
-                        "rule evidence\nllm evidence", "rule reason\nllm reason"),
-                new FinalRiskTagResponse(UNFAIR_REQUEST, true, false, true, 0.8, "llm only"),
-                new FinalRiskTagResponse(PRIVACY, false, false, false, null, null));
+        assertThat(result.tags()).filteredOn(tag -> tag.code() == THREAT).singleElement().satisfies(tag -> {
+            assertThat(tag.state()).isEqualTo(RiskTagState.PRESENT);
+            assertThat(tag.ruleState()).isEqualTo(RiskTagState.PRESENT);
+            assertThat(tag.llmState()).isEqualTo(RiskTagState.PRESENT);
+            assertThat(tag.evidenceSpans()).extracting(com.teacherhub.risk.dto.detection.EvidenceSpan::text)
+                    .containsExactly("rule evidence", "llm evidence");
+            assertThat(tag.reason()).isEqualTo("rule reason\nllm reason");
+        });
+        assertThat(result.tags()).filteredOn(tag -> tag.code() == PRIVACY).singleElement()
+                .extracting(FinalRiskTagResponse::state).isEqualTo(RiskTagState.ABSENT);
         assertThat(result.riskScore()).isEqualTo(5);
     }
 
@@ -110,6 +114,8 @@ class RiskAnalysisRulesTest {
             assertThat(tag.evidence()).isNull();
             assertThat(tag.reason()).isNull();
         });
+        assertThat(result.tags()).filteredOn(tag -> tag.code() == REPEAT).singleElement()
+                .extracting(FinalRiskTagResponse::state).isEqualTo(RiskTagState.UNKNOWN);
     }
 
     @ParameterizedTest
@@ -141,6 +147,11 @@ class RiskAnalysisRulesTest {
         var captured = org.mockito.ArgumentCaptor.forClass(com.teacherhub.risk.entity.RiskAnalysis.class);
         verify(analyses).save(captured.capture());
         assertThat(captured.getValue().isCompleted()).isFalse();
+
+        clearInvocations(revisions);
+        assertThatCode(() -> service.analyzeForSubmission(1L, 42L))
+                .doesNotThrowAnyException();
+        verifyNoInteractions(revisions);
     }
 
     @Test
@@ -149,5 +160,31 @@ class RiskAnalysisRulesTest {
         assertThat(result.tags()).filteredOn(FinalRiskTagResponse::detected)
                 .extracting(FinalRiskTagResponse::evidence).containsExactly("연락처 [전화번호]");
         verify(revisions).generate("민원 내용", result);
+    }
+
+    @Test
+    void presentWithoutEvidenceIsDowngradedToBoundaryAndDoesNotIncreaseScore() {
+        var result = analyze(List.of(new RiskTagDetectionResult(
+                THREAT,
+                RiskTagState.PRESENT,
+                null,
+                List.of()
+        )), List.of());
+
+        assertThat(result.tags()).filteredOn(tag -> tag.code() == THREAT).singleElement()
+                .extracting(FinalRiskTagResponse::state).isEqualTo(RiskTagState.BOUNDARY);
+        assertThat(result.riskScore()).isZero();
+    }
+
+    @Test
+    void locatesEvidenceSpanInsideDetectorInput() {
+        var result = analyze(List.of(new RiskTagDetectionResult(THREAT, true, null, "민원")), List.of());
+
+        assertThat(result.tags()).filteredOn(tag -> tag.code() == THREAT).singleElement()
+                .satisfies(tag -> assertThat(tag.evidenceSpans()).singleElement().satisfies(span -> {
+                    assertThat(span.text()).isEqualTo("민원");
+                    assertThat(span.start()).isZero();
+                    assertThat(span.end()).isEqualTo(2);
+                }));
     }
 }

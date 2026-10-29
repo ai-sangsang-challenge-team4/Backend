@@ -109,12 +109,12 @@ public class ParentComplaintController {
     // 민원 제출
     @Operation(
             summary = "민원 최종 제출",
-            description = "최초 위험 분석을 완료한 민원 초안을 제출합니다. 최초 분석 이후 내용이 변경된 경우 제출 시 서버가 최종 내용을 재분석한 후 교사에게 전송합니다.",
+            description = "민원 초안을 제출합니다. 서버는 최종 내용의 위험 분석을 시도하며 AI 분석에 실패해도 원문 전송은 유지합니다.",
             responses = {
             @ApiResponse(responseCode = "200", description = "민원 제출 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "분석이 필요하거나 제출 가능한 상태가 아님",
+            @ApiResponse(responseCode = "409", description = "제출 가능한 상태가 아님",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
             }
     )
@@ -211,12 +211,12 @@ public class ParentComplaintController {
         ));
     }
 
-    // AI 검토가 완료된 추가 문의 전송
-    @Operation(summary = "추가 문의 전송", description = "위험 분석이 완료된 추가 문의 초안을 교사에게 전송합니다.", responses = {
+    // 학부모 추가 문의 전송
+    @Operation(summary = "추가 문의 전송", description = "추가 문의의 위험 분석을 시도한 뒤 전송하며 AI 분석에 실패해도 원문 전송은 유지합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "추가 문의 전송 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "민원 또는 메시지 초안을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "분석이 필요하거나 전송 가능한 상태가 아님",
+            @ApiResponse(responseCode = "409", description = "전송 가능한 상태가 아님",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PostMapping("/{complaintId}/messages/{messageId}/send")
@@ -233,7 +233,7 @@ public class ParentComplaintController {
     }
 
     // 민원과 관련된 학부모-교사 간 대화 내역 조회
-    @Operation(summary = "민원 대화 내역 조회", description = "민원에 포함된 전송 완료 메시지와 읽음 상태를 시간순으로 조회합니다.", responses = {
+    @Operation(summary = "민원 대화 내역 조회", description = "민원에 포함된 전송 완료 메시지를 시간순으로 조회하고 최신 교사 답변을 읽음 처리합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "대화 내역 조회 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))

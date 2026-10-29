@@ -6,6 +6,8 @@ import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskReviewDirection;
 import com.teacherhub.risk.enums.RiskTagCode;
+import com.teacherhub.risk.enums.RiskTagState;
+import com.teacherhub.risk.dto.detection.EvidenceSpan;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,7 +33,6 @@ public record TeacherRiskResponse(
             boolean safetyLock
     ) {
         List<DetectedFactor> detectedFactors = riskTags.stream()
-                .filter(ComplaintRiskTag::isFinalDetected)
                 .map(DetectedFactor::from)
                 .toList();
 
@@ -46,6 +47,21 @@ public record TeacherRiskResponse(
                 analysis.getAnalyzedAt(),
                 latestReview == null ? null : LatestReview.from(latestReview),
                 detectedFactors
+        );
+    }
+
+    public static TeacherRiskResponse unavailable(Long complaintId, boolean safetyLock) {
+        return new TeacherRiskResponse(
+                complaintId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                safetyLock,
+                null,
+                null,
+                List.of()
         );
     }
 
@@ -70,16 +86,33 @@ public record TeacherRiskResponse(
     public record DetectedFactor(
             RiskTagCode code,
             String name,
-            String evidence,
+            RiskTagState state,
+            List<EvidenceSpan> evidenceSpans,
             String reason
     ) {
         private static DetectedFactor from(ComplaintRiskTag riskTag) {
+            List<EvidenceSpan> evidenceSpans = riskTag.getEvidenceSpans().isEmpty()
+                    ? legacySpans(riskTag.getEvidence())
+                    : riskTag.getEvidenceSpans().stream()
+                            .map(com.teacherhub.risk.entity.RiskEvidenceSpan::toDto)
+                            .toList();
             return new DetectedFactor(
                     riskTag.getRiskTag().getCode(),
                     riskTag.getRiskTag().getName(),
-                    riskTag.getEvidence(),
+                    riskTag.effectiveFinalState(),
+                    evidenceSpans,
                     riskTag.getReason()
             );
+        }
+
+        private static List<EvidenceSpan> legacySpans(String evidence) {
+            return evidence == null || evidence.isBlank()
+                    ? List.of()
+                    : evidence.lines()
+                            .filter(line -> !line.isBlank())
+                            .distinct()
+                            .map(EvidenceSpan::unlocated)
+                            .toList();
         }
     }
 }

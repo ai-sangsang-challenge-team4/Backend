@@ -23,15 +23,20 @@ import com.teacherhub.risk.analyzer.*;
 import com.teacherhub.risk.entity.*;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.repository.*;
+import com.teacherhub.risk.util.ContentFingerprint;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 // 민원 위험 분석
 
@@ -53,25 +58,25 @@ public class RiskAnalysisService {
             Long userId,
             Long complaintId
     ) {
-        return analyzeInitialMessage(userId, complaintId, false);
+        return analyzeInitialMessage(userId, complaintId, false).orElseThrow();
     }
 
     @Transactional
-    public RiskSummaryResponse analyzeForSubmission(Long userId, Long complaintId) {
-        return analyzeInitialMessage(userId, complaintId, true);
+    public void analyzeForSubmission(Long userId, Long complaintId) {
+        analyzeInitialMessage(userId, complaintId, true);
     }
 
     @Transactional
     public RiskSummaryResponse analyzeMessage(Long userId, Long complaintId, Long messageId) {
-        return analyzeAdditionalMessage(userId, complaintId, messageId, false);
+        return analyzeAdditionalMessage(userId, complaintId, messageId, false).orElseThrow();
     }
 
     @Transactional
-    public RiskSummaryResponse analyzeMessageForSubmission(Long userId, Long complaintId, Long messageId) {
-        return analyzeAdditionalMessage(userId, complaintId, messageId, true);
+    public void analyzeMessageForSubmission(Long userId, Long complaintId, Long messageId) {
+        analyzeAdditionalMessage(userId, complaintId, messageId, true);
     }
 
-    private RiskSummaryResponse analyzeInitialMessage(Long userId, Long complaintId, boolean submitting) {
+    private Optional<RiskSummaryResponse> analyzeInitialMessage(Long userId, Long complaintId, boolean submitting) {
         Complaint complaint = findOwnedComplaintForUpdate(userId, complaintId);
         if (complaint.getStatus() != ComplaintStatus.DRAFT) {
             throw new ComplaintNotDraftException("작성 중인 최초 민원만 AI 검토할 수 있습니다.");
@@ -79,7 +84,7 @@ public class RiskAnalysisService {
         return analyze(complaint, complaint.initialMessage(), submitting);
     }
 
-    private RiskSummaryResponse analyzeAdditionalMessage(
+    private Optional<RiskSummaryResponse> analyzeAdditionalMessage(
             Long userId,
             Long complaintId,
             Long messageId,
@@ -121,7 +126,7 @@ public class RiskAnalysisService {
         return complaint;
     }
 
-    private RiskSummaryResponse analyze(
+    private Optional<RiskSummaryResponse> analyze(
             Complaint complaint,
             ComplaintMessage message,
             boolean submitting
@@ -134,38 +139,72 @@ public class RiskAnalysisService {
 
         // 임시저장 횟수나 contentVersion이 아니라 실제 제출 내용으로 재분석 필요 여부를 판단한다.
         // AI 검토 후 수정했다가 검토받은 내용으로 되돌린 경우도 기존 결과를 재사용한다.
-        var existing = analysisRepository.findFirstByMessageIdAndOriginalContentAndCompletedTrueOrderByIdDesc(
-                message.getId(), originalContent);
+        var existing = analysisRepository.findFirstByMessageIdAndContentHashAndCompletedTrueOrderByIdDesc(
+                message.getId(), ContentFingerprint.sha256(originalContent));
 
         if (existing.isPresent()) {
-            return summary(existing.get());
+            return Optional.of(summary(existing.get()));
         }
 
         long completedCount = analysisRepository.countByMessageIdAndCompletedTrue(message.getId());
-        if (submitting && completedCount == 0) throw new AnalysisRequiredException();
         if (!submitting && completedCount > 0) throw new FinalAnalysisOnSubmitException();
 
         if (completedCount >= RiskAnalysis.MAX_COMPLETED_ANALYSES) {
+            if (submitting) {
+                log.warn("AI analysis limit reached during submission; continuing without a new analysis. complaintId={}, messageId={}",
+                        complaint.getId(), message.getId());
+                return Optional.empty();
+            }
             throw new ReanalysisLimitException();
         }
 
-        // 5. 원문에서 규칙 기반 위험 요소 탐지
-        var ruleResults = ruleBasedRiskDetector.detect(originalContent);
-
-        // 6. LLM에 전달하기 전 개인정보 마스킹
+        // LLM에 전달하기 전 개인정보 마스킹
         String maskedContent = piiMaskingService.mask(originalContent);
         message.updateMaskedContent(maskedContent);
 
-        // 7. LLM으로 위험 태그와 위험 표현 분석
-        LlmRiskAnalysisResult result = llmRiskAnalyzer.analyze(maskedContent);
+        // Rule은 원문, LLM은 마스킹 사본을 사용해 병렬 탐지합니다.
+        var ruleFuture = CompletableFuture.supplyAsync(
+                () -> ruleBasedRiskDetector.detect(originalContent).stream()
+                        .map(result -> result.locateEvidenceIn(originalContent))
+                        .toList()
+        );
+        var llmFuture = CompletableFuture.supplyAsync(
+                () -> llmRiskAnalyzer.analyze(maskedContent)
+        );
+
+        List<RiskTagDetectionResult> ruleResults;
+        LlmRiskAnalysisResult result;
+        try {
+            CompletableFuture.allOf(ruleFuture, llmFuture).join();
+            ruleResults = ruleFuture.join();
+            LlmRiskAnalysisResult rawLlmResult = llmFuture.join();
+            result = new LlmRiskAnalysisResult(
+                    rawLlmResult.tags().stream()
+                            .map(tag -> tag.locateEvidenceIn(maskedContent))
+                            .toList(),
+                    rawLlmResult.metadata()
+            );
+        } catch (CompletionException exception) {
+            RuntimeException cause = exception.getCause() instanceof RuntimeException runtimeException
+                    ? runtimeException
+                    : exception;
+            if (submitting) {
+                log.warn("AI analysis failed during submission; continuing with the original content. complaintId={}, messageId={}",
+                        complaint.getId(), message.getId(), cause);
+                return Optional.empty();
+            }
+            throw cause;
+        }
 
         // 8. 규칙 기반 및 LLM 위험 태그 결과 병합
         // 룰 근거는 원문에서 추출될 수 있으므로 수정안 생성기에 전달하기 전에 마스킹
         var finalTags = riskEvaluator.merge(ruleResults, result.tags()).stream()
-                .map(tag -> new FinalRiskTagResponse(tag.code(), tag.detected(), tag.ruleDetected(),
-                        tag.llmDetected(), tag.confidence(),
-                        tag.evidence() == null || tag.evidence().isBlank() ? tag.evidence()
-                                : piiMaskingService.mask(tag.evidence()),
+                .map(tag -> new FinalRiskTagResponse(tag.code(), tag.state(), tag.ruleState(),
+                        tag.llmState(), tag.confidence(),
+                        tag.evidenceSpans().stream()
+                                .map(span -> new com.teacherhub.risk.dto.detection.EvidenceSpan(
+                                        piiMaskingService.mask(span.text()), span.start(), span.end()))
+                                .toList(),
                         tag.reason() == null || tag.reason().isBlank() ? tag.reason()
                                 : piiMaskingService.mask(tag.reason())))
                 .toList();
@@ -190,7 +229,7 @@ public class RiskAnalysisService {
         ));
 
         // 상세 근거와 수정 제안은 별도 GET으로 조회합니다.
-        return summary(savedAnalysis);
+        return Optional.of(summary(savedAnalysis));
     }
 
 
@@ -260,10 +299,23 @@ public class RiskAnalysisService {
 
             saved.recordSourceEvidence(rule == null ? null : maskEvidence(rule.evidence()),
                     llmTag == null ? null : maskEvidence(llmTag.evidence()));
+            saved.recordSourceEvidenceSpans(
+                    rule == null ? List.of() : maskSpans(rule.evidenceSpans()),
+                    llmTag == null ? List.of() : maskSpans(llmTag.evidenceSpans())
+            );
             return saved;
 
         }).toList());
 
         return analysis;
+    }
+
+    private List<com.teacherhub.risk.dto.detection.EvidenceSpan> maskSpans(
+            List<com.teacherhub.risk.dto.detection.EvidenceSpan> spans
+    ) {
+        return spans.stream()
+                .map(span -> new com.teacherhub.risk.dto.detection.EvidenceSpan(
+                        maskEvidence(span.text()), span.start(), span.end()))
+                .toList();
     }
 }

@@ -13,7 +13,7 @@ public record TeacherRiskReviewRequest(
         @Max(value = 7, message = "위험 점수는 7점 이하여야 합니다.")
         int riskScore,
 
-        @Schema(description = "검토 사유. 하향 조정 시 필수", example = "문맥상 실제 위협 의도는 낮다고 판단했습니다.", nullable = true)
+        @Schema(description = "검토 사유. 위험도 상향·하향 변경 시 필수", example = "문맥상 실제 위협 의도는 낮다고 판단했습니다.", nullable = true)
         @Size(max = 300, message = "검토 사유는 300자 이하로 입력해주세요.")
         String reason
 ) {
