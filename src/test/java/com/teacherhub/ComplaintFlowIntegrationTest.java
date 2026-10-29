@@ -282,8 +282,7 @@ public class ComplaintFlowIntegrationTest {
         assertThat(detail.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
         assertThat(risk.riskAnalysisId()).isEqualTo(submittedSummary.analysisId());
         assertThat(original.content()).isEqualTo(submittedContent);
-        assertThat(conversation.allowedActions())
-                .containsExactly(com.teacherhub.complaint.teacher.dto.AllowedAction.USE_RESPONSE_TEMPLATE);
+        assertThat(conversation.allowedActions()).isEmpty();
         assertThat(listItem.riskAnalysisId()).isEqualTo(submittedSummary.analysisId());
         assertThat(listItem.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
     }

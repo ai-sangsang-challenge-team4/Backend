@@ -12,8 +12,8 @@ class PiiMaskingServiceTest {
                 .isEqualTo("연락: [전화번호], [전화번호], [전화번호], [이메일], [주민등록번호]");
         assertThat(service.mask("01012345678 / 9001011234567"))
                 .isEqualTo("[전화번호] / [주민등록번호]");
-        assertThat(service.mask("0504-1234-5678 / 010.1234.5678 / 900101.1234567"))
-                .isEqualTo("[전화번호] / [전화번호] / [주민등록번호]");
+        assertThat(service.mask("0501-2345-6789 / 0504-1234-5678 / 010.1234.5678 / 900101.1234567"))
+                .isEqualTo("[전화번호] / [전화번호] / [전화번호] / [주민등록번호]");
     }
 
     @Test
