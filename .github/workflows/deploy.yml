@@ -1,0 +1,82 @@
+name: Backend CD
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: teacherhub-ec2-deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Test and Build
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Test and build executable JAR
+        run: |
+          chmod +x gradlew
+          ./gradlew clean test bootJar
+
+      - name: Prepare deployment artifact
+        run: |
+          mkdir -p artifact
+          jar_file="$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' -print -quit)"
+          test -n "$jar_file"
+          cp "$jar_file" artifact/teacherhub.jar
+
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: teacherhub-jar
+          path: artifact/teacherhub.jar
+          if-no-files-found: error
+          retention-days: 3
+
+  deploy:
+    name: Deploy to TeacherHub EC2
+    needs: build
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - teacherhub-deploy
+    timeout-minutes: 10
+
+    steps:
+      - name: Remove previous downloaded artifact
+        run: rm -f /home/github-runner/deploy/teacherhub.jar
+
+      - name: Download deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: teacherhub-jar
+          path: /home/github-runner/deploy
+
+      - name: Verify deployment artifact
+        run: test -s /home/github-runner/deploy/teacherhub.jar
+
+      - name: Deploy application
+        run: sudo /usr/local/sbin/deploy-teacherhub
+
+      - name: Verify public HTTPS endpoint
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 2 https://teacherhub.duckdns.org/health
