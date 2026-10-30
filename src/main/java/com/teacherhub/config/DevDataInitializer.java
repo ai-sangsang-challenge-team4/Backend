@@ -143,13 +143,13 @@ public class DevDataInitializer implements ApplicationRunner {
                 emergencyAnalysis.getRiskLevel()
         ));
 
-        emergencyComplaint.submit();
-        complaintEventRepository.save(ComplaintEvent.statusChanged(
-                emergencyComplaint,
-                parentUser,
-                ComplaintStatus.DRAFT,
-                ComplaintStatus.OPEN
-        ));
+//        emergencyComplaint.submit();
+//        complaintEventRepository.save(ComplaintEvent.statusChanged(
+//                emergencyComplaint,
+//                parentUser,
+//                ComplaintStatus.DRAFT,
+//                ComplaintStatus.OPEN
+//        ));
         complaintEventRepository.save(ComplaintEvent.messageSent(emergencyComplaint.initialMessage()));
 
         log.info(
