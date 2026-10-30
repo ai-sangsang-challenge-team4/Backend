@@ -59,6 +59,8 @@ class EmergencyReviewControllerTest {
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.requestId").value(300))
+                .andExpect(jsonPath("$.requestedRiskScale").value(5))
+                .andExpect(jsonPath("$.requestedRiskScore").value(50))
                 .andExpect(jsonPath("$.safetyLock").value(true));
 
         mvc.perform(patch("/admin/emergency-review/300")
@@ -108,8 +110,10 @@ class EmergencyReviewControllerTest {
                 42L,
                 100L,
                 7,
+                70,
                 RiskLevel.EMERGENCY,
                 5,
+                50,
                 RiskLevel.HIGH,
                 "재검토 사유",
                 RiskReviewStatus.PENDING_ADMIN_APPROVAL,

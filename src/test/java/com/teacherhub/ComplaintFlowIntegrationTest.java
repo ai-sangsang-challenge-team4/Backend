@@ -50,6 +50,30 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @Transactional
 public class ComplaintFlowIntegrationTest {
+    @Autowired
+    private com.teacherhub.risk.repository.RiskTagRepository riskTagDefinitionRepository;
+
+    @Test
+    void configuredRiskTagScoresUseSeventyPointTotal() {
+        var scores = riskTagDefinitionRepository.findAll().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        com.teacherhub.risk.entity.RiskTag::getCode,
+                        com.teacherhub.risk.entity.RiskTag::getDefaultScore
+                ));
+
+        assertThat(scores).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(
+                com.teacherhub.risk.enums.RiskTagCode.PROFANITY, 8,
+                com.teacherhub.risk.enums.RiskTagCode.INSULT, 8,
+                com.teacherhub.risk.enums.RiskTagCode.THREAT, 16,
+                com.teacherhub.risk.enums.RiskTagCode.LEGAL, 5,
+                com.teacherhub.risk.enums.RiskTagCode.EXPOSURE, 10,
+                com.teacherhub.risk.enums.RiskTagCode.REPEAT, 5,
+                com.teacherhub.risk.enums.RiskTagCode.UNFAIR_REQUEST, 8,
+                com.teacherhub.risk.enums.RiskTagCode.PRIVACY, 10
+        ));
+        assertThat(scores.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(70);
+    }
+
     @Test
     void allowsUnlimitedDraftChangesAndPerformsFinalAnalysisOnlyOnSubmit() {
         Long id = parentComplaintService.createDraft(parentUser.getId(),
@@ -257,7 +281,8 @@ public class ComplaintFlowIntegrationTest {
                 parentUser.getId(),
                 complaintId,
                 new com.teacherhub.complaint.parent.dto.message.ParentMessageRequest(
-                        "교사에게 아직 전송하지 않은 추가 문의입니다."
+                        "교사에게 아직 전송하지 않은 추가 문의입니다.",
+                        null
                 )
         );
         riskAnalysisService.analyzeMessage(
@@ -296,15 +321,15 @@ public class ComplaintFlowIntegrationTest {
         var systemAnalysis = riskAnalysisService.analyze(parentUser.getId(), complaintId);
         parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
 
-        assertThat(systemAnalysis.riskScore()).isEqualTo(60);
+        assertThat(systemAnalysis.riskScore()).isEqualTo(32);
         assertThat(systemAnalysis.riskLevel())
-                .isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
+                .isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
                         teacherRiskReviewService.review(
                                 teacherUser.getId(),
                                 complaintId,
-                                new com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest(5, " ")
+                                new com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest(3, " ")
                         )
                 )
                 .isInstanceOf(com.teacherhub.risk.exception.RiskReviewReasonRequiredException.class);
@@ -313,7 +338,7 @@ public class ComplaintFlowIntegrationTest {
                 teacherUser.getId(),
                 complaintId,
                 new com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest(
-                        5,
+                        3,
                         "표현은 강하지만 즉각적인 위해 가능성은 낮다고 판단했습니다."
                 )
         );
@@ -321,7 +346,7 @@ public class ComplaintFlowIntegrationTest {
                         teacherRiskReviewService.review(
                                 teacherUser.getId(),
                                 complaintId,
-                                new com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest(6, null)
+                                new com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest(4, null)
                         )
                 )
                 .isInstanceOf(com.teacherhub.risk.exception.RiskReviewReasonRequiredException.class);
@@ -329,25 +354,33 @@ public class ComplaintFlowIntegrationTest {
                 teacherUser.getId(),
                 complaintId,
                 new com.teacherhub.complaint.teacher.dto.risk.TeacherRiskReviewRequest(
-                        6,
+                        4,
                         "새로운 위험 정황이 확인되어 상향합니다."
                 )
         );
 
-        assertThat(lowered.previousScore()).isEqualTo(6);
+        assertThat(lowered.previousScale()).isEqualTo(4);
+        assertThat(lowered.previousScore()).isEqualTo(40);
+        assertThat(lowered.reviewScale()).isEqualTo(3);
+        assertThat(lowered.riskScore()).isEqualTo(30);
         assertThat(lowered.direction())
                 .isEqualTo(com.teacherhub.risk.enums.RiskReviewDirection.LOWERED);
-        assertThat(lowered.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
-        assertThat(raised.previousScore()).isEqualTo(5);
+        assertThat(lowered.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
+        assertThat(raised.previousScale()).isEqualTo(3);
+        assertThat(raised.previousScore()).isEqualTo(30);
+        assertThat(raised.reviewScale()).isEqualTo(4);
+        assertThat(raised.riskScore()).isEqualTo(40);
         assertThat(raised.direction())
                 .isEqualTo(com.teacherhub.risk.enums.RiskReviewDirection.RAISED);
         assertThat(raised.reason()).isEqualTo("새로운 위험 정황이 확인되어 상향합니다.");
 
         var currentRisk = teacherComplaintQueryService.findRisk(teacherUser.getId(), complaintId);
-        assertThat(currentRisk.riskScore()).isEqualTo(60);
-        assertThat(currentRisk.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
-        assertThat(currentRisk.reviewScore()).isEqualTo(6);
-        assertThat(currentRisk.reviewLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
+        assertThat(currentRisk.riskScore()).isEqualTo(32);
+        assertThat(currentRisk.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
+        assertThat(currentRisk.reviewScale()).isEqualTo(4);
+        assertThat(currentRisk.reviewScore()).isEqualTo(40);
+        assertThat(currentRisk.currentRiskScore()).isEqualTo(40);
+        assertThat(currentRisk.reviewLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
         assertThat(currentRisk.latestReview().direction())
                 .isEqualTo(com.teacherhub.risk.enums.RiskReviewDirection.RAISED);
 
@@ -362,10 +395,10 @@ public class ComplaintFlowIntegrationTest {
         assertThat(reviewEvents).hasSize(2);
         assertThat(reviewEvents)
                 .extracting(TeacherHistoryResponse.HistoryEvent::previousRiskScore)
-                .containsExactlyInAnyOrder(6, 5);
+                .containsExactlyInAnyOrder(40, 30);
         assertThat(reviewEvents)
                 .extracting(TeacherHistoryResponse.HistoryEvent::riskScore)
-                .containsExactlyInAnyOrder(5, 6);
+                .containsExactlyInAnyOrder(30, 40);
         assertThat(riskReviewRepository.findByRiskAnalysisComplaintIdOrderByReviewedAtAscIdAsc(complaintId))
                 .hasSize(2);
     }
@@ -526,14 +559,25 @@ public class ComplaintFlowIntegrationTest {
                 parentUser.getId(),
                 complaintId,
                 new com.teacherhub.complaint.parent.dto.message.ParentMessageRequest(
-                        "추가로 확인하고 싶은 내용입니다."
+                        "추가로 확인하고 싶은 내용입니다.",
+                        null
                 )
         );
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> parentMessageService.saveDraft(
+                        parentUser.getId(),
+                        complaintId,
+                        new com.teacherhub.complaint.parent.dto.message.ParentMessageRequest(
+                                "다른 기기의 오래된 수정입니다.",
+                                0L
+                        )
+                ))
+                .isInstanceOf(com.teacherhub.complaint.exception.ContentVersionConflictException.class);
         var updatedDraft = parentMessageService.saveDraft(
                 parentUser.getId(),
                 complaintId,
                 new com.teacherhub.complaint.parent.dto.message.ParentMessageRequest(
-                        "수정한 추가 문의입니다."
+                        "수정한 추가 문의입니다.",
+                        firstDraft.contentVersion()
                 )
         );
 
@@ -544,7 +588,21 @@ public class ComplaintFlowIntegrationTest {
                 complaintId,
                 updatedDraft.messageId()
         );
-        parentMessageService.submit(parentUser.getId(), complaintId, updatedDraft.messageId());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> parentMessageService.submit(
+                        parentUser.getId(),
+                        complaintId,
+                        updatedDraft.messageId(),
+                        firstDraft.contentVersion()
+                ))
+                .isInstanceOf(com.teacherhub.complaint.exception.ContentVersionConflictException.class);
+        assertThat(messageRepository.findById(updatedDraft.messageId()).orElseThrow().getStatus())
+                .isEqualTo(MessageStatus.DRAFT);
+        parentMessageService.submit(
+                parentUser.getId(),
+                complaintId,
+                updatedDraft.messageId(),
+                updatedDraft.contentVersion()
+        );
         var additionalOriginal = teacherComplaintQueryService.viewOriginal(
                 teacherUser.getId(), complaintId, updatedDraft.messageId());
         assertThat(additionalOriginal.messageId()).isEqualTo(updatedDraft.messageId());
@@ -602,10 +660,16 @@ public class ComplaintFlowIntegrationTest {
                 parentUser.getId(),
                 complaintId,
                 new com.teacherhub.complaint.parent.dto.message.ParentMessageRequest(
-                        "완료된 문의에 같은 사안으로 추가 질문합니다."
+                        "완료된 문의에 같은 사안으로 추가 질문합니다.",
+                        null
                 )
         );
-        parentMessageService.submit(parentUser.getId(), complaintId, reopenedDraft.messageId());
+        parentMessageService.submit(
+                parentUser.getId(),
+                complaintId,
+                reopenedDraft.messageId(),
+                reopenedDraft.contentVersion()
+        );
 
         var reopened = complaintRepository.findById(complaintId).orElseThrow();
         assertThat(reopened.getStatus()).isEqualTo(ComplaintStatus.OPEN);
@@ -940,9 +1004,9 @@ public class ComplaintFlowIntegrationTest {
                 .isNotNull();
 
         assertThat(reviewResponse.complaintId()).isEqualTo(complaintId);
-        assertThat(reviewResponse.riskScore()).isEqualTo(60);
+        assertThat(reviewResponse.riskScore()).isEqualTo(32);
         assertThat(reviewResponse.riskLevel())
-                .isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
+                .isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
         var findings = riskAnalysisQueryService.findFindings(parentUser.getId(), reviewResponse.analysisId());
         assertThat(findings.finalRevision().reason()).isNotBlank();
         assertThat(findings.finalRevision().content()).isNotBlank();
@@ -961,7 +1025,7 @@ public class ComplaintFlowIntegrationTest {
         var savedAnalyses = riskAnalysisRepository.findByComplaintIdOrderByIdAsc(complaintId);
         assertThat(savedAnalyses).hasSize(1);
         var firstAnalysis = savedAnalyses.get(0);
-        assertThat(firstAnalysis.getRiskScore()).isEqualTo(60);
+        assertThat(firstAnalysis.getRiskScore()).isEqualTo(32);
         assertThat(firstAnalysis.getModelName()).isEqualTo("mock-llm");
         assertThat(firstAnalysis.getTemperature()).isEqualTo(0.0);
         assertThat(firstAnalysis.getContentVersion()).isEqualTo(1);
@@ -1077,7 +1141,7 @@ public class ComplaintFlowIntegrationTest {
         assertThat(teacherDetail.grade()).isEqualTo(3);
         assertThat(teacherDetail.classNo()).isEqualTo(2);
         assertThat(teacherDetail.submittedAt()).isNotNull();
-        assertThat(teacherDetail.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.HIGH);
+        assertThat(teacherDetail.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
 
         var teacherListItem = complaintQueryService.findComplaints(teacherUser.getId()).stream()
                 .filter(item -> item.complaintId().equals(complaintId))

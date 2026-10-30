@@ -2,6 +2,7 @@ package com.teacherhub.user.consent.service;
 
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.user.consent.dto.PolicyConsentResponse;
+import com.teacherhub.user.consent.dto.PolicyConsentRequest;
 import com.teacherhub.user.consent.entity.UserPolicyConsent;
 import com.teacherhub.user.consent.repository.UserPolicyConsentRepository;
 import com.teacherhub.user.entity.User;
@@ -18,6 +19,7 @@ public class PolicyConsentService {
     private final UserRepository userRepository;
     private final String currentPolicyVersion;
 
+    // 정책
     public PolicyConsentService(
             UserPolicyConsentRepository consentRepository,
             UserRepository userRepository,
@@ -29,16 +31,41 @@ public class PolicyConsentService {
     }
 
     @Transactional
-    public PolicyConsentResponse agreeAll(Long userId) {
+    public PolicyConsentResponse findCurrent(Long userId) {
+        userRepository.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException("사용자를 찾을 수 없습니다."));
+        return consentRepository.findByUserIdAndPolicyVersion(userId, currentPolicyVersion)
+                .map(PolicyConsentResponse::from)
+                .orElseGet(() -> PolicyConsentResponse.notAgreed(currentPolicyVersion));
+    }
+
+    @Transactional
+    public PolicyConsentResponse saveCurrent(Long userId, PolicyConsentRequest request) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("사용자를 찾을 수 없습니다."));
 
-        return consentRepository.findByUserIdAndPolicyVersion(userId, currentPolicyVersion)
-                .map(PolicyConsentResponse::from)
-                .orElseGet(() -> PolicyConsentResponse.from(
-                        consentRepository.saveAndFlush(
-                                new UserPolicyConsent(user, currentPolicyVersion)
-                        )
+        return save(user, request.requiredAgreed(), request.optionalAgreed());
+    }
+
+    @Transactional
+    public PolicyConsentResponse recordSignupConsent(
+            User user,
+            boolean requiredAgreed,
+            boolean optionalAgreed
+    ) {
+        return save(user, requiredAgreed, optionalAgreed);
+    }
+
+    private PolicyConsentResponse save(User user, boolean requiredAgreed, boolean optionalAgreed) {
+        UserPolicyConsent consent = consentRepository
+                .findByUserIdAndPolicyVersion(user.getId(), currentPolicyVersion)
+                .orElseGet(() -> new UserPolicyConsent(
+                        user,
+                        currentPolicyVersion,
+                        requiredAgreed,
+                        optionalAgreed
                 ));
+        consent.updateOptionalAgreement(optionalAgreed);
+        return PolicyConsentResponse.from(consentRepository.saveAndFlush(consent));
     }
 }

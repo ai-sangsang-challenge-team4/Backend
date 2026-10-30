@@ -5,6 +5,8 @@ import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskReviewDirection;
 import com.teacherhub.risk.enums.RiskReviewStatus;
+import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
 
@@ -14,8 +16,14 @@ public record TeacherRiskReviewResponse(
         Long emergencyReviewRequestId,
         Long complaintId,
         Long riskAnalysisId,
+        @Schema(description = "변경 전 교사 선택값(1~7)", minimum = "1", maximum = "7")
+        int previousScale,
+        @Schema(description = "변경 전 위험 점수(10~70)", minimum = "10", maximum = "70")
         int previousScore,
         RiskLevel previousLevel,
+        @Schema(description = "검토한 교사 선택값(1~7)", minimum = "1", maximum = "7")
+        int reviewScale,
+        @Schema(description = "검토 후 위험 점수(10~70)", minimum = "10", maximum = "70")
         int riskScore,
         RiskLevel riskLevel,
         RiskReviewDirection direction,
@@ -32,8 +40,10 @@ public record TeacherRiskReviewResponse(
                 review.getRiskAnalysis().getComplaint().getId(),
                 review.getRiskAnalysis().getId(),
                 review.getPreviousScore(),
+                TeacherRiskScale.riskScoreForScale(review.getPreviousScore()),
                 review.getPreviousLevel(),
                 review.getReviewedScore(),
+                TeacherRiskScale.riskScoreForScale(review.getReviewedScore()),
                 review.getReviewedLevel(),
                 review.getDirection(),
                 review.getReason(),
@@ -63,8 +73,10 @@ public record TeacherRiskReviewResponse(
                 complaintId,
                 riskAnalysisId,
                 previousScore,
+                TeacherRiskScale.riskScoreForScale(previousScore),
                 previousLevel,
                 requestedScore,
+                TeacherRiskScale.riskScoreForScale(requestedScore),
                 requestedLevel,
                 direction,
                 reason,

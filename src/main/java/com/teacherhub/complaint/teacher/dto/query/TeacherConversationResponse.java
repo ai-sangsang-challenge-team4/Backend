@@ -43,6 +43,7 @@ public record TeacherConversationResponse(
         return new TeacherConversationResponse(complaint.getId(), allowedActions, messages);
     }
 
+    @Schema(name = "TeacherConversationMessage", description = "교사·관리자용 민원 대화 메시지")
     public record Message(
             String messageId,
             UserRole senderRole,

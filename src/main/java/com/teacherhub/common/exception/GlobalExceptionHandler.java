@@ -295,6 +295,14 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.CONFLICT, "MESSAGE_NOT_EDITABLE", e, request);
     }
 
+    @ExceptionHandler(ContentVersionConflictException.class)
+    public ResponseEntity<ErrorResponse> handleContentVersionConflict(
+            ContentVersionConflictException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.CONFLICT, "CONTENT_VERSION_CONFLICT", e, request);
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ErrorResponse> handleAccessDenied(
             AccessDeniedException e,

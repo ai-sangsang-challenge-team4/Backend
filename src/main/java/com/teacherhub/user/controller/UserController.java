@@ -75,12 +75,12 @@ public class UserController {
     }
 
     @Operation(
-            summary = "현재 정책 전체 동의 저장",
-            description = "서버에 설정된 현재 정책 버전과 동의 시점을 저장합니다. 같은 버전에 대한 재요청은 기존 동의 기록을 반환합니다."
+            summary = "현재 정책 동의 저장",
+            description = "필수·선택 동의 여부를 현재 정책 버전과 함께 저장합니다. 필수 동의는 true여야 하며 선택 동의는 변경할 수 있습니다."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "정책 동의 저장 성공", useReturnTypeSchema = true),
-            @ApiResponse(responseCode = "400", description = "전체 동의하지 않았거나 요청값이 잘못됨",
+            @ApiResponse(responseCode = "400", description = "필수 정책에 동의하지 않았거나 요청값이 잘못됨",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "401", description = "인증 토큰이 없거나 유효하지 않음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
@@ -90,7 +90,25 @@ public class UserController {
             Authentication authentication,
             @Valid @RequestBody PolicyConsentRequest request
     ) {
-        return ResponseEntity.ok(policyConsentService.agreeAll(userId(authentication)));
+        return ResponseEntity.ok(policyConsentService.saveCurrent(userId(authentication), request));
+    }
+
+    @Operation(
+            summary = "현재 정책 동의 조회",
+            description = "현재 정책 버전의 필수·선택 동의 여부를 조회합니다. 동의 기록이 없으면 두 값은 false입니다."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "정책 동의 조회 성공", useReturnTypeSchema = true),
+            @ApiResponse(responseCode = "401", description = "인증 토큰이 없거나 유효하지 않음",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+
+    // 정책 동의 조회
+    @GetMapping("/me/policy-consents")
+    public ResponseEntity<PolicyConsentResponse> findCurrentPolicyConsent(
+            Authentication authentication
+    ) {
+        return ResponseEntity.ok(policyConsentService.findCurrent(userId(authentication)));
     }
 
     private Long userId(Authentication authentication) {

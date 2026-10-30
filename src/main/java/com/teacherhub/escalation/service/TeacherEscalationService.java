@@ -47,7 +47,6 @@ public class TeacherEscalationService {
     private final ComplaintEventRepository eventRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
-    private final TeacherRiskScale teacherRiskScale;
 
     @Transactional
     public EscalationStateResponse share(
@@ -117,8 +116,8 @@ public class TeacherEscalationService {
                 analysis == null
                         ? null
                         : latestReview == null
-                        ? teacherRiskScale.initialScoreFor(analysis.getRiskLevel())
-                        : latestReview.getReviewedScore(),
+                        ? analysis.getRiskScore()
+                        : TeacherRiskScale.riskScoreForScale(latestReview.getReviewedScore()),
                 analysis == null
                         ? null
                         : latestReview == null
@@ -139,7 +138,6 @@ public class TeacherEscalationService {
         return EscalationStateResponse.from(
                 escalation,
                 latestReview,
-                teacherRiskScale.initialScoreFor(escalation.getRiskAnalysis().getRiskLevel()),
                 emergencyReviewRequestRepository
                         .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(
                                 escalation.getComplaint().getId()

@@ -166,6 +166,7 @@ public class TeacherResponseService {
     public void close(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findComplaintForUpdate(user, complaintId);
+        ensureClosable(complaint);
         ensureResponseAllowed(complaint, user, "상담 완료 처리");
         complaint.closeByTeacher();
         eventRepository.save(ComplaintEvent.statusChanged(
@@ -197,15 +198,25 @@ public class TeacherResponseService {
                 .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(complaintId)
                 .map(com.teacherhub.risk.entity.EmergencyRiskReviewRequest::isSafetyLock)
                 .orElse(false);
-        boolean emergencyRisk = effectiveRiskLevel(complaintId) == RiskLevel.EMERGENCY;
-        if (safetyLock || emergencyRisk) {
+        if (safetyLock) {
             eventRepository.save(ComplaintEvent.responseBlockedByEmergencyPolicy(
                     complaint,
                     user,
                     operation
             ));
             throw new ResponseNotEditableException(
-                    "Emergency 위험도 또는 안전 잠금이 유지되는 동안 " + operation
+                    "안전 잠금이 유지되는 동안 " + operation
+                            + "을(를) 수행할 수 없습니다. 재검토 절차를 확인해주세요."
+            );
+        }
+        if (effectiveRiskLevel(complaintId) == RiskLevel.EMERGENCY) {
+            eventRepository.save(ComplaintEvent.responseBlockedByEmergencyPolicy(
+                    complaint,
+                    user,
+                    operation
+            ));
+            throw new ResponseNotEditableException(
+                    "Emergency 위험도에서는 " + operation
                             + "을(를) 수행할 수 없습니다. 재검토 절차를 확인해주세요."
             );
         }
@@ -228,6 +239,20 @@ public class TeacherResponseService {
         if (complaint.getStatus() != ComplaintStatus.OPEN
                 || complaint.getWaitingFor() != WaitingFor.TEACHER) {
             throw new ResponseNotEditableException("접수되어 답변 대기 중인 민원만 답변할 수 있습니다.");
+        }
+    }
+
+    private void ensureClosable(Complaint complaint) {
+        if (complaint.getStatus() == ComplaintStatus.CLOSED) {
+            throw new ResponseNotEditableException("이미 완료된 민원은 다시 완료 처리할 수 없습니다.");
+        }
+        if (complaint.getStatus() != ComplaintStatus.OPEN) {
+            throw new ResponseNotEditableException("진행 중인 민원만 상담 완료 처리할 수 있습니다.");
+        }
+        if (complaint.getWaitingFor() != WaitingFor.PARENT) {
+            throw new ResponseNotEditableException(
+                    "교사 답변 전송 후 학부모 응답을 기다리는 민원만 상담 완료 처리할 수 있습니다."
+            );
         }
     }
 

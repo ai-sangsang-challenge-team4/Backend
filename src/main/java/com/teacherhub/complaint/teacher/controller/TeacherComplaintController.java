@@ -276,7 +276,7 @@ public class TeacherComplaintController {
                     @ApiResponse(responseCode = "200", description = "상담 완료 처리 성공"),
                     @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-                    @ApiResponse(responseCode = "409", description = "완료할 수 없는 상태이거나 Emergency 답변 차단 상태임",
+                    @ApiResponse(responseCode = "409", description = "RESPONSE_NOT_EDITABLE: 이미 완료되었거나 진행 중이 아닌 민원, 교사 답변 전송 전, Emergency 위험도 또는 안전 잠금 상태",
                             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
             }
     )

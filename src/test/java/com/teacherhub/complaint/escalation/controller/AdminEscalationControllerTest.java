@@ -47,9 +47,12 @@ class AdminEscalationControllerTest {
         var risk = new TeacherRiskResponse(
                 42L,
                 100L,
-                7,
+                70,
                 com.teacherhub.risk.enums.RiskLevel.EMERGENCY,
                 7,
+                70,
+                com.teacherhub.risk.enums.RiskLevel.EMERGENCY,
+                70,
                 com.teacherhub.risk.enums.RiskLevel.EMERGENCY,
                 false,
                 null,

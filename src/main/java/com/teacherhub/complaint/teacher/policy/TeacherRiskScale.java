@@ -23,11 +23,22 @@ public class TeacherRiskScale {
     }
 
     public int initialScoreFor(RiskLevel systemLevel) {
+        return normalizedScoreFor(systemLevel);
+    }
+
+    public static int normalizedScoreFor(RiskLevel systemLevel) {
         return switch (systemLevel) {
             case LOW -> 2;
             case MEDIUM -> 4;
             case HIGH -> 6;
             case EMERGENCY -> 7;
         };
+    }
+
+    public static int riskScoreForScale(int scale) {
+        if (scale < 1 || scale > 7) {
+            throw new IllegalArgumentException("교사 검토 점수는 1~7점이어야 합니다.");
+        }
+        return scale * 10;
     }
 }

@@ -63,10 +63,15 @@ POST `/complaints/{complaintId}/risk-analysis`와 GET `/risk-analyses/{analysisI
 {
   "analysisId": 10,
   "complaintId": 42,
-  "riskScore": 5,
+  "riskScore": 55,
   "riskLevel": "HIGH"
 }
 ```
+
+시스템 위험 점수는 감지된 태그 원점수의 합계이며 범위는 0~70이다. 기본 태그 점수는
+`PROFANITY 8`, `INSULT 8`, `THREAT 16`, `LEGAL 5`, `EXPOSURE 10`, `REPEAT 5`,
+`UNFAIR_REQUEST 8`, `PRIVACY 10`으로 합계가 70이 되도록 구성한다. 등급은
+0~20 LOW, 21~40 MEDIUM, 41~60 HIGH, 61~70 EMERGENCY다.
 
 POST는 마스킹 후 원문 Rule 탐지와 마스킹 사본 LLM 탐지를 병렬 실행하고,
 병합, 점수 계산과 수정안 생성·저장을 수행한다.
@@ -88,7 +93,11 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 }
 ```
 
-- 1~7점 척도는 교사 검토값에만 적용하며 시스템 자동 산정 점수는 기존 방식을 유지한다.
+- 교사는 기존처럼 1~7을 선택한다. 서버는 선택값에 10을 곱해 10~70 위험 점수로 환산한다.
+- `/risk` 응답의 `reviewScale`은 교사의 1~7 선택값이고, `reviewScore`는 환산된 10~70 점수다.
+  실제 교사 검토가 없으면 두 필드와 `reviewLevel`은 null이다.
+- `/risk` 응답의 `currentRiskScore`는 교사 검토가 있으면 `reviewScore`, 없으면 시스템
+  `riskScore`이며, 모든 화면용 위험 점수는 동일한 0~70 단위를 사용한다.
 - 최초 검토값은 시스템 등급을 LOW 2점, MEDIUM 4점, HIGH 6점, EMERGENCY 7점으로 변환한다.
 - 현재 점수보다 낮추면 reason이 필수다.
 - 현재 점수보다 높이거나 동일하게 확인하면 reason은 선택 사항이다.
@@ -283,10 +292,10 @@ Postman에서는 생성 후 DRAFT, send 성공 후 OPEN을 조회하고,
 | 메서드 | 경로 | 동작 |
 |---|---|---|
 | GET | `/complaints/{complaintId}/messages` | 학부모용 전송 메시지 목록과 현재 차례 조회 |
-| PUT | `/complaints/{complaintId}/message-draft` | 학부모 추가 문의 초안 생성 또는 덮어쓰기 |
+| PUT | `/complaints/{complaintId}/message-draft` | 학부모 추가 문의 초안 생성 또는 버전 조건부 수정 |
 | GET | `/complaints/{complaintId}/message-draft` | 학부모 추가 문의 임시저장 조회 |
 | POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 추가 문의 AI 위험 분석·수정 제안 생성 |
-| POST | `/complaints/{complaintId}/messages/{messageId}/send` | 분석된 추가 문의 전송 후 교사 차례로 변경 |
+| POST | `/complaints/{complaintId}/messages/{messageId}/send` | 버전 조건 확인 후 추가 문의 전송 및 교사 차례로 변경 |
 | POST | `/teacher/complaints/{complaintId}/close` | 교사가 답변 후 상담 완료 처리 |
 
 교사 답변 API 경로는 기존 값을 유지한다. AI 초안 생성 시 지금까지 전송된 전체 대화가
@@ -296,6 +305,11 @@ Postman에서는 생성 후 DRAFT, send 성공 후 OPEN을 조회하고,
 답변 전송만으로 자동 완료되지 않으며, 교사가 별도 완료 API를 호출해야 CLOSED가 된다.
 완료된 문의에 학부모가 같은 사안의 추가 질문을 보내면 기존 문의를 OPEN으로 다시 열고
 `waitingFor=TEACHER`로 변경하며 `CLOSED → OPEN` 상태 변경 이력을 남긴다. 다른 주제는 새 문의로 생성한다.
+
+추가 문의 최초 저장은 `{"content":"..."}`처럼 버전을 생략할 수 있다. 기존 초안 수정은
+`{"content":"...","expectedContentVersion":2}`, 전송은 `{"expectedContentVersion":2}`를
+보낸다. 서버는 민원 행 쓰기 잠금 안에서 현재 버전 검사와 저장·전송을 연속 처리한다.
+버전이 누락되거나 다르면 쓰기·전송 없이 409 `CONTENT_VERSION_CONFLICT`를 반환한다.
 
 AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/response/ai-draft`는
 `complaintId`, `content`, `modelName`, `generatedAt`만 반환한다. 교사 답변 임시저장 및 제출

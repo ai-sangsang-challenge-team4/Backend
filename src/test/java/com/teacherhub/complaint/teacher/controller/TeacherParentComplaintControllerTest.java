@@ -133,8 +133,10 @@ class TeacherParentComplaintControllerTest {
                         42L,
                         12L,
                         7,
+                        70,
                         RiskLevel.EMERGENCY,
                         5,
+                        50,
                         RiskLevel.HIGH,
                         RiskReviewDirection.LOWERED,
                         "하향 검토 사유",
@@ -186,6 +188,8 @@ class TeacherParentComplaintControllerTest {
                         .content("{\"riskScore\":5,\"reason\":\"하향 검토 사유\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.direction").value("LOWERED"))
+                .andExpect(jsonPath("$.reviewScale").value(5))
+                .andExpect(jsonPath("$.riskScore").value(50))
                 .andExpect(jsonPath("$.riskLevel").value("HIGH"))
                 .andExpect(jsonPath("$.status").value("PENDING_ADMIN_APPROVAL"))
                 .andExpect(jsonPath("$.riskReviewId").doesNotExist());
