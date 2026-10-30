@@ -4,10 +4,8 @@ import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
 import com.teacherhub.risk.enums.RiskTagCode;
-import org.springframework.stereotype.Component;
 import java.util.List;
 
-@Component
 public class MockLlmRiskAnalyzer implements LlmRiskAnalyzer {
     @Override
     public LlmRiskAnalysisResult analyze(String maskedContent) {
