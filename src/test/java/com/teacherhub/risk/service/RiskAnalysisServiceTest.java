@@ -88,7 +88,7 @@ class RiskAnalysisServiceTest {
         verifyNoMoreInteractions(rules, llm, revisions);
         assertThat(response.complaintId()).isEqualTo(42L);
         assertThat(response.riskScore()).isEqualTo(3);
-        assertThat(response.riskLevel()).isEqualTo(RiskLevel.MEDIUM);
+        assertThat(response.riskLevel()).isEqualTo(RiskLevel.LOW);
         assertThat(evaluation.getValue().tags()).anySatisfy(tag -> {
             assertThat(tag.code()).isEqualTo(PROFANITY);
             assertThat(tag.ruleDetected()).isTrue();

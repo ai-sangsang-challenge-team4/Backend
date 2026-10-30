@@ -5,6 +5,7 @@ import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -67,12 +68,28 @@ public record TeacherHistoryResponse(
                     event.getReferenceId(),
                     event.getPreviousStatus(),
                     event.getNewStatus(),
-                    event.getRiskScore(),
+                    displayRiskScore(event),
                     event.getRiskLevel(),
-                    event.getPreviousRiskScore(),
+                    displayPreviousRiskScore(event),
                     event.getPreviousRiskLevel(),
                     event.getReason()
             );
+        }
+
+        private static Integer displayRiskScore(ComplaintEvent event) {
+            if (event.getEventType() == MessageEventType.RISK_REVIEWED
+                    && event.getRiskScore() != null) {
+                return TeacherRiskScale.riskScoreForScale(event.getRiskScore());
+            }
+            return event.getRiskScore();
+        }
+
+        private static Integer displayPreviousRiskScore(ComplaintEvent event) {
+            if (event.getEventType() == MessageEventType.RISK_REVIEWED
+                    && event.getPreviousRiskScore() != null) {
+                return TeacherRiskScale.riskScoreForScale(event.getPreviousRiskScore());
+            }
+            return event.getPreviousRiskScore();
         }
     }
 }

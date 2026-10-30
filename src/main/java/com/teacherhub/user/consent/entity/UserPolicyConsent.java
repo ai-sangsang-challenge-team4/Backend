@@ -43,12 +43,32 @@ public class UserPolicyConsent {
     @Column(nullable = false, updatable = false)
     private LocalDateTime agreedAt;
 
-    public UserPolicyConsent(User user, String policyVersion) {
+    @Column(name = "required_agreed", nullable = false)
+    private boolean requiredAgreed;
+
+    @Column(name = "optional_agreed", nullable = false)
+    private boolean optionalAgreed;
+
+    public UserPolicyConsent(
+            User user,
+            String policyVersion,
+            boolean requiredAgreed,
+            boolean optionalAgreed
+    ) {
         if (policyVersion == null || policyVersion.isBlank()) {
             throw new IllegalArgumentException("정책 버전이 필요합니다.");
+        }
+        if (!requiredAgreed) {
+            throw new IllegalArgumentException("필수 정책에 동의해야 합니다.");
         }
         this.user = user;
         this.policyVersion = policyVersion;
         this.agreedAt = LocalDateTime.now();
+        this.requiredAgreed = true;
+        this.optionalAgreed = optionalAgreed;
+    }
+
+    public void updateOptionalAgreement(boolean optionalAgreed) {
+        this.optionalAgreed = optionalAgreed;
     }
 }

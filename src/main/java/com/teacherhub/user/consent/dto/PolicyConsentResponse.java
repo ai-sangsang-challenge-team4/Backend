@@ -10,14 +10,20 @@ public record PolicyConsentResponse(
         Long consentId,
         String policyVersion,
         LocalDateTime agreedAt,
-        boolean allAgreed
+        boolean requiredAgreed,
+        boolean optionalAgreed
 ) {
     public static PolicyConsentResponse from(UserPolicyConsent consent) {
         return new PolicyConsentResponse(
                 consent.getId(),
                 consent.getPolicyVersion(),
                 consent.getAgreedAt(),
-                true
+                consent.isRequiredAgreed(),
+                consent.isOptionalAgreed()
         );
+    }
+
+    public static PolicyConsentResponse notAgreed(String policyVersion) {
+        return new PolicyConsentResponse(null, policyVersion, null, false, false);
     }
 }

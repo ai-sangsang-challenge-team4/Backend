@@ -9,7 +9,6 @@ import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.history.service.ComplaintHistoryService;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
-import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.escalation.dto.EscalationMessageRequest;
 import com.teacherhub.escalation.entity.ComplaintEscalation;
 import com.teacherhub.escalation.enums.EscalationStatus;
@@ -53,7 +52,6 @@ class AdminEscalationServiceTest {
     private final RiskReviewRepository riskReviewRepository = mock(RiskReviewRepository.class);
     private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository =
             mock(EmergencyRiskReviewRequestRepository.class);
-    private final TeacherRiskScale teacherRiskScale = mock(TeacherRiskScale.class);
     private final PiiMaskingService piiMaskingService = mock(PiiMaskingService.class);
     private final ComplaintHistoryService complaintHistoryService = mock(ComplaintHistoryService.class);
     private final AdminEscalationService service = new AdminEscalationService(
@@ -64,7 +62,6 @@ class AdminEscalationServiceTest {
             riskTagRepository,
             riskReviewRepository,
             emergencyReviewRequestRepository,
-            teacherRiskScale,
             piiMaskingService,
             complaintHistoryService
     );
@@ -91,7 +88,7 @@ class AdminEscalationServiceTest {
         when(teacher.getUser()).thenReturn(teacherUser);
         when(complaint.getId()).thenReturn(42L);
         when(analysis.getId()).thenReturn(100L);
-        when(analysis.getRiskScore()).thenReturn(7);
+        when(analysis.getRiskScore()).thenReturn(70);
         when(analysis.getRiskLevel()).thenReturn(com.teacherhub.risk.enums.RiskLevel.EMERGENCY);
         when(analysis.getComplaint()).thenReturn(complaint);
 
@@ -185,8 +182,6 @@ class AdminEscalationServiceTest {
         when(riskTagRepository.findByRiskAnalysisId(100L)).thenReturn(List.of());
         when(riskReviewRepository.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
                 .thenReturn(Optional.empty());
-        when(teacherRiskScale.initialScoreFor(com.teacherhub.risk.enums.RiskLevel.EMERGENCY))
-                .thenReturn(7);
         when(eventRepository.findByComplaintIdOrderByOccurredAtDescIdDesc(42L))
                 .thenReturn(List.of());
 

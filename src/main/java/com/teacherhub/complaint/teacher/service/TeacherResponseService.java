@@ -167,6 +167,7 @@ public class TeacherResponseService {
         User user = findUser(userId);
         Complaint complaint = findComplaintForUpdate(user, complaintId);
         ensureResponseAllowed(complaint, user, "상담 완료 처리");
+        ensureClosable(complaint);
         complaint.closeByTeacher();
         eventRepository.save(ComplaintEvent.statusChanged(
                 complaint,
@@ -228,6 +229,17 @@ public class TeacherResponseService {
         if (complaint.getStatus() != ComplaintStatus.OPEN
                 || complaint.getWaitingFor() != WaitingFor.TEACHER) {
             throw new ResponseNotEditableException("접수되어 답변 대기 중인 민원만 답변할 수 있습니다.");
+        }
+    }
+
+    private void ensureClosable(Complaint complaint) {
+        if (complaint.getStatus() != ComplaintStatus.OPEN) {
+            throw new ResponseNotEditableException("진행 중인 민원만 상담 완료 처리할 수 있습니다.");
+        }
+        if (complaint.getWaitingFor() != WaitingFor.PARENT) {
+            throw new ResponseNotEditableException(
+                    "교사 답변 전송 후 학부모 응답을 기다리는 민원만 상담 완료 처리할 수 있습니다."
+            );
         }
     }
 

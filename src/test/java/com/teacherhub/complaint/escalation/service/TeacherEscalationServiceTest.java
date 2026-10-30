@@ -12,7 +12,6 @@ import com.teacherhub.escalation.exception.EscalationReasonRequiredException;
 import com.teacherhub.escalation.repository.ComplaintEscalationRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
-import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.escalation.service.TeacherEscalationService;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.enums.RiskLevel;
@@ -45,7 +44,6 @@ class TeacherEscalationServiceTest {
     private final ComplaintEventRepository eventRepository = mock(ComplaintEventRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
     private final ComplaintAccessPolicy accessPolicy = mock(ComplaintAccessPolicy.class);
-    private final TeacherRiskScale teacherRiskScale = mock(TeacherRiskScale.class);
     private final TeacherEscalationService service = new TeacherEscalationService(
             complaintRepository,
             escalationRepository,
@@ -54,8 +52,7 @@ class TeacherEscalationServiceTest {
             emergencyReviewRequestRepository,
             eventRepository,
             userRepository,
-            accessPolicy,
-            teacherRiskScale
+            accessPolicy
     );
 
     private User teacherUser;
@@ -88,7 +85,7 @@ class TeacherEscalationServiceTest {
         when(complaint.getTeacher()).thenReturn(teacher);
         when(analysis.getId()).thenReturn(100L);
         when(analysis.getRiskLevel()).thenReturn(RiskLevel.EMERGENCY);
-        when(teacherRiskScale.initialScoreFor(RiskLevel.EMERGENCY)).thenReturn(7);
+        when(analysis.getRiskScore()).thenReturn(70);
 
         when(userRepository.findById(10L)).thenReturn(Optional.of(teacherUser));
         when(userRepository.findById(20L)).thenReturn(Optional.of(admin));
@@ -143,7 +140,7 @@ class TeacherEscalationServiceTest {
 
         assertThat(response.escalationStatus()).isEqualTo(EscalationStatus.NOT_SHARED);
         assertThat(response.currentRiskLevel()).isEqualTo(RiskLevel.EMERGENCY);
-        assertThat(response.currentRiskScore()).isEqualTo(7);
+        assertThat(response.currentRiskScore()).isEqualTo(70);
         verify(escalationRepository, never()).saveAndFlush(any());
     }
 

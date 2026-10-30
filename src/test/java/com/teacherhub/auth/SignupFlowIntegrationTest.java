@@ -13,6 +13,7 @@ import com.teacherhub.user.repository.ParentStudentRepository;
 import com.teacherhub.user.repository.StudentRepository;
 import com.teacherhub.user.repository.TeacherRepository;
 import com.teacherhub.user.repository.UserRepository;
+import com.teacherhub.user.consent.repository.UserPolicyConsentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +55,8 @@ class SignupFlowIntegrationTest {
     private ParentRepository parentRepository;
     @Autowired
     private ParentStudentRepository parentStudentRepository;
+    @Autowired
+    private UserPolicyConsentRepository policyConsentRepository;
 
     private School school;
     private SchoolClass schoolClass;
@@ -101,7 +104,9 @@ class SignupFlowIntegrationTest {
                   "role": "PARENT",
                   "schoolClassId": %d,
                   "studentId": %d,
-                  "studentName": "김학생"
+                  "studentName": "김학생",
+                  "requiredAgreed": true,
+                  "optionalAgreed": false
                 }
                 """.formatted(school.getId(), schoolClass.getId(), student.getId());
 
@@ -114,6 +119,11 @@ class SignupFlowIntegrationTest {
 
         var parentUser = userRepository.findByEmail("new-parent@example.com").orElseThrow();
         assertThat(parentUser.getName()).isEqualTo("김학부모");
+        var parentConsent = policyConsentRepository
+                .findByUserIdAndPolicyVersion(parentUser.getId(), "2026-10-29-v1")
+                .orElseThrow();
+        assertThat(parentConsent.isRequiredAgreed()).isTrue();
+        assertThat(parentConsent.isOptionalAgreed()).isFalse();
         var parent = parentRepository.findByUserId(parentUser.getId()).orElseThrow();
         assertThat(parentStudentRepository.findByParent_Id(parent.getId()).orElseThrow().getStudent().getId())
                 .isEqualTo(student.getId());
@@ -125,7 +135,9 @@ class SignupFlowIntegrationTest {
                   "password": "Password123!",
                   "name": "김교사",
                   "role": "TEACHER",
-                  "employeeNo": "T-001"
+                  "employeeNo": "T-001",
+                  "requiredAgreed": true,
+                  "optionalAgreed": true
                 }
                 """.formatted(school.getId());
 
@@ -137,6 +149,11 @@ class SignupFlowIntegrationTest {
 
         assertThat(teacherRepository.findById(teacherRoster.getId()).orElseThrow().getUser().getEmail())
                 .isEqualTo("new-teacher@example.com");
+        var teacherUser = userRepository.findByEmail("new-teacher@example.com").orElseThrow();
+        assertThat(policyConsentRepository
+                .findByUserIdAndPolicyVersion(teacherUser.getId(), "2026-10-29-v1")
+                .orElseThrow()
+                .isOptionalAgreed()).isTrue();
     }
 
     @Test

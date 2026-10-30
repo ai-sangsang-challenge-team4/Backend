@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Size;
 // 교사가 검토한 점수와 사유
 @Schema(description = "교사 위험도 검토 요청")
 public record TeacherRiskReviewRequest(
-        @Schema(description = "교사 검토 위험 점수(1~7)", example = "5", minimum = "1", maximum = "7")
+        @Schema(description = "교사 검토 선택값(1~7). 서버에서 10을 곱해 위험 점수 10~70으로 환산합니다.", example = "5", minimum = "1", maximum = "7")
         @Min(value = 1, message = "위험 점수는 1점 이상이어야 합니다.")
         @Max(value = 7, message = "위험 점수는 7점 이하여야 합니다.")
         int riskScore,

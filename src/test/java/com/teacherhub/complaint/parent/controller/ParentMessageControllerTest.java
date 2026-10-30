@@ -6,6 +6,8 @@ import com.teacherhub.complaint.parent.dto.message.ParentMessageRequest;
 import com.teacherhub.complaint.parent.dto.message.ParentMessageResponse;
 import com.teacherhub.complaint.parent.service.ParentComplaintService;
 import com.teacherhub.complaint.parent.service.ParentMessageService;
+import com.teacherhub.complaint.exception.ContentVersionConflictException;
+import com.teacherhub.common.exception.GlobalExceptionHandler;
 import com.teacherhub.complaint.query.service.ComplaintQueryService;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
@@ -40,23 +42,25 @@ class ParentMessageControllerTest {
 
         when(user.getId()).thenReturn(7L);
         when(users.findByEmail("parent@test.com")).thenReturn(Optional.of(user));
-        when(messageService.saveDraft(7L, 42L, new ParentMessageRequest("추가 문의")))
+        when(messageService.saveDraft(7L, 42L, new ParentMessageRequest("추가 문의", null)))
                 .thenReturn(new ParentMessageResponse(
                         30L, 42L, "추가 문의", MessageStatus.DRAFT, WaitingFor.PARENT,
                         1, now, now, null
                 ));
-        when(messageService.submit(7L, 42L, 30L))
+        when(messageService.submit(7L, 42L, 30L, 1L))
                 .thenReturn(new ParentMessageResponse(
                         30L, 42L, "추가 문의", MessageStatus.SENT, WaitingFor.TEACHER,
                         1, now, now, now
                 ));
+        when(messageService.saveDraft(7L, 42L, new ParentMessageRequest("충돌 내용", 1L)))
+                .thenThrow(new ContentVersionConflictException(1L, 2L));
 
         var mvc = MockMvcBuilders.standaloneSetup(new ParentComplaintController(
                 queryService,
                 complaintService,
                 messageService,
                 users
-        )).build();
+        )).setControllerAdvice(new GlobalExceptionHandler()).build();
 
         mvc.perform(put("/complaints/42/message-draft")
                         .principal(auth)
@@ -67,12 +71,22 @@ class ParentMessageControllerTest {
                 .andExpect(jsonPath("$.status").value("DRAFT"))
                 .andExpect(jsonPath("$.waitingFor").value("PARENT"));
 
-        mvc.perform(post("/complaints/42/messages/30/send").principal(auth))
+        mvc.perform(post("/complaints/42/messages/30/send")
+                        .principal(auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedContentVersion\":1}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SENT"))
                 .andExpect(jsonPath("$.waitingFor").value("TEACHER"));
 
-        verify(messageService).saveDraft(7L, 42L, new ParentMessageRequest("추가 문의"));
-        verify(messageService).submit(7L, 42L, 30L);
+        mvc.perform(put("/complaints/42/message-draft")
+                        .principal(auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"충돌 내용\",\"expectedContentVersion\":1}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONTENT_VERSION_CONFLICT"));
+
+        verify(messageService).saveDraft(7L, 42L, new ParentMessageRequest("추가 문의", null));
+        verify(messageService).submit(7L, 42L, 30L, 1L);
     }
 }

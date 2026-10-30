@@ -6,6 +6,7 @@ import com.teacherhub.risk.enums.RiskReviewStatus;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.entity.EmergencyRiskReviewRequest;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 
 // 공유 민원 상태 조회
 public record EscalationStateResponse(
@@ -20,7 +21,6 @@ public record EscalationStateResponse(
     public static EscalationStateResponse from(
             ComplaintEscalation escalation,
             RiskReview latestReview,
-            int initialRiskScore,
             EmergencyRiskReviewRequest emergencyReviewRequest
     ) {
         return new EscalationStateResponse(
@@ -28,7 +28,9 @@ public record EscalationStateResponse(
                 emergencyReviewRequest == null ? null : emergencyReviewRequest.getId(),
                 escalation.getStatus(),
                 emergencyReviewRequest == null ? null : emergencyReviewRequest.getStatus(),
-                latestReview == null ? initialRiskScore : latestReview.getReviewedScore(),
+                latestReview == null
+                        ? escalation.getRiskAnalysis().getRiskScore()
+                        : TeacherRiskScale.riskScoreForScale(latestReview.getReviewedScore()),
                 latestReview == null
                         ? escalation.getRiskAnalysis().getRiskLevel()
                         : latestReview.getReviewedLevel(),

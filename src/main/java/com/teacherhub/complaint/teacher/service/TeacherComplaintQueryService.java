@@ -22,7 +22,6 @@ import com.teacherhub.complaint.teacher.dto.query.TeacherOriginalViewResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
 import com.teacherhub.complaint.teacher.dto.AllowedAction;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
-import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
@@ -64,7 +63,6 @@ public class TeacherComplaintQueryService {
     private final ComplaintHistoryService complaintHistoryService;
     private final TeacherSupportContentProvider supportContentProvider;
     private final TeacherSupportPolicy supportPolicy;
-    private final TeacherRiskScale teacherRiskScale;
 
     public TeacherComplaintDetailResponse findDetail(Long userId, Long complaintId) {
         User user = findUser(userId);
@@ -195,7 +193,6 @@ public class TeacherComplaintQueryService {
                 analysis,
                 complaintRiskTagRepository.findByRiskAnalysisId(analysis.getId()),
                 latestReview(analysis),
-                teacherRiskScale.initialScoreFor(analysis.getRiskLevel()),
                 safetyLock
         );
     }

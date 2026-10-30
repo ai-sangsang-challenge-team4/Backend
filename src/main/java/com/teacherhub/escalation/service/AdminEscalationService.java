@@ -12,7 +12,6 @@ import com.teacherhub.complaint.history.service.ComplaintHistoryService;
 import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
-import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.escalation.dto.EscalationMessageRequest;
 import com.teacherhub.escalation.dto.EscalationStateResponse;
 import com.teacherhub.escalation.dto.AdminEscalationSummaryResponse;
@@ -54,7 +53,6 @@ public class AdminEscalationService {
     private final ComplaintRiskTagRepository riskTagRepository;
     private final RiskReviewRepository riskReviewRepository;
     private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository;
-    private final TeacherRiskScale teacherRiskScale;
     private final PiiMaskingService piiMaskingService;
     private final ComplaintHistoryService complaintHistoryService;
 
@@ -128,7 +126,6 @@ public class AdminEscalationService {
                 escalation.getRiskAnalysis(),
                 riskTagRepository.findByRiskAnalysisId(escalation.getRiskAnalysis().getId()),
                 latestReview,
-                teacherRiskScale.initialScoreFor(escalation.getRiskAnalysis().getRiskLevel()),
                 emergencyReviewRequestRepository
                         .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(
                                 escalation.getComplaint().getId()
@@ -217,7 +214,6 @@ public class AdminEscalationService {
         return EscalationStateResponse.from(
                 escalation,
                 latestReview,
-                teacherRiskScale.initialScoreFor(escalation.getRiskAnalysis().getRiskLevel()),
                 emergencyReviewRequestRepository
                         .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(
                                 escalation.getComplaint().getId()

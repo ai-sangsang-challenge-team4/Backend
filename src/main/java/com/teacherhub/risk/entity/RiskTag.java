@@ -35,4 +35,11 @@ public class RiskTag {
         this.name = name;
         this.defaultScore = defaultScore;
     }
+
+    public void updateDefaultScore(int defaultScore) {
+        if (defaultScore < 0) {
+            throw new IllegalArgumentException("위험 태그 점수는 음수일 수 없습니다.");
+        }
+        this.defaultScore = defaultScore;
+    }
 }

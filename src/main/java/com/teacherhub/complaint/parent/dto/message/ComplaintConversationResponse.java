@@ -7,6 +7,7 @@ import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.user.enums.UserRole;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,6 +30,7 @@ public record ComplaintConversationResponse(
         );
     }
 
+    @Schema(name = "ParentConversationMessage", description = "학부모용 민원 대화 메시지")
     public record Message(
             Long messageId,
             MessageType type,

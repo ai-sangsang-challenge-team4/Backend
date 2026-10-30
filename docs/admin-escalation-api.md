@@ -82,7 +82,7 @@ Emergency 재검토 요청은 공유와 독립적으로 최신 위험 분석을 
   "emergencyReviewRequestId": 10,
   "escalationStatus": "UNDER_REVIEW",
   "riskReviewStatus": "APPLIED",
-  "currentRiskScore": 5,
+  "currentRiskScore": 50,
   "currentRiskLevel": "HIGH",
   "safetyLock": true
 }
@@ -218,7 +218,7 @@ Emergency 재검토 거부 요청:
 | 관리자 | `admin@test.com` | `Test1234!` |
 
 테스트 민원은 `OPEN`, 교사 응답 대기 상태이며 완료된 위험 분석 결과가
-`riskScore=30`, `riskLevel=EMERGENCY`로 저장된다. `THREAT` 위험 요소에는 직접적인
+`riskScore=70`, `riskLevel=EMERGENCY`로 저장된다. `THREAT` 위험 요소에는 직접적인
 신체 위해와 구체적인 보복 계획이 감지된 것으로 저장한다. 이는 긴급 판정 규칙을 실행한
 결과가 아니라 관리자 공유 흐름을 확인하기 위한 고정 개발 데이터다.
 

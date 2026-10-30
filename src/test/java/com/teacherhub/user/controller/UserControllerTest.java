@@ -44,9 +44,16 @@ class UserControllerTest {
                         List.of(new MyStudentResponse(10L, "김학생", "7"))
                 )
         );
-        when(consentService.agreeAll(7L)).thenReturn(
-                new PolicyConsentResponse(20L, "2026-10-29-v1", LocalDateTime.of(2026, 10, 30, 9, 0), true)
+        var consentRequest = new com.teacherhub.user.consent.dto.PolicyConsentRequest(true, false);
+        var consentResponse = new PolicyConsentResponse(
+                20L,
+                "2026-10-29-v1",
+                LocalDateTime.of(2026, 10, 30, 9, 0),
+                true,
+                false
         );
+        when(consentService.saveCurrent(7L, consentRequest)).thenReturn(consentResponse);
+        when(consentService.findCurrent(7L)).thenReturn(consentResponse);
 
         var mvc = MockMvcBuilders.standaloneSetup(
                 new UserController(userService, consentService, users)
@@ -63,11 +70,16 @@ class UserControllerTest {
         mvc.perform(post("/users/me/policy-consents")
                         .principal(auth)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"allAgreed\":true}"))
+                        .content("{\"requiredAgreed\":true,\"optionalAgreed\":false}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.allAgreed").value(true));
+                .andExpect(jsonPath("$.requiredAgreed").value(true))
+                .andExpect(jsonPath("$.optionalAgreed").value(false));
+        mvc.perform(get("/users/me/policy-consents").principal(auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.policyVersion").value("2026-10-29-v1"));
 
         verify(userService).getMyInfo(7L);
-        verify(consentService).agreeAll(7L);
+        verify(consentService).saveCurrent(7L, consentRequest);
+        verify(consentService).findCurrent(7L);
     }
 }

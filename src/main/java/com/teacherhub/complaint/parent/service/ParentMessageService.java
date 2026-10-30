@@ -10,6 +10,7 @@ import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
+import com.teacherhub.complaint.exception.ContentVersionConflictException;
 import com.teacherhub.complaint.exception.MessageDraftNotFoundException;
 import com.teacherhub.complaint.exception.MessageNotEditableException;
 import com.teacherhub.complaint.parent.dto.message.ComplaintConversationResponse;
@@ -54,7 +55,10 @@ public class ParentMessageService {
                 ));
 
         if (draft.getId() != null) {
+            verifyContentVersion(request.expectedContentVersion(), draft.getContentVersion());
             draft.updateDraft(request.content());
+        } else if (request.expectedContentVersion() != null) {
+            throw new ContentVersionConflictException(request.expectedContentVersion(), 0);
         }
         return ParentMessageResponse.from(messageRepository.saveAndFlush(draft));
     }
@@ -74,10 +78,16 @@ public class ParentMessageService {
     }
 
     @Transactional
-    public ParentMessageResponse submit(Long userId, Long complaintId, Long messageId) {
+    public ParentMessageResponse submit(
+            Long userId,
+            Long complaintId,
+            Long messageId,
+            Long expectedContentVersion
+    ) {
         User user = findUser(userId);
         Complaint complaint = findParentTurnForUpdate(user, complaintId);
         ComplaintMessage message = findOwnedDraft(userId, complaintId, messageId);
+        verifyContentVersion(expectedContentVersion, message.getContentVersion());
 
         riskAnalysisService.analyzeMessageForSubmission(userId, complaintId, messageId);
         markLatestTeacherMessageRead(complaintId, user);
@@ -164,5 +174,14 @@ public class ParentMessageService {
     private User findUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("사용자를 찾을 수 없습니다."));
+    }
+
+    private void verifyContentVersion(Long expectedVersion, long currentVersion) {
+        if (expectedVersion == null) {
+            throw ContentVersionConflictException.expectedVersionRequired(currentVersion);
+        }
+        if (expectedVersion != currentVersion) {
+            throw new ContentVersionConflictException(expectedVersion, currentVersion);
+        }
     }
 }

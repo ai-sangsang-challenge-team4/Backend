@@ -148,6 +148,24 @@ class TeacherResponseServiceTest {
         assertThat(service.generateAiDraft(7L, 42L).content()).isEqualTo("답변 초안");
     }
 
+    @Test
+    void closeBeforeTeacherReplyUsesResponseNotEditableWithConcreteReason() {
+        User teacher = mock(User.class);
+        Complaint complaint = editableComplaint();
+        when(users.findById(7L)).thenReturn(Optional.of(teacher));
+        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
+        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.empty());
+        when(riskAnalyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                42L, MessageStatus.DRAFT)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.close(7L, 42L))
+                .isInstanceOf(ResponseNotEditableException.class)
+                .hasMessageContaining("교사 답변 전송 후", "학부모 응답");
+
+        verify(complaint, never()).closeByTeacher();
+    }
+
     private Complaint editableComplaint() {
         Complaint complaint = mock(Complaint.class);
         when(complaint.getId()).thenReturn(42L);

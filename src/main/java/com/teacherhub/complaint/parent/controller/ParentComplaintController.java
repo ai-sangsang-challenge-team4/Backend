@@ -9,6 +9,7 @@ import com.teacherhub.complaint.parent.service.ParentComplaintService;
 import com.teacherhub.complaint.parent.dto.message.ComplaintConversationResponse;
 import com.teacherhub.complaint.parent.dto.message.ParentMessageRequest;
 import com.teacherhub.complaint.parent.dto.message.ParentMessageResponse;
+import com.teacherhub.complaint.parent.dto.message.ParentMessageSendRequest;
 import com.teacherhub.complaint.parent.service.ParentMessageService;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.query.dto.ComplaintDetailResponse;
@@ -172,13 +173,13 @@ public class ParentComplaintController {
     }
 
     // 교사 답변 이후 학부모의 추가 문의 임시 저장(없으면 생성, 있으면 수정)
-    @Operation(summary = "추가 문의 초안 저장", description = "교사 답변 이후 학부모 추가 문의를 생성하거나 수정합니다.", responses = {
+    @Operation(summary = "추가 문의 초안 저장", description = "교사 답변 이후 학부모 추가 문의를 생성하거나 수정합니다. 기존 초안 수정 시 expectedContentVersion이 현재 버전과 다르면 CONTENT_VERSION_CONFLICT로 거절합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "추가 문의 초안 저장 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "400", description = "입력값 검증 실패",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "학부모가 작성할 차례가 아님",
+            @ApiResponse(responseCode = "409", description = "학부모가 작성할 차례가 아니거나 CONTENT_VERSION_CONFLICT",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PutMapping("/{complaintId}/message-draft")
@@ -212,23 +213,25 @@ public class ParentComplaintController {
     }
 
     // 학부모 추가 문의 전송
-    @Operation(summary = "추가 문의 전송", description = "추가 문의의 위험 분석을 시도한 뒤 전송하며 AI 분석에 실패해도 원문 전송은 유지합니다.", responses = {
+    @Operation(summary = "추가 문의 전송", description = "expectedContentVersion과 현재 초안 버전이 일치할 때만 위험 분석 후 전송합니다. 검사와 전송은 같은 트랜잭션에서 처리합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "추가 문의 전송 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "민원 또는 메시지 초안을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "전송 가능한 상태가 아님",
+            @ApiResponse(responseCode = "409", description = "전송 가능한 상태가 아니거나 CONTENT_VERSION_CONFLICT",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PostMapping("/{complaintId}/messages/{messageId}/send")
     public ResponseEntity<ParentMessageResponse> sendMessage(
             @Parameter(hidden = true) Authentication authentication,
             @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId,
-            @Parameter(description = "추가 문의 메시지 ID", example = "101") @PathVariable Long messageId
+            @Parameter(description = "추가 문의 메시지 ID", example = "101") @PathVariable Long messageId,
+            @Valid @RequestBody ParentMessageSendRequest request
     ) {
         return ResponseEntity.ok(parentMessageService.submit(
                 userId(authentication),
                 complaintId,
-                messageId
+                messageId,
+                request.expectedContentVersion()
         ));
     }
 

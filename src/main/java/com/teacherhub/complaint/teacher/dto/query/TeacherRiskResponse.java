@@ -18,14 +18,20 @@ public record TeacherRiskResponse(
         Long complaintId,
         @Schema(description = "완료된 위험 분석 ID. 분석이 없으면 null", nullable = true)
         Long riskAnalysisId,
-        @Schema(description = "시스템 위험 점수. 분석이 없으면 null", nullable = true)
+        @Schema(description = "시스템 위험 점수(0~70). 감지된 태그 점수 합계이며 분석이 없으면 null", minimum = "0", maximum = "70", nullable = true)
         Integer riskScore,
         @Schema(description = "시스템 위험 등급. 분석이 없으면 null", nullable = true)
         RiskLevel riskLevel,
-        @Schema(description = "최신 교사 검토 점수. 분석이 없으면 null", nullable = true)
+        @Schema(description = "최신 교사 검토 선택값(1~7). 교사가 실제로 검토한 적이 없으면 null", minimum = "1", maximum = "7", nullable = true)
+        Integer reviewScale,
+        @Schema(description = "최신 교사 검토 위험 점수(10~70). reviewScale에 10을 곱한 값이며 실제 검토가 없으면 null", minimum = "10", maximum = "70", nullable = true)
         Integer reviewScore,
-        @Schema(description = "최신 교사 검토 등급. 분석이 없으면 null", nullable = true)
+        @Schema(description = "최신 교사 검토 등급. 교사가 실제로 검토한 적이 없으면 null", nullable = true)
         RiskLevel reviewLevel,
+        @Schema(description = "현재 적용 중인 위험 점수(0~70). 교사 검토가 있으면 reviewScore, 없으면 riskScore", minimum = "0", maximum = "70", nullable = true)
+        Integer currentRiskScore,
+        @Schema(description = "현재 적용 중인 위험 등급. 교사 검토가 있으면 reviewLevel, 없으면 riskLevel", nullable = true)
+        RiskLevel currentRiskLevel,
         boolean safetyLock,
         @Schema(description = "분석 완료 시각. 분석이 없으면 null", nullable = true)
         LocalDateTime analyzedAt,
@@ -38,7 +44,6 @@ public record TeacherRiskResponse(
             RiskAnalysis analysis,
             List<ComplaintRiskTag> riskTags,
             RiskReview latestReview,
-            int initialReviewScore,
             boolean safetyLock
     ) {
         List<DetectedFactor> detectedFactors = riskTags.stream()
@@ -50,7 +55,16 @@ public record TeacherRiskResponse(
                 analysis.getId(),
                 analysis.getRiskScore(),
                 analysis.getRiskLevel(),
-                latestReview == null ? initialReviewScore : latestReview.getReviewedScore(),
+                latestReview == null ? null : latestReview.getReviewedScore(),
+                latestReview == null
+                        ? null
+                        : com.teacherhub.complaint.teacher.policy.TeacherRiskScale
+                                .riskScoreForScale(latestReview.getReviewedScore()),
+                latestReview == null ? null : latestReview.getReviewedLevel(),
+                latestReview == null
+                        ? analysis.getRiskScore()
+                        : com.teacherhub.complaint.teacher.policy.TeacherRiskScale
+                                .riskScoreForScale(latestReview.getReviewedScore()),
                 latestReview == null ? analysis.getRiskLevel() : latestReview.getReviewedLevel(),
                 safetyLock,
                 analysis.getAnalyzedAt(),
@@ -62,6 +76,9 @@ public record TeacherRiskResponse(
     public static TeacherRiskResponse unavailable(Long complaintId, boolean safetyLock) {
         return new TeacherRiskResponse(
                 complaintId,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,

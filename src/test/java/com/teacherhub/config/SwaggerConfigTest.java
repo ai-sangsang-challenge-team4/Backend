@@ -10,6 +10,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SwaggerConfigTest {
 
     @Test
+    void conversationMessageSchemasHaveDistinctNames() {
+        var parentSchema = com.teacherhub.complaint.parent.dto.message
+                .ComplaintConversationResponse.Message.class
+                .getAnnotation(io.swagger.v3.oas.annotations.media.Schema.class);
+        var teacherSchema = com.teacherhub.complaint.teacher.dto.query
+                .TeacherConversationResponse.Message.class
+                .getAnnotation(io.swagger.v3.oas.annotations.media.Schema.class);
+
+        assertThat(parentSchema.name()).isEqualTo("ParentConversationMessage");
+        assertThat(teacherSchema.name()).isEqualTo("TeacherConversationMessage");
+    }
+
+    @Test
     void addsCustomExceptionStatusResponsesAndPreservesEndpointDocumentation() {
         SwaggerConfig config = new SwaggerConfig();
         Operation operation = new Operation().responses(new ApiResponses()

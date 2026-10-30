@@ -4,11 +4,15 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 
-@Schema(description = "현재 정책 전체 동의 요청")
+@Schema(description = "현재 정책 동의 요청")
 public record PolicyConsentRequest(
-        @NotNull(message = "전체 동의 여부가 필요합니다.")
-        @AssertTrue(message = "전체 필수 항목에 동의해야 저장할 수 있습니다.")
-        @Schema(description = "전체 필수 항목 동의 여부", example = "true")
-        Boolean allAgreed
+        @NotNull(message = "필수 정책 동의 여부가 필요합니다.")
+        @AssertTrue(message = "필수 정책에 동의해야 합니다.")
+        @Schema(description = "이용약관·개인정보 처리 등 필수 정책 동의 여부", example = "true")
+        Boolean requiredAgreed,
+
+        @NotNull(message = "선택 정책 동의 여부가 필요합니다.")
+        @Schema(description = "마케팅·알림 등 선택 정책 동의 여부", example = "false")
+        Boolean optionalAgreed
 ) {
 }

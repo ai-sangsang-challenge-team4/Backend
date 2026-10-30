@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Size;
 
 @Schema(description = "회원가입 요청")
@@ -45,7 +46,16 @@ public record SignupRequest(
 
         @Schema(description = "자녀 이름. PARENT 역할일 때 필수", example = "김학생", nullable = true)
         @Size(max = 50, message = "자녀 이름은 50자 이하로 입력해주세요.")
-        String studentName
+        String studentName,
+
+        @NotNull(message = "필수 정책 동의 여부가 필요합니다.")
+        @AssertTrue(message = "필수 정책에 동의해야 회원가입할 수 있습니다.")
+        @Schema(description = "이용약관·개인정보 처리 등 필수 정책 동의 여부", example = "true")
+        Boolean requiredAgreed,
+
+        @NotNull(message = "선택 정책 동의 여부가 필요합니다.")
+        @Schema(description = "마케팅·알림 등 선택 정책 동의 여부", example = "false")
+        Boolean optionalAgreed
 
 ) {
 }

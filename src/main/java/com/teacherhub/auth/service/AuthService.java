@@ -20,6 +20,7 @@ import com.teacherhub.user.repository.TeacherRepository;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.enums.UserRole;
 import com.teacherhub.user.repository.UserRepository;
+import com.teacherhub.user.consent.service.PolicyConsentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -36,6 +37,7 @@ public class AuthService {
     private final StudentClassRepository studentClassRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final PolicyConsentService policyConsentService;
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
@@ -49,6 +51,12 @@ public class AuthService {
         }
         if (request.schoolId() == null) {
             throw new SignupValidationException("학교를 선택해야 합니다.");
+        }
+        if (!Boolean.TRUE.equals(request.requiredAgreed())) {
+            throw new SignupValidationException("필수 정책에 동의해야 회원가입할 수 있습니다.");
+        }
+        if (request.optionalAgreed() == null) {
+            throw new SignupValidationException("선택 정책 동의 여부가 필요합니다.");
         }
 
         StudentClass studentClass = request.role() == UserRole.PARENT
@@ -80,6 +88,12 @@ public class AuthService {
         if (savedUser.getRole() == UserRole.TEACHER) {
             teacher.register(savedUser);
         }
+
+        policyConsentService.recordSignupConsent(
+                savedUser,
+                request.requiredAgreed(),
+                request.optionalAgreed()
+        );
 
         return new SignupResponse(
                 savedUser.getId(),

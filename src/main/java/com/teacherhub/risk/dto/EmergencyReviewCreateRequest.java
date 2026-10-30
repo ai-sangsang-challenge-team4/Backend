@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 
 @Schema(description = "Emergency 위험도 재검토 요청")
 public record EmergencyReviewCreateRequest(
+        @Schema(description = "교사 재검토 선택값(1~6). 서버에서 10을 곱해 위험 점수 10~60으로 환산합니다.", example = "5")
         @Min(value = 1, message = "위험 점수는 1점 이상이어야 합니다.")
         @Max(value = 6, message = "Emergency 재검토 요청 점수는 6점 이하여야 합니다.")
         int riskScore,

@@ -107,7 +107,7 @@ public class DevDataInitializer implements ApplicationRunner {
         // 긴급 판정 규칙을 실행하지 않고도 관리자 공유 흐름을 검증할 수 있는 개발용 분석 결과다.
         RiskAnalysis emergencyAnalysis = new RiskAnalysis(
                 emergencyComplaint,
-                30,
+                70,
                 RiskLevel.EMERGENCY,
                 "dev-emergency-fixture",
                 0.0

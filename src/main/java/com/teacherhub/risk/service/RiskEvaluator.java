@@ -249,13 +249,16 @@ public class RiskEvaluator {
                     "위험 점수는 음수일 수 없습니다."
             );
         }
-        if (score <= 1) {
+        if (score <= 20) {
             return RiskLevel.LOW;
         }
-        if (score <= 4) {
+        if (score <= 40) {
             return RiskLevel.MEDIUM;
         }
-        return RiskLevel.HIGH;
+        if (score <= 60) {
+            return RiskLevel.HIGH;
+        }
+        return RiskLevel.EMERGENCY;
     }
 
 }

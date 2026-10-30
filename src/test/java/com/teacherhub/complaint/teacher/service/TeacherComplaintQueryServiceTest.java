@@ -11,7 +11,6 @@ import com.teacherhub.complaint.history.service.ComplaintHistoryService;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
-import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
@@ -51,10 +50,9 @@ class TeacherComplaintQueryServiceTest {
         ComplaintHistoryService historyService = mock(ComplaintHistoryService.class);
         TeacherSupportContentProvider supportContent = mock(TeacherSupportContentProvider.class);
         TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
-        TeacherRiskScale riskScale = mock(TeacherRiskScale.class);
         TeacherComplaintQueryService service = new TeacherComplaintQueryService(
                 complaints, events, messages, analyses, reviews, emergencyReviews, riskTags,
-                studentClasses, users, accessPolicy, historyService, supportContent, supportPolicy, riskScale);
+                studentClasses, users, accessPolicy, historyService, supportContent, supportPolicy);
 
         User teacher = mock(User.class);
         User parent = mock(User.class);
@@ -121,10 +119,9 @@ class TeacherComplaintQueryServiceTest {
         ComplaintHistoryService historyService = mock(ComplaintHistoryService.class);
         TeacherSupportContentProvider supportContent = mock(TeacherSupportContentProvider.class);
         TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
-        TeacherRiskScale riskScale = mock(TeacherRiskScale.class);
         TeacherComplaintQueryService service = new TeacherComplaintQueryService(
                 complaints, events, messages, analyses, reviews, emergencyReviews, riskTags,
-                studentClasses, users, accessPolicy, historyService, supportContent, supportPolicy, riskScale);
+                studentClasses, users, accessPolicy, historyService, supportContent, supportPolicy);
 
         User teacher = mock(User.class);
         Complaint complaint = mock(Complaint.class);
@@ -167,6 +164,7 @@ class TeacherComplaintQueryServiceTest {
         when(analysis.getComplaint()).thenReturn(complaint);
         when(complaint.getId()).thenReturn(42L);
         when(analysis.getId()).thenReturn(100L);
+        when(analysis.getRiskScore()).thenReturn(55);
         when(analysis.getRiskLevel()).thenReturn(RiskLevel.HIGH);
         when(result.getRiskTag()).thenReturn(definition);
         when(result.effectiveFinalState()).thenReturn(com.teacherhub.risk.enums.RiskTagState.PRESENT);
@@ -179,9 +177,15 @@ class TeacherComplaintQueryServiceTest {
                 analysis,
                 List.of(result),
                 null,
-                5,
                 false
         );
+
+        assertThat(response.riskScore()).isEqualTo(55);
+        assertThat(response.reviewScale()).isNull();
+        assertThat(response.reviewScore()).isNull();
+        assertThat(response.reviewLevel()).isNull();
+        assertThat(response.currentRiskScore()).isEqualTo(55);
+        assertThat(response.currentRiskLevel()).isEqualTo(RiskLevel.HIGH);
 
         assertThat(response.detectedFactors()).singleElement().satisfies(factor ->
                 assertThat(factor.evidenceSpans())

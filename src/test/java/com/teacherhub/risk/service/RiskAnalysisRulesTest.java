@@ -119,7 +119,12 @@ class RiskAnalysisRulesTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"0,LOW", "1,LOW", "2,MEDIUM", "4,MEDIUM", "5,HIGH", "60,HIGH"})
+    @CsvSource({
+            "0,LOW", "20,LOW",
+            "21,MEDIUM", "40,MEDIUM",
+            "41,HIGH", "60,HIGH",
+            "61,EMERGENCY", "70,EMERGENCY"
+    })
     void classifiesBoundaryScores(int score, RiskLevel expected) {
         weights(score);
         var result = analyze(List.of(new RiskTagDetectionResult(THREAT, true, null, "evidence")), List.of());
