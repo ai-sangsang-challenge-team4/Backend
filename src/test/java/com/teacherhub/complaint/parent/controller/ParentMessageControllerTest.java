@@ -52,6 +52,8 @@ class ParentMessageControllerTest {
                         30L, 42L, "추가 문의", MessageStatus.SENT, WaitingFor.TEACHER,
                         1, now, now, now
                 ));
+        when(messageService.submit(7L, 42L, 30L, null))
+                .thenThrow(ContentVersionConflictException.expectedVersionRequired(1));
         when(messageService.saveDraft(7L, 42L, new ParentMessageRequest("충돌 내용", 1L)))
                 .thenThrow(new ContentVersionConflictException(1L, 2L));
 
@@ -86,7 +88,15 @@ class ParentMessageControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("CONTENT_VERSION_CONFLICT"));
 
+        mvc.perform(post("/complaints/42/messages/30/send")
+                        .principal(auth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONTENT_VERSION_CONFLICT"));
+
         verify(messageService).saveDraft(7L, 42L, new ParentMessageRequest("추가 문의", null));
         verify(messageService).submit(7L, 42L, 30L, 1L);
+        verify(messageService).submit(7L, 42L, 30L, null);
     }
 }

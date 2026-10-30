@@ -161,8 +161,24 @@ class TeacherResponseServiceTest {
 
         assertThatThrownBy(() -> service.close(7L, 42L))
                 .isInstanceOf(ResponseNotEditableException.class)
-                .hasMessageContaining("교사 답변 전송 후", "학부모 응답");
+                .hasMessageContainingAll("교사 답변 전송 후", "학부모 응답");
 
+        verify(complaint, never()).closeByTeacher();
+    }
+
+    @Test
+    void repeatedCloseReportsAlreadyCompletedBeforeCheckingEmergencyPolicy() {
+        User teacher = mock(User.class);
+        Complaint complaint = mock(Complaint.class);
+        when(users.findById(7L)).thenReturn(Optional.of(teacher));
+        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
+        when(complaint.getStatus()).thenReturn(ComplaintStatus.CLOSED);
+
+        assertThatThrownBy(() -> service.close(7L, 42L))
+                .isInstanceOf(ResponseNotEditableException.class)
+                .hasMessage("이미 완료된 민원은 다시 완료 처리할 수 없습니다.");
+
+        verifyNoInteractions(emergencyReviews, riskAnalyses, riskReviews);
         verify(complaint, never()).closeByTeacher();
     }
 
