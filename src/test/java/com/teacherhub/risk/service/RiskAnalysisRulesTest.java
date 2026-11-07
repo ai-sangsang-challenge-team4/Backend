@@ -139,7 +139,7 @@ class RiskAnalysisRulesTest {
     }
 
     @Test
-    void mergesSourcesCountsEachTagOnceAndPreservesEvidence() {
+    void claudeSecondPassOverridesRuleAndPreservesSourceStates() {
         var result = analyze(
                 List.of(
                         new RiskTagDetectionResult(
@@ -184,30 +184,60 @@ class RiskAnalysisRulesTest {
                 .containsExactly(RiskTagCode.values());
 
         assertThat(result.tags())
+                .filteredOn(tag -> tag.code() == PROFANITY)
+                .singleElement()
+                .satisfies(tag -> {
+                    assertThat(tag.state())
+                            .isEqualTo(RiskTagState.ABSENT);
+                    assertThat(tag.ruleState())
+                            .isEqualTo(RiskTagState.PRESENT);
+                    assertThat(tag.llmState())
+                            .isEqualTo(RiskTagState.ABSENT);
+                    assertThat(tag.evidenceSpans())
+                            .isEmpty();
+                    assertThat(tag.reason())
+                            .isNull();
+                });
+
+        assertThat(result.tags())
                 .filteredOn(tag -> tag.code() == THREAT)
                 .singleElement()
                 .satisfies(tag -> {
                     assertThat(tag.state())
                             .isEqualTo(RiskTagState.PRESENT);
-
                     assertThat(tag.ruleState())
                             .isEqualTo(RiskTagState.PRESENT);
-
                     assertThat(tag.llmState())
                             .isEqualTo(RiskTagState.PRESENT);
-
                     assertThat(tag.evidenceSpans())
                             .extracting(
                                     com.teacherhub.risk.dto.detection.EvidenceSpan::text
                             )
                             .containsExactly(
-                                    "rule evidence",
                                     "llm evidence"
                             );
-
                     assertThat(tag.reason())
                             .isEqualTo(
-                                    "rule reason\nllm reason"
+                                    "llm reason"
+                            );
+                });
+
+        assertThat(result.tags())
+                .filteredOn(tag -> tag.code() == UNFAIR_REQUEST)
+                .singleElement()
+                .satisfies(tag -> {
+                    assertThat(tag.state())
+                            .isEqualTo(RiskTagState.PRESENT);
+                    assertThat(tag.ruleState())
+                            .isEqualTo(RiskTagState.ABSENT);
+                    assertThat(tag.llmState())
+                            .isEqualTo(RiskTagState.PRESENT);
+                    assertThat(tag.evidenceSpans())
+                            .extracting(
+                                    com.teacherhub.risk.dto.detection.EvidenceSpan::text
+                            )
+                            .containsExactly(
+                                    "llm only"
                             );
                 });
 
@@ -218,7 +248,7 @@ class RiskAnalysisRulesTest {
                 .isEqualTo(RiskTagState.ABSENT);
 
         assertThat(result.riskScore())
-                .isEqualTo(5);
+                .isEqualTo(4);
     }
 
     @Test
