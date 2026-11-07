@@ -4,9 +4,7 @@ import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
-
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
-
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
@@ -24,13 +22,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+
 import java.util.*;
 
 import static com.teacherhub.risk.enums.RiskTagCode.*;
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 class RiskAnalysisRulesTest {
+
     private final ComplaintRepository complaints = mock(ComplaintRepository.class);
     private final ComplaintMessageRepository messages = mock(ComplaintMessageRepository.class);
     private final ComplaintEventRepository events = mock(ComplaintEventRepository.class);
@@ -41,155 +43,464 @@ class RiskAnalysisRulesTest {
     private final ComplaintRiskTagRepository results = mock(ComplaintRiskTagRepository.class);
     private final ComplaintRevisionGenerator revisions = mock(ComplaintRevisionGenerator.class);
     private final RiskEvaluator evaluator = new RiskEvaluator();
-    private final RiskAnalysisService service = new RiskAnalysisService(complaints, messages, events,
-            new PiiMaskingServiceImpl(), rules, llm, definitions, analyses, results, revisions, evaluator);
+
+    private final RiskAnalysisService service = new RiskAnalysisService(
+            complaints,
+            messages,
+            events,
+            new PiiMaskingServiceImpl(),
+            rules,
+            llm,
+            definitions,
+            analyses,
+            results,
+            revisions,
+            evaluator
+    );
 
     @BeforeEach
     void setUp() {
         User user = mock(User.class);
         when(user.getId()).thenReturn(1L);
-        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(new Complaint(
-                new Parent(user), null, mock(com.teacherhub.user.entity.Teacher.class), "민원 제목", "민원 내용"
-        )));
-        when(analyses.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(revisions.generate(anyString(), any())).thenReturn(new RevisionResult(new FinalRevision("reason", "revision"), List.of()));
+
+        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(
+                new Complaint(
+                        new Parent(user),
+                        null,
+                        mock(com.teacherhub.user.entity.Teacher.class),
+                        "민원 제목",
+                        "민원 내용"
+                )
+        ));
+
+        when(analyses.save(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(revisions.generate(anyString(), any()))
+                .thenReturn(
+                        new RevisionResult(
+                                new FinalRevision("reason", "revision"),
+                                List.of()
+                        )
+                );
+
         weights(3);
     }
 
     private void weights(Integer threatScore) {
         var configuredTags = Arrays.stream(RiskTagCode.values())
-                .map(code -> new RiskTag(code, code.name(), code == THREAT ? threatScore : Integer.valueOf(1)))
+                .map(code -> new RiskTag(
+                        code,
+                        code.name(),
+                        code == THREAT
+                                ? threatScore
+                                : Integer.valueOf(1)
+                ))
                 .toList();
-        when(definitions.findAll()).thenReturn(configuredTags);
+
+        when(definitions.findAll())
+                .thenReturn(configuredTags);
     }
 
-    private RiskEvaluation analyze(List<RiskTagDetectionResult> ruleTags, List<RiskTagDetectionResult> llmTags) {
-        when(rules.detect(anyString())).thenReturn(ruleTags);
-        when(llm.analyze(anyString())).thenReturn(new LlmRiskAnalysisResult(
-                llmTags,
-                new LlmAnalysisMetadata("test", 0.0)));
+    private RiskEvaluation analyze(
+            List<RiskTagDetectionResult> ruleTags,
+            List<RiskTagDetectionResult> llmTags
+    ) {
+        when(rules.detect(anyString()))
+                .thenReturn(ruleTags);
+
+        when(llm.analyze(anyString(), anyList()))
+                .thenReturn(
+                        new LlmRiskAnalysisResult(
+                                llmTags,
+                                new LlmAnalysisMetadata(
+                                        "test",
+                                        0.0
+                                )
+                        )
+                );
+
         clearInvocations(revisions);
+
         service.analyze(1L, 42L);
-        var captured = org.mockito.ArgumentCaptor.forClass(RiskEvaluation.class);
-        verify(revisions).generate(anyString(), captured.capture());
+
+        var captured =
+                org.mockito.ArgumentCaptor.forClass(
+                        RiskEvaluation.class
+                );
+
+        verify(revisions)
+                .generate(
+                        anyString(),
+                        captured.capture()
+                );
+
         return captured.getValue();
     }
 
     @Test
-    void mergesSourcesCountsEachTagOnceAndPreservesEvidence() {
-        var result = analyze(List.of(
-                new RiskTagDetectionResult(PROFANITY, true, null, "rule only"),
-                new RiskTagDetectionResult(THREAT, true, null,
-                        "rule evidence", "rule reason")
-        ), List.of(
-                new RiskTagDetectionResult(THREAT, true, 0.9,
-                        "llm evidence", "llm reason"),
-                new RiskTagDetectionResult(UNFAIR_REQUEST, true, 0.8, "llm only"),
-                new RiskTagDetectionResult(PROFANITY, false, 0.1, "not detected")
-        ));
-        assertThat(result.tags()).extracting(FinalRiskTagResponse::code).containsExactly(RiskTagCode.values());
-        assertThat(result.tags()).filteredOn(tag -> tag.code() == THREAT).singleElement().satisfies(tag -> {
-            assertThat(tag.state()).isEqualTo(RiskTagState.PRESENT);
-            assertThat(tag.ruleState()).isEqualTo(RiskTagState.PRESENT);
-            assertThat(tag.llmState()).isEqualTo(RiskTagState.PRESENT);
-            assertThat(tag.evidenceSpans()).extracting(com.teacherhub.risk.dto.detection.EvidenceSpan::text)
-                    .containsExactly("rule evidence", "llm evidence");
-            assertThat(tag.reason()).isEqualTo("rule reason\nllm reason");
-        });
-        assertThat(result.tags()).filteredOn(tag -> tag.code() == PRIVACY).singleElement()
-                .extracting(FinalRiskTagResponse::state).isEqualTo(RiskTagState.ABSENT);
-        assertThat(result.riskScore()).isEqualTo(5);
+    void claudeSecondPassOverridesRuleAndPreservesSourceStates() {
+        var result = analyze(
+                List.of(
+                        new RiskTagDetectionResult(
+                                PROFANITY,
+                                true,
+                                null,
+                                "rule only"
+                        ),
+                        new RiskTagDetectionResult(
+                                THREAT,
+                                true,
+                                null,
+                                "rule evidence",
+                                "rule reason"
+                        )
+                ),
+                List.of(
+                        new RiskTagDetectionResult(
+                                THREAT,
+                                true,
+                                0.9,
+                                "llm evidence",
+                                "llm reason"
+                        ),
+                        new RiskTagDetectionResult(
+                                UNFAIR_REQUEST,
+                                true,
+                                0.8,
+                                "llm only"
+                        ),
+                        new RiskTagDetectionResult(
+                                PROFANITY,
+                                false,
+                                0.1,
+                                "not detected"
+                        )
+                )
+        );
+
+        assertThat(result.tags())
+                .extracting(FinalRiskTagResponse::code)
+                .containsExactly(RiskTagCode.values());
+
+        assertThat(result.tags())
+                .filteredOn(tag -> tag.code() == PROFANITY)
+                .singleElement()
+                .satisfies(tag -> {
+                    assertThat(tag.state())
+                            .isEqualTo(RiskTagState.ABSENT);
+                    assertThat(tag.ruleState())
+                            .isEqualTo(RiskTagState.PRESENT);
+                    assertThat(tag.llmState())
+                            .isEqualTo(RiskTagState.ABSENT);
+                    assertThat(tag.evidenceSpans())
+                            .isEmpty();
+                    assertThat(tag.reason())
+                            .isNull();
+                });
+
+        assertThat(result.tags())
+                .filteredOn(tag -> tag.code() == THREAT)
+                .singleElement()
+                .satisfies(tag -> {
+                    assertThat(tag.state())
+                            .isEqualTo(RiskTagState.PRESENT);
+                    assertThat(tag.ruleState())
+                            .isEqualTo(RiskTagState.PRESENT);
+                    assertThat(tag.llmState())
+                            .isEqualTo(RiskTagState.PRESENT);
+                    assertThat(tag.evidenceSpans())
+                            .extracting(
+                                    com.teacherhub.risk.dto.detection.EvidenceSpan::text
+                            )
+                            .containsExactly(
+                                    "llm evidence"
+                            );
+                    assertThat(tag.reason())
+                            .isEqualTo(
+                                    "llm reason"
+                            );
+                });
+
+        assertThat(result.tags())
+                .filteredOn(tag -> tag.code() == UNFAIR_REQUEST)
+                .singleElement()
+                .satisfies(tag -> {
+                    assertThat(tag.state())
+                            .isEqualTo(RiskTagState.PRESENT);
+                    assertThat(tag.ruleState())
+                            .isEqualTo(RiskTagState.ABSENT);
+                    assertThat(tag.llmState())
+                            .isEqualTo(RiskTagState.PRESENT);
+                    assertThat(tag.evidenceSpans())
+                            .extracting(
+                                    com.teacherhub.risk.dto.detection.EvidenceSpan::text
+                            )
+                            .containsExactly(
+                                    "llm only"
+                            );
+                });
+
+        assertThat(result.tags())
+                .filteredOn(tag -> tag.code() == PRIVACY)
+                .singleElement()
+                .extracting(FinalRiskTagResponse::state)
+                .isEqualTo(RiskTagState.ABSENT);
+
+        assertThat(result.riskScore())
+                .isEqualTo(4);
     }
 
     @Test
     void emptyDetectionsReturnZeroScoreAndUndetectedTags() {
-        var result = analyze(List.of(), List.of());
-        assertThat(result.riskScore()).isZero();
-        assertThat(result.riskLevel()).isEqualTo(RiskLevel.LOW);
-        assertThat(result.tags()).hasSize(RiskTagCode.values().length).allSatisfy(tag -> {
-            assertThat(tag.detected()).isFalse();
-            assertThat(tag.ruleDetected()).isFalse();
-            assertThat(tag.llmDetected()).isFalse();
-            assertThat(tag.confidence()).isNull();
-            assertThat(tag.evidence()).isNull();
-            assertThat(tag.reason()).isNull();
-        });
-        assertThat(result.tags()).filteredOn(tag -> tag.code() == REPEAT).singleElement()
-                .extracting(FinalRiskTagResponse::state).isEqualTo(RiskTagState.UNKNOWN);
+        var result = analyze(
+                List.of(),
+                List.of()
+        );
+
+        assertThat(result.riskScore())
+                .isZero();
+
+        assertThat(result.riskLevel())
+                .isEqualTo(RiskLevel.LOW);
+
+        assertThat(result.tags())
+                .hasSize(RiskTagCode.values().length)
+                .allSatisfy(tag -> {
+                    assertThat(tag.detected()).isFalse();
+                    assertThat(tag.ruleDetected()).isFalse();
+                    assertThat(tag.llmDetected()).isFalse();
+                    assertThat(tag.confidence()).isNull();
+                    assertThat(tag.evidence()).isNull();
+                    assertThat(tag.reason()).isNull();
+                });
+
+        assertThat(result.tags())
+                .filteredOn(tag -> tag.code() == REPEAT)
+                .singleElement()
+                .extracting(FinalRiskTagResponse::state)
+                .isEqualTo(RiskTagState.UNKNOWN);
     }
 
     @ParameterizedTest
     @CsvSource({
-            "0,LOW", "20,LOW",
-            "21,MEDIUM", "40,MEDIUM",
-            "41,HIGH", "60,HIGH",
-            "61,EMERGENCY", "70,EMERGENCY"
+            "0,LOW",
+            "20,LOW",
+            "21,MEDIUM",
+            "40,MEDIUM",
+            "41,HIGH",
+            "60,HIGH",
+            "61,EMERGENCY",
+            "70,EMERGENCY"
     })
-    void classifiesBoundaryScores(int score, RiskLevel expected) {
+    void classifiesBoundaryScores(
+            int score,
+            RiskLevel expected
+    ) {
         weights(score);
-        var result = analyze(List.of(new RiskTagDetectionResult(THREAT, true, null, "evidence")), List.of());
-        assertThat(result.riskScore()).isEqualTo(score);
-        assertThat(result.riskLevel()).isEqualTo(expected);
+
+        var result = analyze(
+                List.of(
+                        new RiskTagDetectionResult(
+                                THREAT,
+                                true,
+                                null,
+                                "evidence"
+                        )
+                ),
+                List.of()
+        );
+
+        assertThat(result.riskScore())
+                .isEqualTo(score);
+
+        assertThat(result.riskLevel())
+                .isEqualTo(expected);
     }
 
     @Test
     void rejectsMissingOrInvalidWeightsBeforeSaving() {
-        var detected = List.of(new RiskTagDetectionResult(THREAT, true, null, "evidence"));
-        when(definitions.findAll()).thenReturn(List.of());
-        assertThatThrownBy(() -> analyze(detected, List.of())).isInstanceOf(IllegalStateException.class);
+        var detected = List.of(
+                new RiskTagDetectionResult(
+                        THREAT,
+                        true,
+                        null,
+                        "evidence"
+                )
+        );
+
+        when(definitions.findAll())
+                .thenReturn(List.of());
+
+        assertThatThrownBy(
+                () -> analyze(
+                        detected,
+                        List.of()
+                )
+        ).isInstanceOf(
+                IllegalStateException.class
+        );
+
         weights(-1);
-        assertThatThrownBy(() -> analyze(detected, List.of())).isInstanceOf(IllegalStateException.class);
+
+        assertThatThrownBy(
+                () -> analyze(
+                        detected,
+                        List.of()
+                )
+        ).isInstanceOf(
+                IllegalStateException.class
+        );
+
         weights(null);
-        assertThatThrownBy(() -> analyze(detected, List.of())).isInstanceOf(IllegalStateException.class);
-        verify(analyses, never()).save(any());
-        verifyNoInteractions(results, revisions);
+
+        assertThatThrownBy(
+                () -> analyze(
+                        detected,
+                        List.of()
+                )
+        ).isInstanceOf(
+                IllegalStateException.class
+        );
+
+        verify(analyses, never())
+                .save(any());
+
+        verifyNoInteractions(
+                results,
+                revisions
+        );
     }
 
     @Test
     void failedRevisionDoesNotMarkAnalysisCompleted() {
-        when(revisions.generate(anyString(), any())).thenThrow(new IllegalStateException("AI failure"));
-        assertThatThrownBy(() -> analyze(List.of(), List.of())).hasMessage("AI failure");
-        var captured = org.mockito.ArgumentCaptor.forClass(com.teacherhub.risk.entity.RiskAnalysis.class);
-        verify(analyses).save(captured.capture());
-        assertThat(captured.getValue().isCompleted()).isFalse();
+        when(revisions.generate(anyString(), any()))
+                .thenThrow(
+                        new IllegalStateException(
+                                "AI failure"
+                        )
+                );
+
+        assertThatThrownBy(
+                () -> analyze(
+                        List.of(),
+                        List.of()
+                )
+        ).hasMessage(
+                "AI failure"
+        );
+
+        var captured =
+                org.mockito.ArgumentCaptor.forClass(
+                        com.teacherhub.risk.entity.RiskAnalysis.class
+                );
+
+        verify(analyses)
+                .save(
+                        captured.capture()
+                );
+
+        assertThat(
+                captured.getValue()
+                        .isCompleted()
+        ).isFalse();
 
         clearInvocations(revisions);
-        assertThatCode(() -> service.analyzeForSubmission(1L, 42L))
-                .doesNotThrowAnyException();
+
+        assertThatCode(
+                () -> service.analyzeForSubmission(
+                        1L,
+                        42L
+                )
+        ).doesNotThrowAnyException();
+
         verifyNoInteractions(revisions);
     }
 
     @Test
     void masksOriginalRuleEvidenceBeforeRevisionGeneration() {
-        var result = analyze(List.of(new RiskTagDetectionResult(THREAT, true, null, "연락처 010-1234-5678")), List.of());
-        assertThat(result.tags()).filteredOn(FinalRiskTagResponse::detected)
-                .extracting(FinalRiskTagResponse::evidence).containsExactly("연락처 [전화번호]");
-        verify(revisions).generate("민원 내용", result);
+        var result = analyze(
+                List.of(
+                        new RiskTagDetectionResult(
+                                THREAT,
+                                true,
+                                null,
+                                "연락처 010-1234-5678"
+                        )
+                ),
+                List.of()
+        );
+
+        assertThat(result.tags())
+                .filteredOn(FinalRiskTagResponse::detected)
+                .extracting(FinalRiskTagResponse::evidence)
+                .containsExactly(
+                        "연락처 [전화번호]"
+                );
+
+        verify(revisions)
+                .generate(
+                        "민원 내용",
+                        result
+                );
     }
 
     @Test
     void presentWithoutEvidenceIsDowngradedToBoundaryAndDoesNotIncreaseScore() {
-        var result = analyze(List.of(new RiskTagDetectionResult(
-                THREAT,
-                RiskTagState.PRESENT,
-                null,
+        var result = analyze(
+                List.of(
+                        new RiskTagDetectionResult(
+                                THREAT,
+                                RiskTagState.PRESENT,
+                                null,
+                                List.of()
+                        )
+                ),
                 List.of()
-        )), List.of());
+        );
 
-        assertThat(result.tags()).filteredOn(tag -> tag.code() == THREAT).singleElement()
-                .extracting(FinalRiskTagResponse::state).isEqualTo(RiskTagState.BOUNDARY);
-        assertThat(result.riskScore()).isZero();
+        assertThat(result.tags())
+                .filteredOn(tag -> tag.code() == THREAT)
+                .singleElement()
+                .extracting(FinalRiskTagResponse::state)
+                .isEqualTo(RiskTagState.BOUNDARY);
+
+        assertThat(result.riskScore())
+                .isZero();
     }
 
     @Test
     void locatesEvidenceSpanInsideDetectorInput() {
-        var result = analyze(List.of(new RiskTagDetectionResult(THREAT, true, null, "민원")), List.of());
+        var result = analyze(
+                List.of(
+                        new RiskTagDetectionResult(
+                                THREAT,
+                                true,
+                                null,
+                                "민원"
+                        )
+                ),
+                List.of()
+        );
 
-        assertThat(result.tags()).filteredOn(tag -> tag.code() == THREAT).singleElement()
-                .satisfies(tag -> assertThat(tag.evidenceSpans()).singleElement().satisfies(span -> {
-                    assertThat(span.text()).isEqualTo("민원");
-                    assertThat(span.start()).isZero();
-                    assertThat(span.end()).isEqualTo(2);
-                }));
+        assertThat(result.tags())
+                .filteredOn(tag -> tag.code() == THREAT)
+                .singleElement()
+                .satisfies(tag ->
+                        assertThat(
+                                tag.evidenceSpans()
+                        )
+                                .singleElement()
+                                .satisfies(span -> {
+                                    assertThat(span.text())
+                                            .isEqualTo("민원");
+
+                                    assertThat(span.start())
+                                            .isZero();
+
+                                    assertThat(span.end())
+                                            .isEqualTo(2);
+                                })
+                );
     }
 }

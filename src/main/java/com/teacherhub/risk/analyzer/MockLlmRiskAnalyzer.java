@@ -4,18 +4,33 @@ import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
 import com.teacherhub.risk.enums.RiskTagCode;
+
 import java.util.List;
 
 public class MockLlmRiskAnalyzer implements LlmRiskAnalyzer {
+
     @Override
-    public LlmRiskAnalysisResult analyze(String maskedContent) {
+    public LlmRiskAnalysisResult analyze(
+            String maskedContent,
+            List<RiskTagDetectionResult> ruleResults
+    ) {
         // 모든 값은 파이프라인 연결 확인용 예시이며 실제 내용을 분석하지 않습니다.
         return new LlmRiskAnalysisResult(
                 List.of(
-                        new RiskTagDetectionResult(RiskTagCode.THREAT, true, 0.9,
-                                "[MOCK LLM] 협박 문맥 예시", "[MOCK LLM] 불이익을 암시하는 문맥입니다."),
-                        new RiskTagDetectionResult(RiskTagCode.UNFAIR_REQUEST, true, 0.8,
-                                "[MOCK LLM] 부당 요구 문맥 예시", "[MOCK LLM] 일방적인 조치를 요구하는 문맥입니다.")
+                        new RiskTagDetectionResult(
+                                RiskTagCode.THREAT,
+                                true,
+                                0.9,
+                                "[MOCK LLM] 협박 문맥 예시",
+                                "[MOCK LLM] 불이익을 암시하는 문맥입니다."
+                        ),
+                        new RiskTagDetectionResult(
+                                RiskTagCode.UNFAIR_REQUEST,
+                                true,
+                                0.8,
+                                "[MOCK LLM] 부당 요구 문맥 예시",
+                                "[MOCK LLM] 일방적인 조치를 요구하는 문맥입니다."
+                        )
                 ),
                 new LlmAnalysisMetadata(
                         "mock-llm",
