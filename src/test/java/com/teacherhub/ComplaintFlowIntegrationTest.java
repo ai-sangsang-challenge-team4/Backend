@@ -14,6 +14,9 @@ import com.teacherhub.risk.dto.response.RiskSummaryResponse;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 
+import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator;
+import com.teacherhub.risk.analyzer.LlmRiskAnalyzer;
+import com.teacherhub.risk.analyzer.MockLlmRiskAnalyzer;
 import com.teacherhub.risk.dto.response.RiskDetectorResponse;
 import com.teacherhub.risk.masking.ComplaintMaskingService;
 import com.teacherhub.risk.service.RiskAnalysisService;
@@ -42,14 +45,24 @@ import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 
 @SpringBootTest
 @Transactional
 public class ComplaintFlowIntegrationTest {
+    @MockitoBean
+    private LlmRiskAnalyzer llmRiskAnalyzer;
+
+    @MockitoBean
+    private ComplaintRevisionGenerator complaintRevisionGenerator;
+
     @Autowired
     private com.teacherhub.risk.repository.RiskTagRepository riskTagDefinitionRepository;
 
@@ -879,6 +892,44 @@ public class ComplaintFlowIntegrationTest {
 
     @BeforeEach
     void setUp() {
+
+        MockLlmRiskAnalyzer mockLlmRiskAnalyzer = new MockLlmRiskAnalyzer();
+        when(llmRiskAnalyzer.analyze(anyString()))
+                .thenAnswer(invocation ->
+                        mockLlmRiskAnalyzer.analyze(invocation.getArgument(0))
+                );
+
+        when(complaintRevisionGenerator.generate(
+                anyString(),
+                any(ComplaintRevisionGenerator.RiskEvaluation.class)
+        )).thenReturn(
+                new ComplaintRevisionGenerator.RevisionResult(
+                        new ComplaintRevisionGenerator.FinalRevision(
+                                "테스트용 최종 수정안",
+                                "확인을 요청드립니다."
+                        ),
+                        java.util.List.of(
+                                new ComplaintRevisionGenerator.TagRevisionSuggestion(
+                                        com.teacherhub.risk.enums.RiskTagCode.PROFANITY,
+                                        "[MOCK RULE] 욕설 예시",
+                                        "정중한 표현으로 수정",
+                                        "테스트용 욕설 수정 제안"
+                                ),
+                                new ComplaintRevisionGenerator.TagRevisionSuggestion(
+                                        com.teacherhub.risk.enums.RiskTagCode.THREAT,
+                                        "[MOCK LLM] 협박 문맥 예시",
+                                        "위협적으로 보이지 않도록 요청 표현으로 수정",
+                                        "테스트용 협박 수정 제안"
+                                ),
+                                new ComplaintRevisionGenerator.TagRevisionSuggestion(
+                                        com.teacherhub.risk.enums.RiskTagCode.UNFAIR_REQUEST,
+                                        "[MOCK LLM] 부당 요구 문맥 예시",
+                                        "사실 확인을 요청하는 표현으로 수정",
+                                        "테스트용 부당 요구 수정 제안"
+                                )
+                        )
+                )
+        );
 
         // 학부모 계정
         parentUser = new User(
