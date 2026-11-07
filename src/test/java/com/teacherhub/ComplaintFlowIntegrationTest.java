@@ -50,6 +50,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
@@ -894,9 +895,12 @@ public class ComplaintFlowIntegrationTest {
     void setUp() {
 
         MockLlmRiskAnalyzer mockLlmRiskAnalyzer = new MockLlmRiskAnalyzer();
-        when(llmRiskAnalyzer.analyze(anyString()))
+        when(llmRiskAnalyzer.analyze(anyString(), anyList()))
                 .thenAnswer(invocation ->
-                        mockLlmRiskAnalyzer.analyze(invocation.getArgument(0))
+                        mockLlmRiskAnalyzer.analyze(
+                                invocation.getArgument(0),
+                                invocation.getArgument(1)
+                        )
                 );
 
         when(complaintRevisionGenerator.generate(
