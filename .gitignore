@@ -36,3 +36,9 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Local development documents ###
+/AGENTS.md
+/CLAUDE.md
+/CORE-FEATURE-SPEC.md
+/docs/AI-QUALITY-PLAYBOOK.md
