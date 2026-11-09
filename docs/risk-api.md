@@ -239,10 +239,12 @@ confidence, evidenceSpans가 있고 각 span은 text, start, end를 반환한다
   기존 evidence는 분석 당시 병합 근거로 유지한다. 기존 confidence는 LLM 신뢰도다.
 - risk_analyses의 revision_reason/ai_revision은 전체 수정본으로 유지한다.
 
-기존 데이터를 유지하는 배포에서는 Flyway V1 마이그레이션이 기존 boolean 값을 enum 상태로
-백필하고 신규 테이블·인덱스를 생성한다.
-기존 병합 evidence만으로 출처를 복원할 수 없으므로 기존 행의 출처별 근거는 빈 배열,
-태그별 수정 제안도 빈 배열로 반환한다. 과거 기록을 다시 분석하여 채우지 않는다.
+현재 Flyway는 비활성화되어 있으며 개발·테스트 환경은 H2와 `ddl-auto=create-drop`으로
+엔티티 기준 스키마를 생성한다.
+운영 DB의 전체 초기 스키마와 기존 데이터 백필 migration은 아직 이 변경에 포함하지 않는다.
+운영 DB를 연결하기 전에 전체 엔티티를 기준으로 초기 스키마 관리 방식을 확정하고,
+기존 데이터를 보존해야 하는 배포라면 출처별 상태·근거와 태그별 수정 제안의 백필 정책을
+별도 migration으로 정의해야 한다.
 
 ### 보조 DTO 파일 정리
 
