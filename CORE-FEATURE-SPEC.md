@@ -180,9 +180,23 @@ PR #48 기준 목표 흐름:
 중요 계약:
 
 - Rule과 Claude는 병렬 실행하지 않는다.
-- `LlmRiskAnalyzer.analyze(maskedContent, ruleResults)`가 두 입력을 받는다.
-- Python AI 요청은 `complaint`, `ruleResults`를 `/api/v1/ai/analyze`로 전송한다.
+- `LlmRiskAnalyzer.analyze(maskedContent, ruleResults, repeatContext)`가 현재 내용, Rule 후보,
+  동일 민원의 반복성 문맥을 받는다.
+- Python AI 요청은 `complaint`, `ruleResults`, `repeatContext`를 `/api/v1/ai/analyze`로 전송한다.
 - Rule 원본과 Claude 결과는 detector 상세 조회를 위해 출처별로 보존한다.
+
+반복성 문맥 계약:
+
+- 현재 분석 메시지와 동일한 민원의 최근 30일 전송 이력만 사용한다.
+- 임시저장 메시지와 현재 분석 메시지는 이력에서 제외한다.
+- 모든 과거 메시지는 외부 AI 전달 전에 개인정보를 마스킹한다.
+- 횟수와 처리 상태는 30일 전체 이력으로 계산하되, 외부 AI에는 가장 최근 20개 메시지와
+  마스킹 본문 합계 8,000자까지만 시간순으로 전달한다.
+- 제한으로 일부 이력이 제외되거나 본문이 잘리면 `historyTruncated=true`로 전달한다.
+- 기본 제한은 `risk.repeat.window-days`, `risk.repeat.max-messages`,
+  `risk.repeat.max-characters` 설정으로 변경할 수 있다.
+- 실제 사용자 ID와 이름은 전달하지 않고 `PARENT`, `TEACHER` 역할과 요청 안에서만 유효한
+  `H1`, `H2` 형식의 참조값을 전달한다.
 
 ### RISK-03 최종 태그 결정 정책
 

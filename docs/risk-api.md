@@ -180,6 +180,15 @@ CSV의 `risk_tag_code`는 백엔드 `RiskTagCode`와 동일한
 `PRESENT`를 확정하지 않는다. 실제 문맥 판단과 수정안 품질은 외부 LLM 구현과 평가가 필요하다.
 외부 LLM 연동 전에 이름 등 미지원 개인정보 처리 정책을 별도로 정해야 한다.
 
+`REPEAT` 문맥 판단을 위해 Python AI 요청에는 `repeatContext`를 함께 보낸다. 동일 민원의
+최근 30일 전송 완료 이력에서 학부모 메시지 수, 교사 답변 수, 현재 처리 상태를 계산하고,
+각 메시지 본문을 마스킹한다. 현재 분석 메시지와 임시저장은 제외한다. 전체 이력의 횟수는
+보존하지만 본문은 최신 20개, 합계 8,000자까지만 선택한 뒤 시간순으로 전달한다. 제한이
+적용되면 `historyTruncated=true`이며 개별 본문이 잘린 경우 `contentTruncated=true`다.
+기간·메시지 수·글자 수는 각각 `risk.repeat.window-days`, `risk.repeat.max-messages`,
+`risk.repeat.max-characters`로 운영 환경에서 조정한다. 다른 민원의 이력은 이번 정책 범위에
+포함하지 않는다.
+
 ## 분리된 조회 응답
 
 `RiskAnalysisSummaryResponse`는 analysisId, complaintId, riskScore, riskLevel만 반환한다.

@@ -52,6 +52,7 @@ public class RiskAnalysisService {
     private final ComplaintRiskTagRepository resultRepository;
     private final ComplaintRevisionGenerator complaintRevisionGenerator;
     private final RiskEvaluator riskEvaluator;
+    private final RepeatAnalysisContextFactory repeatAnalysisContextFactory;
 
     @Transactional
     public RiskSummaryResponse analyze(
@@ -302,11 +303,17 @@ public class RiskAnalysisService {
                             ruleResults
                     );
 
+            var repeatContext = repeatAnalysisContextFactory.create(
+                    complaint,
+                    message
+            );
+
             // 2차: Claude 문맥 기반 분석
             LlmRiskAnalysisResult rawLlmResult =
                     llmRiskAnalyzer.analyze(
                             maskedContent,
-                            maskedRuleResults
+                            maskedRuleResults,
+                            repeatContext
                     );
 
             result =

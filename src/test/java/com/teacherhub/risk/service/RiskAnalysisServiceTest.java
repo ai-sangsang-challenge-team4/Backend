@@ -14,6 +14,7 @@ import com.teacherhub.risk.analyzer.RuleBasedRiskDetector;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
+import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.repository.RiskTagRepository;
@@ -69,6 +70,9 @@ class RiskAnalysisServiceTest {
     private final RiskEvaluator evaluator =
             new RiskEvaluator();
 
+    private final RepeatAnalysisContextFactory repeatContexts =
+            mock(RepeatAnalysisContextFactory.class);
+
     private final RiskAnalysisService service =
             new RiskAnalysisService(
                     repository,
@@ -81,7 +85,8 @@ class RiskAnalysisServiceTest {
                     analyses,
                     detections,
                     revisions,
-                    evaluator
+                     evaluator,
+                     repeatContexts
             );
 
     private Complaint draft() {
@@ -110,7 +115,25 @@ class RiskAnalysisServiceTest {
                         Optional.of(complaint)
                 );
 
+        when(repeatContexts.create(any(), any()))
+                .thenReturn(emptyRepeatContext());
+
         return complaint;
+    }
+
+    private RepeatAnalysisContext emptyRepeatContext() {
+        return new RepeatAnalysisContext(
+                true,
+                30,
+                "DRAFT_WAITING_FOR_NONE",
+                0,
+                0,
+                0,
+                0,
+                0,
+                false,
+                List.of()
+        );
     }
 
     @Test
@@ -139,7 +162,8 @@ class RiskAnalysisServiceTest {
                 new MockLlmRiskAnalyzer()
                         .analyze(
                                 "masked",
-                                ruleResults
+                                 ruleResults,
+                                 emptyRepeatContext()
                         );
 
         when(rules.detect(complaint.getContent()))
@@ -168,7 +192,8 @@ class RiskAnalysisServiceTest {
 
         when(llm.analyze(
                 eq("masked"),
-                anyList()
+                anyList(),
+                any(RepeatAnalysisContext.class)
         )).thenReturn(
                 llmResult
         );
@@ -208,7 +233,8 @@ class RiskAnalysisServiceTest {
         verify(llm)
                 .analyze(
                         eq("masked"),
-                        anyList()
+                        anyList(),
+                        eq(emptyRepeatContext())
                 );
 
         var order =
@@ -372,7 +398,8 @@ class RiskAnalysisServiceTest {
 
         when(llm.analyze(
                 eq(complaint.getContent()),
-                anyList()
+                anyList(),
+                any(RepeatAnalysisContext.class)
         )).thenReturn(
                 new LlmRiskAnalysisResult(
                         List.of(),
@@ -417,7 +444,8 @@ class RiskAnalysisServiceTest {
                                         ruleResults.get(0)
                                                 .reason()
                                 )
-                        )
+                        ),
+                        any(RepeatAnalysisContext.class)
                 );
     }
 
@@ -471,7 +499,8 @@ class RiskAnalysisServiceTest {
 
         when(llm.analyze(
                 eq("masked"),
-                anyList()
+                anyList(),
+                any(RepeatAnalysisContext.class)
         )).thenThrow(
                 new IllegalStateException(
                         "AI failure"

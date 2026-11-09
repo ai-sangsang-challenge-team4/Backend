@@ -915,11 +915,12 @@ public class ComplaintFlowIntegrationTest {
     void setUp() {
 
         MockLlmRiskAnalyzer mockLlmRiskAnalyzer = new MockLlmRiskAnalyzer();
-        when(llmRiskAnalyzer.analyze(anyString(), anyList()))
+        when(llmRiskAnalyzer.analyze(anyString(), anyList(), any()))
                 .thenAnswer(invocation ->
                         mockLlmRiskAnalyzer.analyze(
                                 invocation.getArgument(0),
-                                invocation.getArgument(1)
+                                invocation.getArgument(1),
+                                invocation.getArgument(2)
                         )
                 );
 
