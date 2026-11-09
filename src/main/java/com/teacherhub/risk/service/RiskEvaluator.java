@@ -384,7 +384,7 @@ public class RiskEvaluator {
             List<FinalRiskTagResponse> tags,
             Map<RiskTagCode, RiskTag> definitions
     ) {
-        return tags.stream()
+        int score = tags.stream()
                 .filter(
                         FinalRiskTagResponse::detected
                 )
@@ -409,6 +409,8 @@ public class RiskEvaluator {
                     return tag.getDefaultScore();
                 })
                 .sum();
+
+        return Math.min(70, score);
     }
 
     // 위험 수준 계산

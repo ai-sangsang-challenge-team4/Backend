@@ -319,6 +319,33 @@ class RiskAnalysisRulesTest {
     }
 
     @Test
+    void capsCombinedTagScoreAtSeventy() {
+        var tags = Arrays.stream(RiskTagCode.values())
+                .map(code -> new FinalRiskTagResponse(
+                        code,
+                        RiskTagState.PRESENT,
+                        RiskTagState.ABSENT,
+                        RiskTagState.PRESENT,
+                        null,
+                        List.of(new com.teacherhub.risk.dto.detection.EvidenceSpan(
+                                code.name(),
+                                0,
+                                code.name().length()
+                        )),
+                        null
+                ))
+                .toList();
+
+        Map<RiskTagCode, RiskTag> configured = Arrays.stream(RiskTagCode.values())
+                .collect(java.util.stream.Collectors.toMap(
+                        code -> code,
+                        code -> new RiskTag(code, code.name(), 15)
+                ));
+
+        assertThat(evaluator.calculate(tags, configured)).isEqualTo(70);
+    }
+
+    @Test
     void rejectsMissingOrInvalidWeightsBeforeSaving() {
         var detected = List.of(
                 new RiskTagDetectionResult(

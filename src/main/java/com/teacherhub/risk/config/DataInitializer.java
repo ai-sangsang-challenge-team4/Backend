@@ -21,14 +21,14 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         Map<RiskTagCode, TagDefinition> definitions = new LinkedHashMap<>();
-        definitions.put(RiskTagCode.PROFANITY, new TagDefinition("욕설", 8));
-        definitions.put(RiskTagCode.INSULT, new TagDefinition("인격 모욕", 8));
-        definitions.put(RiskTagCode.THREAT, new TagDefinition("위험·협박", 16));
-        definitions.put(RiskTagCode.LEGAL, new TagDefinition("법적 조치 언급", 5));
-        definitions.put(RiskTagCode.EXPOSURE, new TagDefinition("공개·유포 위험", 10));
-        definitions.put(RiskTagCode.REPEAT, new TagDefinition("반복 민원", 5));
+        definitions.put(RiskTagCode.PROFANITY, new TagDefinition("욕설", 6));
+        definitions.put(RiskTagCode.INSULT, new TagDefinition("인격 모욕", 10));
+        definitions.put(RiskTagCode.THREAT, new TagDefinition("위험·협박", 25));
+        definitions.put(RiskTagCode.LEGAL, new TagDefinition("법적 조치 언급", 4));
+        definitions.put(RiskTagCode.EXPOSURE, new TagDefinition("공개·유포 위험", 12));
+        definitions.put(RiskTagCode.REPEAT, new TagDefinition("반복 민원", 6));
         definitions.put(RiskTagCode.UNFAIR_REQUEST, new TagDefinition("부당 요구", 8));
-        definitions.put(RiskTagCode.PRIVACY, new TagDefinition("개인정보 위험", 10));
+        definitions.put(RiskTagCode.PRIVACY, new TagDefinition("개인정보 위험", 15));
 
         definitions.forEach((code, definition) -> {
             RiskTag riskTag = riskTagRepository.findByCode(code)

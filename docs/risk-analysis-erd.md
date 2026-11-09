@@ -9,6 +9,7 @@ erDiagram
     risk_analyses ||--o{ risk_reviews : teacher_reviews
     risk_analyses ||--o{ complaint_risk_tags : results
     risk_tags ||--o{ complaint_risk_tags : definitions
+    risk_detection_rules }o--|| risk_tags : maps_to
     complaints ||--o{ complaint_events : history
 ```
 
@@ -21,6 +22,9 @@ erDiagram
   학부모 문의와 교사 답변을 같은 메시지 모델에 저장한다. 임시저장은 DRAFT, 전송은 SENT,
   상대가 답변하거나 종료를 선택하면 READ다.
 - `risk_tags`: code, name, default_score. 기존 기준 정보 조회 기능을 유지한다.
+- `risk_detection_rules`: rule_id, source_tag_code, tag_code, expression, match_type,
+  context_required, context_subtype, normalization_rule, dataset_version, enabled.
+  CSV v1.1의 72개 후보 신호를 저장하며 애플리케이션에서 캐시해 사용한다.
 - `risk_analyses`: complaint_id, message_id, risk_score, risk_level, model_name, temperature,
   analyzed_at. message_id와 content_version으로 분석 대상 메시지 버전을 구분한다.
 - `risk_reviews`: risk_analysis_id, reviewed_by, previous_score, previous_level,
@@ -36,13 +40,14 @@ erDiagram
 
 ## 현재 파이프라인
 
-ComplaintReviewService: 본인/DRAFT 검증 → 원문 규칙 탐지 → 마스킹 → LLM 분석
-→ 태그 OR 병합 → RiskAnalysisService의 점수 계산 및 결과 저장 → 검토 응답.
-실패 시 마스킹 변경과 분석 저장을 동일 트랜잭션으로 롤백한다.
-규칙 탐지와 LLM은 mock이며 수정본은 자동 적용하지 않는다.
+RiskAnalysisService: 본인/DRAFT 검증 → 원문 마스킹 → CSV Rule 후보 탐지 → Rule 근거 마스킹
+→ 마스킹 본문과 Rule 후보를 LLM에 전달 → Claude 우선 태그 병합 → 점수 계산 및 결과 저장
+→ 검토 응답. 일반 Rule 후보는 BOUNDARY, HINT_ONLY는 UNKNOWN으로 전달하며 키워드만으로
+PRESENT를 확정하지 않는다. Claude가 같은 태그를 반환하면 Claude 상태가 최종이고, 누락한
+태그만 Rule 상태로 fallback한다. 수정본은 자동 적용하지 않는다.
 
 시스템 분석은 최종 탐지된 태그의 default_score를 합산하고, 같은 태그가 두 탐지기에서
-발견되어도 한 번만 계산한다. 태그 기준 점수 총합은 70이며 시스템 점수는 0~20점 LOW,
+발견되어도 한 번만 계산한 뒤 최대 70점으로 제한한다. 시스템 점수는 0~20점 LOW,
 21~40점 MEDIUM, 41~60점 HIGH, 61~70점 EMERGENCY다.
 
 교사는 1~7 선택 척도를 사용하고 서버는 선택값에 10을 곱해 시스템과 같은 단위의
