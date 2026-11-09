@@ -80,7 +80,8 @@ class RiskAnalysisRulesTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         when(repeatContexts.create(any(), any())).thenReturn(new RepeatAnalysisContext(
-                true, 30, "DRAFT_WAITING_FOR_NONE", 0, 0, 0, 0, 0, false, List.of()
+                true, 7, 3, 1, false,
+                "DRAFT_WAITING_FOR_NONE", 0, 0, 0, 0, 0, false, List.of()
         ));
 
         when(revisions.generate(anyString(), any()))
@@ -143,6 +144,58 @@ class RiskAnalysisRulesTest {
                 );
 
         return captured.getValue();
+    }
+
+    @Test
+    void repeatThresholdCreatesRulePresentSignalWhenLlmOmitsRepeat() {
+        when(repeatContexts.create(any(), any())).thenReturn(new RepeatAnalysisContext(
+                true, 7, 3, 3, true,
+                "OPEN_WAITING_FOR_TEACHER", 2, 1, 3, 3, 30, false, List.of()
+        ));
+
+        var result = analyze(List.of(), List.of());
+
+        verify(llm).analyze(
+                anyString(),
+                argThat(ruleResults -> ruleResults.stream().anyMatch(rule ->
+                        rule.code() == REPEAT
+                                && rule.state() == RiskTagState.PRESENT
+                                && "REPEAT_THRESHOLD_MET".equals(rule.reason())
+                )),
+                argThat(context -> context.repeatThresholdMet()
+                        && context.parentMessageCountIncludingCurrent() == 3)
+        );
+
+        assertThat(result.tags())
+                .filteredOn(tag -> tag.code() == REPEAT)
+                .singleElement()
+                .extracting(FinalRiskTagResponse::state)
+                .isEqualTo(RiskTagState.PRESENT);
+    }
+
+    @Test
+    void llmRepeatStateStillOverridesRepeatThresholdRuleSignal() {
+        when(repeatContexts.create(any(), any())).thenReturn(new RepeatAnalysisContext(
+                true, 7, 3, 3, true,
+                "OPEN_WAITING_FOR_TEACHER", 2, 1, 3, 3, 30, false, List.of()
+        ));
+
+        var result = analyze(
+                List.of(),
+                List.of(new RiskTagDetectionResult(
+                        REPEAT,
+                        RiskTagState.ABSENT,
+                        0.9,
+                        List.of(),
+                        "동일 요구가 아님"
+                ))
+        );
+
+        assertThat(result.tags())
+                .filteredOn(tag -> tag.code() == REPEAT)
+                .singleElement()
+                .extracting(FinalRiskTagResponse::state)
+                .isEqualTo(RiskTagState.ABSENT);
     }
 
     @Test

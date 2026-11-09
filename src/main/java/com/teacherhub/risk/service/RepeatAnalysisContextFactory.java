@@ -24,6 +24,7 @@ public class RepeatAnalysisContextFactory {
     private final ComplaintMessageRepository messageRepository;
     private final PiiMaskingService piiMaskingService;
     private final int windowDays;
+    private final int repeatThreshold;
     private final int maxMessages;
     private final int maxCharacters;
     private final Clock clock;
@@ -32,7 +33,8 @@ public class RepeatAnalysisContextFactory {
     public RepeatAnalysisContextFactory(
             ComplaintMessageRepository messageRepository,
             PiiMaskingService piiMaskingService,
-            @Value("${risk.repeat.window-days:30}") int windowDays,
+            @Value("${risk.repeat.window-days:7}") int windowDays,
+            @Value("${risk.repeat.threshold:3}") int repeatThreshold,
             @Value("${risk.repeat.max-messages:20}") int maxMessages,
             @Value("${risk.repeat.max-characters:8000}") int maxCharacters
     ) {
@@ -40,6 +42,7 @@ public class RepeatAnalysisContextFactory {
                 messageRepository,
                 piiMaskingService,
                 windowDays,
+                repeatThreshold,
                 maxMessages,
                 maxCharacters,
                 Clock.systemDefaultZone()
@@ -50,12 +53,16 @@ public class RepeatAnalysisContextFactory {
             ComplaintMessageRepository messageRepository,
             PiiMaskingService piiMaskingService,
             int windowDays,
+            int repeatThreshold,
             int maxMessages,
             int maxCharacters,
             Clock clock
     ) {
         if (windowDays < 1 || windowDays > 365) {
             throw new IllegalArgumentException("반복 민원 이력 기간은 1~365일이어야 합니다.");
+        }
+        if (repeatThreshold < 2 || repeatThreshold > 100) {
+            throw new IllegalArgumentException("반복 민원 판정 기준은 2~100건이어야 합니다.");
         }
         if (maxMessages < 1 || maxMessages > 100) {
             throw new IllegalArgumentException("반복 민원 이력 메시지 제한은 1~100개여야 합니다.");
@@ -67,6 +74,7 @@ public class RepeatAnalysisContextFactory {
         this.messageRepository = messageRepository;
         this.piiMaskingService = piiMaskingService;
         this.windowDays = windowDays;
+        this.repeatThreshold = repeatThreshold;
         this.maxMessages = maxMessages;
         this.maxCharacters = maxCharacters;
         this.clock = clock;
@@ -90,6 +98,8 @@ public class RepeatAnalysisContextFactory {
         int teacherCount = (int) history.stream()
                 .filter(message -> message.getType() == MessageType.TEACHER_REPLY)
                 .count();
+        int parentCountIncludingCurrent = parentCount
+                + (currentMessage.getType() == MessageType.PARENT_INQUIRY ? 1 : 0);
 
         List<SelectedMessage> selectedNewestFirst = selectWithinLimits(history);
         boolean historyTruncated = selectedNewestFirst.size() < history.size()
@@ -116,6 +126,9 @@ public class RepeatAnalysisContextFactory {
         return new RepeatAnalysisContext(
                 true,
                 windowDays,
+                repeatThreshold,
+                parentCountIncludingCurrent,
+                parentCountIncludingCurrent >= repeatThreshold,
                 handlingStatus(complaint),
                 parentCount,
                 teacherCount,

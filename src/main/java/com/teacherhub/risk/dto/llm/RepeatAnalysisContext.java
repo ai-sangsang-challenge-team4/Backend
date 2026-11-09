@@ -9,6 +9,9 @@ import java.util.List;
 public record RepeatAnalysisContext(
         boolean historyAvailable,
         int windowDays,
+        int repeatThreshold,
+        int parentMessageCountIncludingCurrent,
+        boolean repeatThresholdMet,
         String currentHandlingStatus,
         int previousParentMessageCount,
         int teacherSentReplyCount,

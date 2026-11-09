@@ -62,12 +62,15 @@ class RepeatAnalysisContextFactoryTest {
         when(masking.mask("확인 후 답변드렸습니다"))
                 .thenReturn("확인 후 답변드렸습니다");
 
-        var context = factory(30, 20, 8_000).create(complaint, current);
+        var context = factory(7, 3, 20, 8_000).create(complaint, current);
 
         assertThat(context.historyAvailable()).isTrue();
-        assertThat(context.windowDays()).isEqualTo(30);
+        assertThat(context.windowDays()).isEqualTo(7);
+        assertThat(context.repeatThreshold()).isEqualTo(3);
         assertThat(context.currentHandlingStatus()).isEqualTo("OPEN_WAITING_FOR_TEACHER");
         assertThat(context.previousParentMessageCount()).isEqualTo(1);
+        assertThat(context.parentMessageCountIncludingCurrent()).isEqualTo(2);
+        assertThat(context.repeatThresholdMet()).isFalse();
         assertThat(context.teacherSentReplyCount()).isEqualTo(1);
         assertThat(context.totalMessagesInWindow()).isEqualTo(2);
         assertThat(context.includedMessages()).isEqualTo(2);
@@ -86,7 +89,38 @@ class RepeatAnalysisContextFactoryTest {
                 cutoff.capture(),
                 eq(99L)
         );
-        assertThat(cutoff.getValue()).isEqualTo(LocalDateTime.of(2026, 10, 10, 12, 0));
+        assertThat(cutoff.getValue()).isEqualTo(LocalDateTime.of(2026, 11, 2, 12, 0));
+    }
+
+    @Test
+    void classifiesAsRepeatWhenCurrentMessageMakesThreeParentMessagesWithinSevenDays() {
+        ComplaintMessage previousOne = historyMessage(
+                MessageType.PARENT_INQUIRY,
+                "첫 번째 문의",
+                LocalDateTime.of(2026, 11, 4, 10, 0)
+        );
+        ComplaintMessage teacher = historyMessage(
+                MessageType.TEACHER_REPLY,
+                "답변",
+                LocalDateTime.of(2026, 11, 5, 10, 0)
+        );
+        ComplaintMessage previousTwo = historyMessage(
+                MessageType.PARENT_INQUIRY,
+                "두 번째 문의",
+                LocalDateTime.of(2026, 11, 8, 10, 0)
+        );
+
+        when(messages.findRiskAnalysisHistory(any(), any(), any(), any()))
+                .thenReturn(List.of(previousTwo, teacher, previousOne));
+        when(masking.mask(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var context = factory(7, 3, 20, 8_000)
+                .create(complaint(), currentMessage());
+
+        assertThat(context.previousParentMessageCount()).isEqualTo(2);
+        assertThat(context.parentMessageCountIncludingCurrent()).isEqualTo(3);
+        assertThat(context.teacherSentReplyCount()).isEqualTo(1);
+        assertThat(context.repeatThresholdMet()).isTrue();
     }
 
     @Test
@@ -106,7 +140,7 @@ class RepeatAnalysisContextFactoryTest {
                 .thenReturn(history);
         when(masking.mask(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var context = factory(30, 20, 8_000).create(complaint(), currentMessage());
+        var context = factory(7, 3, 20, 8_000).create(complaint(), currentMessage());
 
         assertThat(context.totalMessagesInWindow()).isEqualTo(25);
         assertThat(context.includedMessages()).isEqualTo(20);
@@ -140,7 +174,7 @@ class RepeatAnalysisContextFactoryTest {
                 .thenReturn(List.of(newest, older));
         when(masking.mask(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var context = factory(30, 20, 1_000).create(complaint(), currentMessage());
+        var context = factory(7, 3, 20, 1_000).create(complaint(), currentMessage());
 
         assertThat(context.includedCharacters()).isEqualTo(1_000);
         assertThat(context.historyTruncated()).isTrue();
@@ -153,6 +187,7 @@ class RepeatAnalysisContextFactoryTest {
 
     private RepeatAnalysisContextFactory factory(
             int windowDays,
+            int repeatThreshold,
             int maxMessages,
             int maxCharacters
     ) {
@@ -160,6 +195,7 @@ class RepeatAnalysisContextFactoryTest {
                 messages,
                 masking,
                 windowDays,
+                repeatThreshold,
                 maxMessages,
                 maxCharacters,
                 CLOCK
@@ -177,6 +213,7 @@ class RepeatAnalysisContextFactoryTest {
     private ComplaintMessage currentMessage() {
         ComplaintMessage message = mock(ComplaintMessage.class);
         when(message.getId()).thenReturn(99L);
+        when(message.getType()).thenReturn(MessageType.PARENT_INQUIRY);
         return message;
     }
 
