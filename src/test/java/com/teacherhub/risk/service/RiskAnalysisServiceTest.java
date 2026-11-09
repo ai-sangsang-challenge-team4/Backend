@@ -124,7 +124,10 @@ class RiskAnalysisServiceTest {
     private RepeatAnalysisContext emptyRepeatContext() {
         return new RepeatAnalysisContext(
                 true,
-                30,
+                7,
+                3,
+                1,
+                false,
                 "DRAFT_WAITING_FOR_NONE",
                 0,
                 0,

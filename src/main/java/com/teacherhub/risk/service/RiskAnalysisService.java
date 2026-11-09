@@ -5,7 +5,10 @@ import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 import com.teacherhub.risk.dto.detection.EvidenceSpan;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
+import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import com.teacherhub.risk.dto.response.RiskSummaryResponse;
+import com.teacherhub.risk.enums.RiskTagCode;
+import com.teacherhub.risk.enums.RiskTagState;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 
 import com.teacherhub.complaint.entity.Complaint;
@@ -296,17 +299,22 @@ public class RiskAnalysisService {
                             )
                             .toList();
 
+            var repeatContext = repeatAnalysisContextFactory.create(
+                    complaint,
+                    message
+            );
+
+            ruleResults = applyRepeatThreshold(
+                    ruleResults,
+                    repeatContext
+            );
+
             // 외부 AI에 Rule 결과를 전달하기 전
             // evidence와 reason에 포함될 수 있는 개인정보를 마스킹합니다.
             List<RiskTagDetectionResult> maskedRuleResults =
                     maskRuleResultsForLlm(
                             ruleResults
                     );
-
-            var repeatContext = repeatAnalysisContextFactory.create(
-                    complaint,
-                    message
-            );
 
             // 2차: Claude 문맥 기반 분석
             LlmRiskAnalysisResult rawLlmResult =
@@ -465,6 +473,43 @@ public class RiskAnalysisService {
                         )
                 )
                 .toList();
+    }
+
+    private List<RiskTagDetectionResult> applyRepeatThreshold(
+            List<RiskTagDetectionResult> ruleResults,
+            RepeatAnalysisContext repeatContext
+    ) {
+        if (!repeatContext.repeatThresholdMet()) {
+            return ruleResults;
+        }
+
+        List<EvidenceSpan> evidenceSpans = new ArrayList<>(
+                ruleResults.stream()
+                        .filter(result -> result.code() == RiskTagCode.REPEAT)
+                        .flatMap(result -> result.evidenceSpans().stream())
+                        .toList()
+        );
+        evidenceSpans.add(EvidenceSpan.unlocated(
+                "최근 %d일 동일 민원 학부모 메시지 %d건(현재 메시지 포함)"
+                        .formatted(
+                                repeatContext.windowDays(),
+                                repeatContext.parentMessageCountIncludingCurrent()
+                        )
+        ));
+
+        List<RiskTagDetectionResult> results = new ArrayList<>(
+                ruleResults.stream()
+                        .filter(result -> result.code() != RiskTagCode.REPEAT)
+                        .toList()
+        );
+        results.add(new RiskTagDetectionResult(
+                RiskTagCode.REPEAT,
+                RiskTagState.PRESENT,
+                null,
+                evidenceSpans,
+                "REPEAT_THRESHOLD_MET"
+        ));
+        return List.copyOf(results);
     }
 
     private String maskEvidence(String value) {
