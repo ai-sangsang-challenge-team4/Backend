@@ -3,6 +3,7 @@ package com.teacherhub.risk.analyzer;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
+import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import com.teacherhub.risk.enums.RiskTagCode;
 
 import java.util.List;
@@ -12,7 +13,8 @@ public class MockLlmRiskAnalyzer implements LlmRiskAnalyzer {
     @Override
     public LlmRiskAnalysisResult analyze(
             String maskedContent,
-            List<RiskTagDetectionResult> ruleResults
+            List<RiskTagDetectionResult> ruleResults,
+            RepeatAnalysisContext repeatContext
     ) {
         // 모든 값은 파이프라인 연결 확인용 예시이며 실제 내용을 분석하지 않습니다.
         return new LlmRiskAnalysisResult(

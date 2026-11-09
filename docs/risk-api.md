@@ -68,13 +68,15 @@ POST `/complaints/{complaintId}/risk-analysis`와 GET `/risk-analyses/{analysisI
 }
 ```
 
-시스템 위험 점수는 감지된 태그 원점수의 합계이며 범위는 0~70이다. 기본 태그 점수는
-`PROFANITY 8`, `INSULT 8`, `THREAT 16`, `LEGAL 5`, `EXPOSURE 10`, `REPEAT 5`,
-`UNFAIR_REQUEST 8`, `PRIVACY 10`으로 합계가 70이 되도록 구성한다. 등급은
+시스템 위험 점수는 감지된 태그 원점수 합계를 최대 70점으로 제한한 값이다. 기본 태그 점수는
+`PROFANITY 6`, `INSULT 10`, `THREAT 25`, `LEGAL 4`, `EXPOSURE 12`, `REPEAT 6`,
+`UNFAIR_REQUEST 8`, `PRIVACY 15`다. 등급은
 0~20 LOW, 21~40 MEDIUM, 41~60 HIGH, 61~70 EMERGENCY다.
 
-POST는 마스킹 후 원문 Rule 탐지와 마스킹 사본 LLM 탐지를 병렬 실행하고,
-병합, 점수 계산과 수정안 생성·저장을 수행한다.
+POST는 원문을 마스킹한 뒤 원문 Rule 탐지를 실행하고, Rule의 evidence와 reason을 다시
+마스킹해 마스킹 본문과 함께 LLM에 전달한다. Claude가 같은 태그를 반환하면 Claude 상태를
+최종값으로 사용하고, Claude가 누락한 태그만 Rule 상태로 fallback한다. 이후 점수 계산과
+수정안 생성·저장을 수행한다.
 응답에는 요약만 포함하며, 근거와 태그별 수정 제안 및 전체 수정본은
 `GET /risk-analyses/{analysisId}/findings`로 조회한다.
 Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회한다.
@@ -169,7 +171,23 @@ DB에는 risk_analyses의 content_hash/completed/revision_reason/ai_revision 컬
 {"status":"ERROR","code":"COMPLAINT_ACCESS_DENIED","message":"해당 민원에 접근할 권한이 없습니다.","timestamp":"2026-10-01T09:00:00+09:00","path":"/complaints/42/mask"}
 ```
 
-마스킹은 실제 백엔드 규칙 처리다. 룰 탐지기·LLM 분석기·수정안 생성기는 여전히 Mock이므로 실제 위험 판단/문맥 수정은 하지 않는다. 점수 계산과 분석 결과 저장·조회는 구현되어 있다. 외부 LLM 연동 전에 이름 등 미지원 개인정보 처리 정책을 별도로 정해야 한다.
+마스킹과 Rule 탐지는 실제 백엔드 규칙 처리다. Rule 탐지기는 DB에 적재한
+`teachercare_rule_dictionary_v1.1_extended.csv` 72행을 메모리에 캐시해 사용한다.
+CSV의 `risk_tag_code`는 백엔드 `RiskTagCode`와 동일한
+`PROFANITY`, `INSULT`, `THREAT`, `LEGAL`, `EXPOSURE`, `REPEAT`,
+`UNFAIR_REQUEST`, `PRIVACY`만 허용한다. Python AI 요청과 응답의 태그 코드도 같은 값을 사용한다.
+일반 매칭은 `BOUNDARY`, `HINT_ONLY`는 `UNKNOWN` 후보로 LLM에 전달하며 키워드 매칭만으로
+`PRESENT`를 확정하지 않는다. 실제 문맥 판단과 수정안 품질은 외부 LLM 구현과 평가가 필요하다.
+외부 LLM 연동 전에 이름 등 미지원 개인정보 처리 정책을 별도로 정해야 한다.
+
+`REPEAT` 문맥 판단을 위해 Python AI 요청에는 `repeatContext`를 함께 보낸다. 동일 민원의
+최근 30일 전송 완료 이력에서 학부모 메시지 수, 교사 답변 수, 현재 처리 상태를 계산하고,
+각 메시지 본문을 마스킹한다. 현재 분석 메시지와 임시저장은 제외한다. 전체 이력의 횟수는
+보존하지만 본문은 최신 20개, 합계 8,000자까지만 선택한 뒤 시간순으로 전달한다. 제한이
+적용되면 `historyTruncated=true`이며 개별 본문이 잘린 경우 `contentTruncated=true`다.
+기간·메시지 수·글자 수는 각각 `risk.repeat.window-days`, `risk.repeat.max-messages`,
+`risk.repeat.max-characters`로 운영 환경에서 조정한다. 다른 민원의 이력은 이번 정책 범위에
+포함하지 않는다.
 
 ## 분리된 조회 응답
 
@@ -200,7 +218,8 @@ findings는 finalDetected=true인 태그만 반환한다. 감지가 없으면 �
 수정 제안은 분석 POST에서 생성·저장하며 GET에서 AI를 호출하지 않는다.
 최종 제출 재분석은 기존 정책대로 수정안을 생성하지 않아 revisionSuggestions는 빈 배열,
 finalRevision은 null이다. 최초 분석과 제출 분석은 서로 다른 분석 ID로 조회한다.
-탐지기와 수정안 생성기는 아직 Mock이므로 실제 문맥에 맞는 수정은 외부 AI 연동이 필요하다.
+Rule 탐지기는 실제 CSV 사전을 사용한다. LLM 문맥 판단과 수정안 생성 품질은 외부 AI 연동과
+골든셋 평가가 필요하다.
 
 detector-results는 results(code, finalState, rule, llm)와 llm(modelName, temperature)을 반환한다.
 상태는 `PRESENT`, `ABSENT`, `BOUNDARY`, `UNKNOWN` 중 하나다. rule/llm에는 state,
@@ -220,10 +239,12 @@ confidence, evidenceSpans가 있고 각 span은 text, start, end를 반환한다
   기존 evidence는 분석 당시 병합 근거로 유지한다. 기존 confidence는 LLM 신뢰도다.
 - risk_analyses의 revision_reason/ai_revision은 전체 수정본으로 유지한다.
 
-기존 데이터를 유지하는 배포에서는 Flyway V1 마이그레이션이 기존 boolean 값을 enum 상태로
-백필하고 신규 테이블·인덱스를 생성한다.
-기존 병합 evidence만으로 출처를 복원할 수 없으므로 기존 행의 출처별 근거는 빈 배열,
-태그별 수정 제안도 빈 배열로 반환한다. 과거 기록을 다시 분석하여 채우지 않는다.
+현재 Flyway는 비활성화되어 있으며 개발·테스트 환경은 H2와 `ddl-auto=create-drop`으로
+엔티티 기준 스키마를 생성한다.
+운영 DB의 전체 초기 스키마와 기존 데이터 백필 migration은 아직 이 변경에 포함하지 않는다.
+운영 DB를 연결하기 전에 전체 엔티티를 기준으로 초기 스키마 관리 방식을 확정하고,
+기존 데이터를 보존해야 하는 배포라면 출처별 상태·근거와 태그별 수정 제안의 백필 정책을
+별도 migration으로 정의해야 한다.
 
 ### 보조 DTO 파일 정리
 

@@ -3,6 +3,7 @@ package com.teacherhub.risk.service;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
+import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 import com.teacherhub.complaint.entity.Complaint;
@@ -43,6 +44,7 @@ class RiskAnalysisRulesTest {
     private final ComplaintRiskTagRepository results = mock(ComplaintRiskTagRepository.class);
     private final ComplaintRevisionGenerator revisions = mock(ComplaintRevisionGenerator.class);
     private final RiskEvaluator evaluator = new RiskEvaluator();
+    private final RepeatAnalysisContextFactory repeatContexts = mock(RepeatAnalysisContextFactory.class);
 
     private final RiskAnalysisService service = new RiskAnalysisService(
             complaints,
@@ -55,7 +57,8 @@ class RiskAnalysisRulesTest {
             analyses,
             results,
             revisions,
-            evaluator
+             evaluator,
+             repeatContexts
     );
 
     @BeforeEach
@@ -75,6 +78,10 @@ class RiskAnalysisRulesTest {
 
         when(analyses.save(any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(repeatContexts.create(any(), any())).thenReturn(new RepeatAnalysisContext(
+                true, 30, "DRAFT_WAITING_FOR_NONE", 0, 0, 0, 0, 0, false, List.of()
+        ));
 
         when(revisions.generate(anyString(), any()))
                 .thenReturn(
@@ -109,7 +116,7 @@ class RiskAnalysisRulesTest {
         when(rules.detect(anyString()))
                 .thenReturn(ruleTags);
 
-        when(llm.analyze(anyString(), anyList()))
+        when(llm.analyze(anyString(), anyList(), any(RepeatAnalysisContext.class)))
                 .thenReturn(
                         new LlmRiskAnalysisResult(
                                 llmTags,
@@ -316,6 +323,33 @@ class RiskAnalysisRulesTest {
 
         assertThat(result.riskLevel())
                 .isEqualTo(expected);
+    }
+
+    @Test
+    void capsCombinedTagScoreAtSeventy() {
+        var tags = Arrays.stream(RiskTagCode.values())
+                .map(code -> new FinalRiskTagResponse(
+                        code,
+                        RiskTagState.PRESENT,
+                        RiskTagState.ABSENT,
+                        RiskTagState.PRESENT,
+                        null,
+                        List.of(new com.teacherhub.risk.dto.detection.EvidenceSpan(
+                                code.name(),
+                                0,
+                                code.name().length()
+                        )),
+                        null
+                ))
+                .toList();
+
+        Map<RiskTagCode, RiskTag> configured = Arrays.stream(RiskTagCode.values())
+                .collect(java.util.stream.Collectors.toMap(
+                        code -> code,
+                        code -> new RiskTag(code, code.name(), 15)
+                ));
+
+        assertThat(evaluator.calculate(tags, configured)).isEqualTo(70);
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.teacherhub.risk.analyzer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
+import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -35,12 +36,14 @@ public class PythonLlmRiskAnalyzer implements LlmRiskAnalyzer {
     @Override
     public LlmRiskAnalysisResult analyze(
             String maskedContent,
-            List<RiskTagDetectionResult> ruleResults
+            List<RiskTagDetectionResult> ruleResults,
+            RepeatAnalysisContext repeatContext
     ) {
         try {
             AnalyzeRequest analyzeRequest = new AnalyzeRequest(
                     maskedContent,
-                    ruleResults
+                    ruleResults,
+                    repeatContext
             );
 
             String requestBody = objectMapper.writeValueAsString(analyzeRequest);
@@ -85,7 +88,8 @@ public class PythonLlmRiskAnalyzer implements LlmRiskAnalyzer {
 
     private record AnalyzeRequest(
             String complaint,
-            List<RiskTagDetectionResult> ruleResults
+            List<RiskTagDetectionResult> ruleResults,
+            RepeatAnalysisContext repeatContext
     ) {
     }
 }

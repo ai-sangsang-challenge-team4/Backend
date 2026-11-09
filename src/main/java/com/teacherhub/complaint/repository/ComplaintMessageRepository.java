@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,6 +21,21 @@ public interface ComplaintMessageRepository extends JpaRepository<ComplaintMessa
     );
 
     List<ComplaintMessage> findByComplaintIdOrderByIdAsc(Long complaintId);
+
+    @Query("""
+            select m from ComplaintMessage m
+            where m.complaint.id = :complaintId
+              and m.status <> :excludedStatus
+              and m.sentAt >= :cutoff
+              and (:excludedMessageId is null or m.id <> :excludedMessageId)
+            order by m.sentAt desc, m.id desc
+            """)
+    List<ComplaintMessage> findRiskAnalysisHistory(
+            @Param("complaintId") Long complaintId,
+            @Param("excludedStatus") MessageStatus excludedStatus,
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("excludedMessageId") Long excludedMessageId
+    );
 
     Optional<ComplaintMessage> findFirstByComplaintIdAndSenderIdAndTypeAndStatusOrderByIdDesc(
             Long complaintId,

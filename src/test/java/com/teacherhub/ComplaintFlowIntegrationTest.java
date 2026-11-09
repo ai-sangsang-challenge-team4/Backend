@@ -67,8 +67,27 @@ public class ComplaintFlowIntegrationTest {
     @Autowired
     private com.teacherhub.risk.repository.RiskTagRepository riskTagDefinitionRepository;
 
+    @Autowired
+    private com.teacherhub.risk.repository.RiskDetectionRuleRepository riskDetectionRuleRepository;
+
+    @Autowired
+    private com.teacherhub.risk.analyzer.RuleBasedRiskDetector ruleBasedRiskDetector;
+
     @Test
-    void configuredRiskTagScoresUseSeventyPointTotal() {
+    void usesCsvDictionaryRuleDetectorInSpringContext() {
+        assertThat(ruleBasedRiskDetector)
+                .isInstanceOf(com.teacherhub.risk.analyzer.DictionaryRuleBasedRiskDetector.class);
+        assertThat(riskDetectionRuleRepository.count()).isEqualTo(72);
+        assertThat(ruleBasedRiskDetector.detect("지난번에도 직접 찾아가겠습니다."))
+                .extracting(com.teacherhub.risk.dto.detection.RiskTagDetectionResult::code)
+                .contains(
+                        com.teacherhub.risk.enums.RiskTagCode.THREAT,
+                        com.teacherhub.risk.enums.RiskTagCode.REPEAT
+                );
+    }
+
+    @Test
+    void configuredRiskTagScoresUseRebalancedWeights() {
         var scores = riskTagDefinitionRepository.findAll().stream()
                 .collect(java.util.stream.Collectors.toMap(
                         com.teacherhub.risk.entity.RiskTag::getCode,
@@ -76,16 +95,16 @@ public class ComplaintFlowIntegrationTest {
                 ));
 
         assertThat(scores).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(
-                com.teacherhub.risk.enums.RiskTagCode.PROFANITY, 8,
-                com.teacherhub.risk.enums.RiskTagCode.INSULT, 8,
-                com.teacherhub.risk.enums.RiskTagCode.THREAT, 16,
-                com.teacherhub.risk.enums.RiskTagCode.LEGAL, 5,
-                com.teacherhub.risk.enums.RiskTagCode.EXPOSURE, 10,
-                com.teacherhub.risk.enums.RiskTagCode.REPEAT, 5,
+                com.teacherhub.risk.enums.RiskTagCode.PROFANITY, 6,
+                com.teacherhub.risk.enums.RiskTagCode.INSULT, 10,
+                com.teacherhub.risk.enums.RiskTagCode.THREAT, 25,
+                com.teacherhub.risk.enums.RiskTagCode.LEGAL, 4,
+                com.teacherhub.risk.enums.RiskTagCode.EXPOSURE, 12,
+                com.teacherhub.risk.enums.RiskTagCode.REPEAT, 6,
                 com.teacherhub.risk.enums.RiskTagCode.UNFAIR_REQUEST, 8,
-                com.teacherhub.risk.enums.RiskTagCode.PRIVACY, 10
+                com.teacherhub.risk.enums.RiskTagCode.PRIVACY, 15
         ));
-        assertThat(scores.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(70);
+        assertThat(scores.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(86);
     }
 
     @Test
@@ -335,7 +354,7 @@ public class ComplaintFlowIntegrationTest {
         var systemAnalysis = riskAnalysisService.analyze(parentUser.getId(), complaintId);
         parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
 
-        assertThat(systemAnalysis.riskScore()).isEqualTo(32);
+        assertThat(systemAnalysis.riskScore()).isEqualTo(33);
         assertThat(systemAnalysis.riskLevel())
                 .isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
 
@@ -389,7 +408,7 @@ public class ComplaintFlowIntegrationTest {
         assertThat(raised.reason()).isEqualTo("새로운 위험 정황이 확인되어 상향합니다.");
 
         var currentRisk = teacherComplaintQueryService.findRisk(teacherUser.getId(), complaintId);
-        assertThat(currentRisk.riskScore()).isEqualTo(32);
+        assertThat(currentRisk.riskScore()).isEqualTo(33);
         assertThat(currentRisk.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
         assertThat(currentRisk.reviewScale()).isEqualTo(4);
         assertThat(currentRisk.reviewScore()).isEqualTo(40);
@@ -450,14 +469,14 @@ public class ComplaintFlowIntegrationTest {
     @Test
     void persistsTagSuggestionsAndSeparatesSourceEvidence() {
         Long complaintId = parentComplaintService.createDraft(parentUser.getId(),
-                createRequest("확인을 요청드립니다.")).getComplaintId();
+                createRequest("직접 찾아가겠습니다. 확인을 요청드립니다.")).getComplaintId();
         var review = riskAnalysisService.analyze(parentUser.getId(), complaintId);
         Long analysisId = review.analysisId();
         entityManager.flush();
         entityManager.clear();
 
         var findings = riskAnalysisQueryService.findFindings(parentUser.getId(), analysisId);
-        assertThat(findings.findings()).hasSize(3).allSatisfy(finding -> {
+        assertThat(findings.findings()).hasSize(2).allSatisfy(finding -> {
             assertThat(finding.evidences()).isNotEmpty();
             assertThat(finding.revisionSuggestions()).hasSize(1);
             assertThat(finding.revisionSuggestions().get(0).suggestedExpression()).isNotBlank();
@@ -469,9 +488,10 @@ public class ComplaintFlowIntegrationTest {
         assertThat(detail.results()).hasSize(com.teacherhub.risk.enums.RiskTagCode.values().length);
         var threat = detail.results().stream()
                 .filter(tag -> tag.code() == com.teacherhub.risk.enums.RiskTagCode.THREAT).findFirst().orElseThrow();
-        assertThat(threat.rule().detected()).isTrue();
+        assertThat(threat.rule().state())
+                .isEqualTo(com.teacherhub.risk.enums.RiskTagState.BOUNDARY);
         assertThat(threat.llm().detected()).isTrue();
-        assertThat(threat.rule().evidences()).containsExactly("[MOCK RULE] 협박 예시");
+        assertThat(threat.rule().evidences()).containsExactly("찾아가");
         assertThat(threat.llm().evidences()).containsExactly("[MOCK LLM] 협박 문맥 예시");
         assertThat(threat.llm().confidence()).isEqualTo(0.9);
         org.assertj.core.api.Assertions.assertThatThrownBy(
@@ -895,11 +915,12 @@ public class ComplaintFlowIntegrationTest {
     void setUp() {
 
         MockLlmRiskAnalyzer mockLlmRiskAnalyzer = new MockLlmRiskAnalyzer();
-        when(llmRiskAnalyzer.analyze(anyString(), anyList()))
+        when(llmRiskAnalyzer.analyze(anyString(), anyList(), any()))
                 .thenAnswer(invocation ->
                         mockLlmRiskAnalyzer.analyze(
                                 invocation.getArgument(0),
-                                invocation.getArgument(1)
+                                invocation.getArgument(1),
+                                invocation.getArgument(2)
                         )
                 );
 
@@ -913,12 +934,6 @@ public class ComplaintFlowIntegrationTest {
                                 "확인을 요청드립니다."
                         ),
                         java.util.List.of(
-                                new ComplaintRevisionGenerator.TagRevisionSuggestion(
-                                        com.teacherhub.risk.enums.RiskTagCode.PROFANITY,
-                                        "[MOCK RULE] 욕설 예시",
-                                        "정중한 표현으로 수정",
-                                        "테스트용 욕설 수정 제안"
-                                ),
                                 new ComplaintRevisionGenerator.TagRevisionSuggestion(
                                         com.teacherhub.risk.enums.RiskTagCode.THREAT,
                                         "[MOCK LLM] 협박 문맥 예시",
@@ -1059,7 +1074,7 @@ public class ComplaintFlowIntegrationTest {
                 .isNotNull();
 
         assertThat(reviewResponse.complaintId()).isEqualTo(complaintId);
-        assertThat(reviewResponse.riskScore()).isEqualTo(32);
+        assertThat(reviewResponse.riskScore()).isEqualTo(33);
         assertThat(reviewResponse.riskLevel())
                 .isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
         var findings = riskAnalysisQueryService.findFindings(parentUser.getId(), reviewResponse.analysisId());
@@ -1072,7 +1087,6 @@ public class ComplaintFlowIntegrationTest {
                 .filteredOn(RiskDetectorResponse.TagResult::finalDetected)
                 .extracting(RiskDetectorResponse.TagResult::code)
                 .containsExactly(
-                        com.teacherhub.risk.enums.RiskTagCode.PROFANITY,
                         com.teacherhub.risk.enums.RiskTagCode.THREAT,
                         com.teacherhub.risk.enums.RiskTagCode.UNFAIR_REQUEST);
 
@@ -1080,14 +1094,14 @@ public class ComplaintFlowIntegrationTest {
         var savedAnalyses = riskAnalysisRepository.findByComplaintIdOrderByIdAsc(complaintId);
         assertThat(savedAnalyses).hasSize(1);
         var firstAnalysis = savedAnalyses.get(0);
-        assertThat(firstAnalysis.getRiskScore()).isEqualTo(32);
+        assertThat(firstAnalysis.getRiskScore()).isEqualTo(33);
         assertThat(firstAnalysis.getModelName()).isEqualTo("mock-llm");
         assertThat(firstAnalysis.getTemperature()).isEqualTo(0.0);
         assertThat(firstAnalysis.getContentVersion()).isEqualTo(1);
         assertThat(firstAnalysis.getAnalyzedAt()).isNotNull();
         assertThat(complaintRiskTagRepository.findByRiskAnalysisId(firstAnalysis.getId()))
                 .hasSize(8).filteredOn(com.teacherhub.risk.entity.ComplaintRiskTag::isFinalDetected)
-                .hasSize(3);
+                .hasSize(2);
         assertThat(draft.getMaskedContent()).isNotNull();
         assertThat(draft.getStatus()).isEqualTo(ComplaintStatus.DRAFT);
         assertThat(draft.getCreatedAt()).isNotNull();
