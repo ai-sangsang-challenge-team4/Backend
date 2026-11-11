@@ -504,6 +504,9 @@ public class ComplaintFlowIntegrationTest {
         assertThat(threat.rule().evidences()).containsExactly("찾아가");
         assertThat(threat.llm().evidences()).containsExactly("[MOCK LLM] 협박 문맥 예시");
         assertThat(threat.llm().confidence()).isEqualTo(0.9);
+        assertThat(threat.llm().severity()).isEqualTo(1);
+        assertThat(threat.llm().repeatCount()).isEqualTo(1);
+        assertThat(detail.safetyFlags().credibleThreat()).isFalse();
         org.assertj.core.api.Assertions.assertThatThrownBy(
                 () -> riskAnalysisQueryService.findFindings(teacherUser.getId(), analysisId))
                 .isInstanceOf(com.teacherhub.complaint.exception.ComplaintAccessDeniedException.class);

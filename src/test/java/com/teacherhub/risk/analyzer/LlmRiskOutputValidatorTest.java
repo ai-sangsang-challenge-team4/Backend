@@ -5,11 +5,13 @@ import com.teacherhub.risk.dto.detection.EvidenceSpan;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
+import com.teacherhub.risk.dto.llm.SafetyFlags;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.enums.RiskTagState;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Arrays;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -111,6 +113,84 @@ class LlmRiskOutputValidatorTest {
 
         assertThatThrownBy(() -> LlmRiskOutputValidator.validate(result, "실제 입력"))
                 .isInstanceOf(AiResponseInvalidException.class);
+    }
+
+    @Test
+    void acceptsExtendedSeverityRepeatCountAndTriStateSafetyFlags() {
+        var result = new LlmRiskAnalysisResult(
+                extendedTags(RiskTagCode.PROFANITY, RiskTagState.PRESENT, 2),
+                new LlmAnalysisMetadata("claude-test", 0.0),
+                new SafetyFlags(false, null, false)
+        );
+
+        assertThatCode(() -> LlmRiskOutputValidator.validate(result, "마스킹된 민원"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsSeverityThatDoesNotMatchStateAndPartialExtendedSchema() {
+        var wrongSeverity = new LlmRiskAnalysisResult(
+                extendedTags(RiskTagCode.PROFANITY, RiskTagState.ABSENT, 2),
+                new LlmAnalysisMetadata("claude-test", 0.0),
+                new SafetyFlags(false, false, false)
+        );
+        var partial = new LlmRiskAnalysisResult(
+                List.of(new RiskTagDetectionResult(
+                        RiskTagCode.PROFANITY,
+                        RiskTagState.PRESENT,
+                        0.9,
+                        1,
+                        1,
+                        List.of(EvidenceSpan.unlocated("표현")),
+                        null
+                )),
+                new LlmAnalysisMetadata("claude-test", 0.0),
+                new SafetyFlags(false, false, false)
+        );
+
+        assertThatThrownBy(() -> LlmRiskOutputValidator.validate(wrongSeverity, "마스킹된 민원"))
+                .isInstanceOf(AiResponseInvalidException.class);
+        assertThatThrownBy(() -> LlmRiskOutputValidator.validate(partial, "마스킹된 민원"))
+                .isInstanceOf(AiResponseInvalidException.class);
+    }
+
+    @Test
+    void acceptsNullSeverityForBoundaryAndUnknown() {
+        var boundary = new LlmRiskAnalysisResult(
+                extendedTags(RiskTagCode.LEGAL, RiskTagState.BOUNDARY, null),
+                new LlmAnalysisMetadata("claude-test", 0.0),
+                new SafetyFlags(false, false, false)
+        );
+        var unknown = new LlmRiskAnalysisResult(
+                extendedTags(RiskTagCode.REPEAT, RiskTagState.UNKNOWN, null),
+                new LlmAnalysisMetadata("claude-test", 0.0),
+                new SafetyFlags(null, null, null)
+        );
+
+        assertThatCode(() -> LlmRiskOutputValidator.validate(boundary, "마스킹된 민원"))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> LlmRiskOutputValidator.validate(unknown, "마스킹된 민원"))
+                .doesNotThrowAnyException();
+    }
+
+    private List<RiskTagDetectionResult> extendedTags(
+            RiskTagCode selected,
+            RiskTagState selectedState,
+            Integer selectedSeverity
+    ) {
+        return Arrays.stream(RiskTagCode.values())
+                .map(code -> new RiskTagDetectionResult(
+                        code,
+                        code == selected ? selectedState : RiskTagState.ABSENT,
+                        0.9,
+                        code == selected ? selectedSeverity : Integer.valueOf(0),
+                        code == selected && selectedState == RiskTagState.PRESENT ? 2 : 0,
+                        code == selected && selectedState == RiskTagState.PRESENT
+                                ? List.of(EvidenceSpan.unlocated("표현"))
+                                : List.of(),
+                        null
+                ))
+                .toList();
     }
 
     private RiskTagDetectionResult tag(RiskTagCode code, double confidence) {

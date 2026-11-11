@@ -84,7 +84,7 @@ confidence, 모델 정보, 근거 개수·길이·좌표를 검증한 뒤에만 
 | LOW 0~20 | 완충 요약 | 없음 | RAG 초안·저장·전송 | 요약 분기 구현, 실제 RAG 미구현 |
 | MEDIUM 21~40 | 완충 요약 | 없음 | AI 초안·저장·전송 가능 | 명세와 일치 |
 | HIGH 41~60 | 완충 요약 | 템플릿, 증거 패키지, 관리자 검토 | 생성형 AI 금지, 채택 템플릿만 저장·전송 | **부분 구현** |
-| EMERGENCY 61~70 | 완충 요약 | 증거 패키지, 관리자 검토, 공식 절차 | AI 초안·저장·전송·완료 차단 | 차단·관리자 공유/재검토 구현, 일부 행동 미구현 |
+| EMERGENCY 61~100 | 완충 요약 | 증거 패키지, 관리자 검토, 공식 절차 | AI 초안·저장·전송·완료 차단 | 차단·관리자 공유/재검토 구현, 일부 행동 미구현 |
 | 분석 없음 | 원문 | 수동 검토 요청 | 대화 조회 가능 | 행동 표시만 구현 |
 
 세부 불일치:
@@ -106,7 +106,7 @@ confidence, 모델 정보, 근거 개수·길이·좌표를 검증한 뒤에만 
 - 같은 내용 hash 분석 재사용과 성공 분석 최대 2회 제한
 - Bean Validation 기반 제목·답변·사유·점수·페이지 범위 검증
 - 업무 예외의 공통 `ErrorResponse` 변환
-- 위험 점수 `min(70, 합계)`와 LOW/MEDIUM/HIGH/EMERGENCY 경계
+- 위험 점수 `min(100, 태그별 max(Rule, LLM) 합계)`와 LOW/MEDIUM/HIGH/EMERGENCY 경계
 - 관리자 공유·검토·원문 열람·AI 초안 생성·안전 차단 감사 이벤트
 - 내부 데이터 누락과 잘못된 업무 상태를 각각 500과 409로 구분
 
@@ -120,8 +120,8 @@ confidence, 모델 정보, 근거 개수·길이·좌표를 검증한 뒤에만 
    - `baseRiskScore/Level`, `effectiveRiskScore/Level`, `guardrailDecision`, 발동 rule 감사 저장도 없다.
 2. **hard guardrail 자체 장애 정책 미확정**
    - 명세의 기본안은 `REVIEW_REQUIRED + safetyLock`이지만 제출 허용 범위와 운영 알림이 확정되지 않았다.
-3. **운영 DB migration 보류**
-   - 아직 DB 연동 전이므로 이번 범위에서는 migration을 만들지 않는다. DB 연결·스키마 확정 시 별도 수행한다.
+3. **운영 DB baseline 선행 필요**
+   - Severity·안전 신호 증분 migration은 추가했지만 전체 초기 migration은 없다. 운영 적용 전 기존 DB baseline 등록이 필요하다.
 
 ### P1 — 높은 기술성·검증 점수를 위해 필요
 
@@ -146,7 +146,7 @@ confidence, 모델 정보, 근거 개수·길이·좌표를 검증한 뒤에만 
 2. 위험도별 `allowedActions`를 실제 API와 맞춘다.
 3. 비식별 골든셋 50건, 독립 2인 라벨, 평가 runner와 기준선 리포트를 만든다.
 4. 연결 장애 retry/circuit breaker/운영 지표와 로컬 시연 backup을 추가한다.
-5. DB 연동·스키마 확정 이후 Flyway migration과 보관·삭제 절차를 준비한다.
+5. DB 연결 전 Flyway baseline과 Severity·안전 신호 컬럼의 보관·삭제 절차를 검증한다.
 
 ## 8. 배포 후 지표와 롤백 조건
 

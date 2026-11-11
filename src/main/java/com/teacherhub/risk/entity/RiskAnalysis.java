@@ -4,6 +4,7 @@ import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskAnalysisMode;
+import com.teacherhub.risk.dto.llm.SafetyFlags;
 import com.teacherhub.risk.util.ContentFingerprint;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -44,6 +45,12 @@ public class RiskAnalysis {
     private String modelName;
 
     private Double temperature;
+
+    private Boolean credibleThreat;
+
+    private Boolean studentSafetyConcern;
+
+    private Boolean privacyExposure;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -100,6 +107,12 @@ public class RiskAnalysis {
 
     public RiskAnalysis(ComplaintMessage message, int riskScore, RiskLevel riskLevel,
                         String modelName, Double temperature, RiskAnalysisMode analysisMode) {
+        this(message, riskScore, riskLevel, modelName, temperature, analysisMode, null);
+    }
+
+    public RiskAnalysis(ComplaintMessage message, int riskScore, RiskLevel riskLevel,
+                        String modelName, Double temperature, RiskAnalysisMode analysisMode,
+                        SafetyFlags safetyFlags) {
         this.message = message;
         this.complaint = message.getComplaint();
         this.contentVersion = message.getContentVersion();
@@ -108,7 +121,17 @@ public class RiskAnalysis {
         this.riskLevel = riskLevel;
         this.modelName = modelName;
         this.temperature = temperature;
+        this.credibleThreat = safetyFlags == null ? null : safetyFlags.credibleThreat();
+        this.studentSafetyConcern = safetyFlags == null ? null : safetyFlags.studentSafetyConcern();
+        this.privacyExposure = safetyFlags == null ? null : safetyFlags.privacyExposure();
         this.analysisMode = Objects.requireNonNull(analysisMode, "분석 모드가 필요합니다.");
         this.analyzedAt = LocalDateTime.now();
+    }
+
+    public SafetyFlags safetyFlags() {
+        if (credibleThreat == null && studentSafetyConcern == null && privacyExposure == null) {
+            return null;
+        }
+        return new SafetyFlags(credibleThreat, studentSafetyConcern, privacyExposure);
     }
 }

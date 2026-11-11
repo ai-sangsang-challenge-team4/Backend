@@ -19,7 +19,7 @@ public record TeacherRiskResponse(
         Long complaintId,
         @Schema(description = "완료된 위험 분석 ID. 분석이 없으면 null", nullable = true)
         Long riskAnalysisId,
-        @Schema(description = "시스템 위험 점수(0~70). 감지된 태그 점수 합계이며 분석이 없으면 null", minimum = "0", maximum = "70", nullable = true)
+        @Schema(description = "시스템 위험 점수(0~100). Severity가 반영된 태그 점수 합계이며 분석이 없으면 null", minimum = "0", maximum = "100", nullable = true)
         Integer riskScore,
         @Schema(description = "시스템 위험 등급. 분석이 없으면 null", nullable = true)
         RiskLevel riskLevel,
@@ -29,7 +29,7 @@ public record TeacherRiskResponse(
         Integer reviewScore,
         @Schema(description = "최신 교사 검토 등급. 교사가 실제로 검토한 적이 없으면 null", nullable = true)
         RiskLevel reviewLevel,
-        @Schema(description = "현재 적용 중인 위험 점수(0~70). 교사 검토가 있으면 reviewScore, 없으면 riskScore", minimum = "0", maximum = "70", nullable = true)
+        @Schema(description = "현재 적용 중인 위험 점수(0~100). 교사 검토가 있으면 reviewScore, 없으면 riskScore", minimum = "0", maximum = "100", nullable = true)
         Integer currentRiskScore,
         @Schema(description = "현재 적용 중인 위험 등급. 교사 검토가 있으면 reviewLevel, 없으면 riskLevel", nullable = true)
         RiskLevel currentRiskLevel,

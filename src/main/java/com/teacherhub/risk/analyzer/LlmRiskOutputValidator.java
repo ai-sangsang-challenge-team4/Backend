@@ -5,6 +5,7 @@ import com.teacherhub.risk.dto.detection.EvidenceSpan;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
 import com.teacherhub.risk.enums.RiskTagCode;
+import com.teacherhub.risk.enums.RiskTagState;
 
 import java.util.HashSet;
 import java.util.List;
@@ -17,6 +18,7 @@ public final class LlmRiskOutputValidator {
     private static final int MAX_REASON_LENGTH = 2_000;
     private static final int MAX_EVIDENCE_LENGTH = 1_000;
     private static final int MAX_EVIDENCE_SPANS_PER_TAG = 20;
+    private static final int MAX_REPEAT_COUNT = 10_000;
 
     private LlmRiskOutputValidator() {
     }
@@ -41,6 +43,15 @@ public final class LlmRiskOutputValidator {
 
         List<RiskTagDetectionResult> tags = result.tags();
         if (tags.size() > RiskTagCode.values().length) {
+            throw invalid();
+        }
+
+        boolean extendedSchema = result.safetyFlags() != null
+                || tags.stream().anyMatch(tag -> tag != null
+                && (tag.severity() != null || tag.repeatCount() != null));
+        if (extendedSchema && (result.safetyFlags() == null
+                || tags.size() != RiskTagCode.values().length
+                || tags.stream().anyMatch(tag -> tag == null || tag.repeatCount() == null))) {
             throw invalid();
         }
 
@@ -70,12 +81,41 @@ public final class LlmRiskOutputValidator {
             throw invalid();
         }
 
+        validateSeverity(tag);
+
         List<EvidenceSpan> spans = tag.evidenceSpans();
         if (spans == null || spans.size() > MAX_EVIDENCE_SPANS_PER_TAG) {
             throw invalid();
         }
         for (EvidenceSpan span : spans) {
             validateEvidence(span, maskedContent);
+        }
+    }
+
+    private static void validateSeverity(RiskTagDetectionResult tag) {
+        Integer severity = tag.severity();
+        Integer repeatCount = tag.repeatCount();
+        boolean extendedTag = severity != null || repeatCount != null;
+        if (!extendedTag) {
+            return;
+        }
+        if (repeatCount == null || repeatCount < 0 || repeatCount > MAX_REPEAT_COUNT) {
+            throw invalid();
+        }
+        if (tag.state() == RiskTagState.PRESENT) {
+            if (severity == null || severity < 1 || severity > 3) {
+                throw invalid();
+            }
+            return;
+        }
+        if (tag.state() == RiskTagState.ABSENT) {
+            if (!Integer.valueOf(0).equals(severity)) {
+                throw invalid();
+            }
+            return;
+        }
+        if (severity != null) {
+            throw invalid();
         }
     }
 

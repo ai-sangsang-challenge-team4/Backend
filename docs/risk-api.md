@@ -13,7 +13,7 @@
 | POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 학부모 추가 문의 메시지의 위험 분석·수정안 생성 | 200 |
 | GET | `/risk-analyses/{analysisId}` | 저장된 분석의 점수·등급 조회 | 200 |
 | GET | `/risk-analyses/{analysisId}/findings` | 최종 감지 태그·근거·태그별 수정 제안·최종 수정본 조회 | 200 |
-| GET | `/risk-analyses/{analysisId}/detector-results` | 전체 태그의 Rule·LLM 상태·출처별 evidence span·LLM 신뢰도 조회 | 200 |
+| GET | `/risk-analyses/{analysisId}/detector-results` | 전체 태그의 Rule·LLM 상태·Severity·반복 횟수·안전 신호 조회 | 200 |
 | GET | `/risk-tags` | 위험 태그 기준 목록 조회, 민원 분석과 별개 | 200 |
 | POST | `/teacher/complaints/{complaintId}/risk-reviews` | 교사가 1~7점 위험도를 검토하고, EMERGENCY 변경은 관리자 승인을 요청 | 201 |
 | POST | `/teacher/complaints/{complaintId}/messages/{messageId}/original-views` | 담당 교사가 전송된 학부모 메시지 원문을 열람하고 감사 로그 저장 | 200 |
@@ -80,14 +80,40 @@ POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 AP
 외부 AI 장애는 `RULE_ONLY_AI_UNAVAILABLE`, 무효 응답은 `RULE_ONLY_INVALID_RESPONSE`다.
 내부 가드레일 오류는 성공 응답 대신 단계별 HTTP 500 오류 코드를 반환하므로 이 필드가 없다.
 
-시스템 위험 점수는 감지된 태그 원점수 합계를 최대 70점으로 제한한 값이다. 기본 태그 점수는
+시스템 위험 점수는 태그별 Rule 점수와 LLM 점수 중 큰 값을 합산해 최대 100점으로 제한한 값이다.
+기본 태그 점수는
 `PROFANITY 6`, `INSULT 10`, `THREAT 25`, `LEGAL 4`, `EXPOSURE 12`, `REPEAT 6`,
 `UNFAIR_REQUEST 8`, `PRIVACY 15`다. 등급은
-0~20 LOW, 21~40 MEDIUM, 41~60 HIGH, 61~70 EMERGENCY다.
+0~20 LOW, 21~40 MEDIUM, 41~60 HIGH, 61~100 EMERGENCY다.
+
+신규 LLM 응답은 전체 8개 태그에 `severity`와 `repeatCount`를 반환한다. Severity는
+`PRESENT=1~3`, `ABSENT=0`, `BOUNDARY/UNKNOWN=null`만 허용한다. LLM 점수는 서버의
+`RiskScorePolicy`가 `defaultScore × severity`로 계산하고, confidence는 점수에 사용하지 않는다.
+같은 태그의 최종 점수는 `max(Rule 점수, LLM 점수)`이므로 중복 합산하지 않는다. 신규 필드가
+모두 없는 구형 응답은 기존 고정 점수(1배)로 처리하지만, 신규 필드를 일부만 보내거나 상태와
+Severity가 일치하지 않으면 응답 전체를 무효로 처리한다.
+
+| Severity | LLM 태그 점수 |
+|---|---:|
+| 0 | 0 |
+| 1 | defaultScore |
+| 2 | defaultScore × 2 |
+| 3 | defaultScore × 3 |
+
+`repeatCount`는 현재 민원 원문에서 확인한 위험 표현 횟수이며 점수에 직접 곱하지 않는다.
+반복 횟수·강도·대상 특정 여부를 종합한 Severity를 통해 현재 문장 점수에 반영하고, 과거 민원
+이력에 걸친 반복은 별도 `REPEAT` 태그로 평가한다. 이 분리는 반복 횟수와 REPEAT 태그의
+이중 가산을 방지한다.
+
+`safetyFlags`의 `credibleThreat`, `studentSafetyConcern`, `privacyExposure`는 각각
+`true`, `false`, `null`을 허용한다. 하나라도 true이면 서버가 최종 점수를 100점
+EMERGENCY로 승격해 기존 관리자 재검토와 답변 차단 경로에 연결한다. null은 정보 부족을
+뜻하며 false로 치환하지 않는다. AI가 임의 점수나 가중치를 직접 전달하는 구조는 허용하지 않는다.
 
 POST는 원문을 마스킹한 뒤 원문 Rule 탐지를 실행하고, Rule의 evidence와 reason을 다시
-마스킹해 마스킹 본문과 함께 LLM에 전달한다. Claude가 같은 태그를 반환하면 Claude 상태를
-최종값으로 사용하고, Claude가 누락한 태그만 Rule 상태로 fallback한다. 이후 점수 계산과
+마스킹해 마스킹 본문과 함께 LLM에 전달한다. 결정론적 Rule PRESENT와 LLM PRESENT는 합집합으로
+보존하고 태그별 점수는 두 출처의 최댓값만 사용한다. LLM이 누락한 태그는 Rule 상태로 fallback한다.
+이후 점수 계산과
 수정안 생성·저장을 수행한다.
 LLM 출력이 스키마 검증에 실패하면 한 번 재생성한다. 재생성도 실패하거나 외부 AI가
 연결·시간초과·429·5xx로 불가하면 Rule 결과만으로 점수와 등급을 계산·저장하고 HTTP 200으로
@@ -119,7 +145,7 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 - `/risk` 응답의 `reviewScale`은 교사의 1~7 선택값이고, `reviewScore`는 환산된 10~70 점수다.
   실제 교사 검토가 없으면 두 필드와 `reviewLevel`은 null이다.
 - `/risk` 응답의 `currentRiskScore`는 교사 검토가 있으면 `reviewScore`, 없으면 시스템
-  `riskScore`이며, 모든 화면용 위험 점수는 동일한 0~70 단위를 사용한다.
+  `riskScore`다. 시스템 점수는 0~100이고 기존 교사 선택 척도의 환산 점수는 10~70이다.
 - 최초 검토값은 시스템 등급을 LOW 2점, MEDIUM 4점, HIGH 6점, EMERGENCY 7점으로 변환한다.
 - 현재 점수보다 낮추면 reason이 필수다.
 - 현재 점수보다 높이거나 동일하게 확인하면 reason은 선택 사항이다.
@@ -223,8 +249,9 @@ CSV의 `risk_tag_code`는 백엔드 `RiskTagCode`와 동일한
 상태를 계산하고 각 메시지 본문을 마스킹한다. 현재 분석 중인 학부모 메시지를 포함해 학부모
 메시지가 3건 이상이면 `repeatThresholdMet=true`로 계산하고 Rule의 `REPEAT` 후보를
 `PRESENT`로 LLM에 전달한다. 교사 답변은 3건 기준에서 제외하지만 문맥 이력에는 포함한다.
-LLM이 `REPEAT` 상태를 반환하면 기존 병합 정책에 따라 LLM 상태가 최종값이며, LLM이 해당
-태그를 생략한 경우에만 이 Rule 상태를 사용한다.
+LLM이 `REPEAT` 상태를 반환하면 현재 입력의 반복 횟수와 과거 이력 문맥을 함께 평가한다.
+과거 이력 임계치를 만족한 결정론적 Rule PRESENT는 LLM이 낮출 수 없으며, LLM이 해당 태그를
+생략한 경우에도 Rule 상태를 사용한다. 과거 이력이 없으면 LLM은 REPEAT를 UNKNOWN으로 반환한다.
 
 현재 분석 메시지와 임시저장은 과거 이력 목록에서는 제외한다. 전체 과거 이력의 횟수는
 보존하지만 본문은 최신 20개, 합계 8,000자까지만 선택한 뒤 시간순으로 전달한다. 제한이
@@ -266,9 +293,11 @@ finalRevision은 null이다. 최초 분석과 제출 분석은 서로 다른 분
 Rule 탐지기는 실제 CSV 사전을 사용한다. LLM 문맥 판단과 수정안 생성 품질은 외부 AI 연동과
 골든셋 평가가 필요하다.
 
-detector-results는 results(code, finalState, rule, llm)와 llm(modelName, temperature)을 반환한다.
+detector-results는 results(code, finalState, rule, llm), llm(modelName, temperature),
+safetyFlags를 반환한다.
 상태는 `PRESENT`, `ABSENT`, `BOUNDARY`, `UNKNOWN` 중 하나다. rule/llm에는 state,
-confidence, evidenceSpans가 있고 각 span은 text, start, end를 반환한다. 위치를 확정할 수 없는
+confidence, severity, repeatCount, evidenceSpans가 있고 각 span은 text, start, end를 반환한다.
+Rule의 severity/repeatCount는 null이다. 위치를 확정할 수 없는
 근거는 start/end가 null이다. 근거 없이 PRESENT만 반환된 결과는 BOUNDARY로 낮추며,
 이력 정보가 없는 REPEAT는 UNKNOWN으로 보존한다. 규칙 탐지 confidence는 null이다.
 모든 위험 코드(미감지 포함)를 반환한다. 기존 소유권 검증과 401/403/404 정책은 세 조회 모두 적용한다.
@@ -278,18 +307,40 @@ confidence, evidenceSpans가 있고 각 span은 text, start, end를 반환한다
 
 - risk_tag_revision_suggestions: id, risk_analysis_id(FK), code, original_expression,
   suggested_expression, reason, suggestion_order. RiskAnalysis의 cascade/orphanRemoval로 함께 관리한다.
-- complaint_risk_tags: rule_state, llm_state, final_state와 기존 호환용 탐지 boolean을 함께 유지한다.
+- complaint_risk_tags: rule_state, llm_state, final_state와 기존 호환용 탐지 boolean을 함께 유지하고,
+  LLM의 severity, repeat_count를 nullable로 저장한다. null은 구형 응답 또는
+  Rule-only 분석을 뜻한다.
 - complaint_risk_evidence_spans, complaint_risk_rule_evidence_spans,
   complaint_risk_llm_evidence_spans: 최종·Rule·LLM 근거의 text/start/end를 저장한다.
   기존 evidence는 분석 당시 병합 근거로 유지한다. 기존 confidence는 LLM 신뢰도다.
 - risk_analyses의 revision_reason/ai_revision은 전체 수정본으로 유지한다.
+- risk_analyses의 credible_threat, student_safety_concern, privacy_exposure에 tri-state 안전 신호를
+  저장한다. `V20261112_01__add_llm_severity_and_safety_flags.sql`은 이 컬럼과 범위 제약을 추가한다.
 
-현재 Flyway는 비활성화되어 있으며 개발·테스트 환경은 H2와 `ddl-auto=create-drop`으로
-엔티티 기준 스키마를 생성한다.
-운영 DB의 전체 초기 스키마와 기존 데이터 백필 migration은 아직 이 변경에 포함하지 않는다.
-운영 DB를 연결하기 전에 전체 엔티티를 기준으로 초기 스키마 관리 방식을 확정하고,
-기존 데이터를 보존해야 하는 배포라면 출처별 상태·근거와 태그별 수정 제안의 백필 정책을
-별도 migration으로 정의해야 한다.
+개발·테스트 환경은 H2와 `ddl-auto=create-drop`을 유지하며 Flyway는 비활성화되어 있다.
+운영용 증분 변경은 `V20261112_01__add_llm_severity_and_safety_flags.sql`로 제공한다.
+다만 저장소에 전체 초기 스키마 migration이 아직 없으므로 운영 적용 전 기존 DB를 Flyway
+baseline으로 등록해야 한다. 신규 컬럼은 nullable이며 기존 분석은 백필하지 않고 구형 응답으로
+해석한다. 롤백 시 애플리케이션을 이전 버전으로 되돌린 뒤 신규 컬럼과 제약을 제거할 수 있지만,
+그 기간에 저장된 Severity와 안전 신호 감사 정보는 소실되므로 먼저 별도 보관해야 한다.
+
+### 배포 확인과 롤백 조건
+
+- 배포 후 신규/구형 응답별 성공률, `RULE_ONLY_INVALID_RESPONSE` 비율, 태그별 Severity 분포,
+  safety flag별 true/null 비율, EMERGENCY 승격률, 교사·관리자 override 비율을 확인한다.
+- AI 요청에는 마스킹된 본문만 포함되는지 샘플이 아닌 자동 지표와 테스트로 확인한다.
+- 스키마 무효 폴백이 기준선보다 급증하거나, 정당한 신고·법적 대응의 오탐이 증가하거나,
+  THREAT/PRIVACY 중요 사례가 한 단계 이상 과소평가되면 이전 애플리케이션 버전으로 롤백한다.
+- 점수 정책 롤백 시 신규 nullable 컬럼은 즉시 삭제하지 않아도 구버전이 무시할 수 있다.
+  컬럼 제거는 감사 데이터 보관 후 별도 배포로 수행한다.
+
+### 현재 검증 상태
+
+- 고정 fake 기반 단위·통합 테스트와 로컬 HTTP 계약 테스트는 신규 8태그 응답, 구형 응답 호환,
+  Severity 경계, 중복 점수 방지, 안전 신호, 정당한 법적 대응, 개인정보 마스킹 순서를 검증한다.
+- 저장소에는 비식별 골든셋과 평가 runner가 아직 없어 실제 모델 기준선 비교는 실행할 수 없다.
+- AWS의 `teacherhub-ai.service` 실제 엔드포인트 주소/접속 설정은 저장소에 없으므로 배포 서버와의
+  smoke test는 운영 환경에서 별도 수행해야 한다.
 
 ### 보조 DTO 파일 정리
 

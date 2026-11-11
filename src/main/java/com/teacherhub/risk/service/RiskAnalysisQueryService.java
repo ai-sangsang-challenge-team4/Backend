@@ -59,13 +59,18 @@ public class RiskAnalysisQueryService {
                         tag.effectiveFinalState(),
                         new RiskDetectorResponse.Detection(tag.effectiveRuleState(), null,
                                 sourceSpans(tag.getRuleEvidenceSpans(), tag.getRuleEvidence())),
-                        new RiskDetectorResponse.Detection(tag.effectiveLlmState(), tag.getConfidence(),
+                        new RiskDetectorResponse.Detection(
+                                tag.effectiveLlmState(),
+                                tag.getConfidence(),
+                                tag.getSeverity(),
+                                tag.getRepeatCount(),
                                 sourceSpans(tag.getLlmEvidenceSpans(), tag.getLlmEvidence())))).toList();
 
         return new RiskDetectorResponse(analysisId, results,
 
                 new RiskDetectorResponse.LlmInfo(analysis.getModelName(),
-                        analysis.getTemperature()));
+                        analysis.getTemperature()),
+                analysis.safetyFlags());
     }
 
     // 민원 위험 분석 조회 권한
