@@ -26,14 +26,15 @@ erDiagram
   context_required, context_subtype, normalization_rule, dataset_version, enabled.
   CSV v1.1의 72개 후보 신호를 저장하며 애플리케이션에서 캐시해 사용한다.
 - `risk_analyses`: complaint_id, message_id, risk_score, risk_level, model_name, temperature,
-  analysis_mode, analyzed_at. message_id와 content_version으로 분석 대상 메시지 버전을 구분한다.
+  analysis_mode, credible_threat, student_safety_concern, privacy_exposure, analyzed_at.
+  message_id와 content_version으로 분석 대상 메시지 버전을 구분한다.
   `analysis_mode`은 정상 Rule+LLM 분석인 `HYBRID`와 외부 AI 실패 후 잠정 분석인 `RULE_ONLY`를
-  구분한다. DB migration은 실제 DB 연결·스키마 확정 시 별도 작성한다.
+  구분한다. Severity와 안전 신호 증분 컬럼은 Flyway migration으로 관리한다.
 - `risk_reviews`: risk_analysis_id, reviewed_by, previous_score, previous_level,
   reviewed_score, reviewed_level, direction, reason, reviewed_at. 시스템 분석은 변경하지
   않고 교사의 위험도 검토를 시간순으로 누적한다.
 - `complaint_risk_tags`: risk_analysis_id, risk_tag_id, rule_detected, llm_detected,
-  final_detected, confidence, evidence. 분석 1건에 전체 8개 태그를 저장한다.
+  final_detected, confidence, severity, repeat_count, evidence. 분석 1건에 전체 8개 태그를 저장한다.
   분석 ID와 태그 ID 조합은 유일하다.
 - `complaint_events`: complaint_id, actor_id, actor_name, event_type, reference_type,
   reference_id, previous_status, new_status, risk_score, risk_level, previous_risk_score,
@@ -45,14 +46,17 @@ erDiagram
 RiskAnalysisService: 본인/DRAFT 검증 → 원문 마스킹 → CSV Rule 후보 탐지 → Rule 근거 마스킹
 → 마스킹 본문과 Rule 후보를 LLM에 전달 → Claude 우선 태그 병합 → 점수 계산 및 결과 저장
 → 검토 응답. 일반 Rule 후보는 BOUNDARY, HINT_ONLY는 UNKNOWN으로 전달하며 키워드만으로
-PRESENT를 확정하지 않는다. Claude가 같은 태그를 반환하면 Claude 상태가 최종이고, 누락한
-태그만 Rule 상태로 fallback한다. 수정본은 자동 적용하지 않는다.
+PRESENT를 확정하지 않는다. 결정론적 Rule PRESENT와 LLM PRESENT는 합집합으로 보존하고,
+태그별 점수는 두 출처 중 최댓값만 사용한다. 누락한 태그는 Rule 상태로 fallback한다.
+수정본은 자동 적용하지 않는다.
 LLM 스키마 오류는 한 번 재생성하고, 재생성 실패 또는 외부 AI 장애 시 전체 Rule 결과만으로
 점수·등급을 계산해 `RULE_ONLY`로 저장한다. 이 경우 AI 수정안은 생성하지 않는다.
 
-시스템 분석은 최종 탐지된 태그의 default_score를 합산하고, 같은 태그가 두 탐지기에서
-발견되어도 한 번만 계산한 뒤 최대 70점으로 제한한다. 시스템 점수는 0~20점 LOW,
-21~40점 MEDIUM, 41~60점 HIGH, 61~70점 EMERGENCY다.
+시스템 분석은 Rule 점수와 `default_score × severity`인 LLM 점수 중 태그별 최댓값을 합산한다.
+같은 태그가 두 탐지기에서 발견되어도 중복 계산하지 않고 최대 100점으로 제한한다.
+confidence는 점수에 사용하지 않는다. 시스템 점수는 0~20점 LOW, 21~40점 MEDIUM,
+41~60점 HIGH, 61~100점 EMERGENCY다. 세 안전 신호 중 하나라도 true이면 100점
+EMERGENCY로 승격한다.
 
 교사는 1~7 선택 척도를 사용하고 서버는 선택값에 10을 곱해 시스템과 같은 단위의
 10~70점으로 환산한다. 최초 검토 위치는 시스템 등급을

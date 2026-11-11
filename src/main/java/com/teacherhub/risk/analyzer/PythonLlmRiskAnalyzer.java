@@ -1,6 +1,11 @@
 package com.teacherhub.risk.analyzer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.cfg.CoercionAction;
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
+import com.fasterxml.jackson.databind.type.LogicalType;
 import com.teacherhub.ai.exception.AiRequestPreparationException;
 import com.teacherhub.ai.exception.AiResponseInvalidException;
 import com.teacherhub.ai.exception.AiServiceUnavailableException;
@@ -26,7 +31,7 @@ public class PythonLlmRiskAnalyzer implements LlmRiskAnalyzer {
 
     private final HttpClient httpClient;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = strictObjectMapper();
 
     private final String aiServerUrl;
     private final Duration requestTimeout;
@@ -140,5 +145,17 @@ public class PythonLlmRiskAnalyzer implements LlmRiskAnalyzer {
             List<RiskTagDetectionResult> ruleResults,
             RepeatAnalysisContext repeatContext
     ) {
+    }
+
+    private static ObjectMapper strictObjectMapper() {
+        ObjectMapper mapper = JsonMapper.builder().build();
+        mapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
+        mapper.coercionConfigFor(LogicalType.Boolean)
+                .setCoercion(CoercionInputShape.String, CoercionAction.Fail);
+        mapper.coercionConfigFor(LogicalType.Integer)
+                .setCoercion(CoercionInputShape.String, CoercionAction.Fail);
+        mapper.coercionConfigFor(LogicalType.Float)
+                .setCoercion(CoercionInputShape.String, CoercionAction.Fail);
+        return mapper;
     }
 }

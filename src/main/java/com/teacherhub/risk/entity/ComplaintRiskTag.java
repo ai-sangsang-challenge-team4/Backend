@@ -51,6 +51,10 @@ public class ComplaintRiskTag {
 
     private Double confidence;
 
+    private Integer severity;
+
+    private Integer repeatCount;
+
     @Column(columnDefinition = "TEXT")
     private String evidence;
 
@@ -112,6 +116,8 @@ public class ComplaintRiskTag {
         this.llmState = result.llmState();
         this.finalState = result.state();
         this.confidence = result.confidence();
+        this.severity = result.severity();
+        this.repeatCount = result.repeatCount();
         this.evidence = result.evidence();
         this.reason = result.reason();
         this.evidenceSpans.addAll(result.evidenceSpans().stream().map(RiskEvidenceSpan::new).toList());

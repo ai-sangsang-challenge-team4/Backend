@@ -24,12 +24,16 @@ import java.util.stream.Stream;
 @Transactional(readOnly = true)
 public class RiskEvaluator {
 
+    private final RiskScorePolicy scorePolicy;
+
     public record FinalRiskTagResponse(
             RiskTagCode code,
             RiskTagState state,
             RiskTagState ruleState,
             RiskTagState llmState,
             Double confidence,
+            Integer severity,
+            Integer repeatCount,
             List<EvidenceSpan> evidenceSpans,
             String reason
     ) {
@@ -37,6 +41,28 @@ public class RiskEvaluator {
             evidenceSpans = evidenceSpans == null
                     ? List.of()
                     : List.copyOf(evidenceSpans);
+        }
+
+        public FinalRiskTagResponse(
+                RiskTagCode code,
+                RiskTagState state,
+                RiskTagState ruleState,
+                RiskTagState llmState,
+                Double confidence,
+                List<EvidenceSpan> evidenceSpans,
+                String reason
+        ) {
+            this(
+                    code,
+                    state,
+                    ruleState,
+                    llmState,
+                    confidence,
+                    null,
+                    null,
+                    evidenceSpans,
+                    reason
+            );
         }
 
         public FinalRiskTagResponse(
@@ -79,6 +105,8 @@ public class RiskEvaluator {
                             ? RiskTagState.PRESENT
                             : RiskTagState.ABSENT,
                     confidence,
+                    null,
+                    null,
                     evidence == null || evidence.isBlank()
                             ? List.of()
                             : List.of(
@@ -112,8 +140,8 @@ public class RiskEvaluator {
         }
     }
 
-    // Rule은 1차 탐지 결과이며,
-    // LLM 결과가 존재하는 경우 Claude의 2차 문맥 판단을 최종 상태로 사용합니다.
+    // Rule은 결정론적 1차 탐지, LLM은 문맥 기반 2차 탐지입니다.
+    // PRESENT는 합집합으로 보존하고 점수는 출처별 결과 중 큰 값만 사용합니다.
     public List<FinalRiskTagResponse> merge(
             List<RiskTagDetectionResult> ruleResults,
             List<RiskTagDetectionResult> llmResults
@@ -155,15 +183,14 @@ public class RiskEvaluator {
                                     llmState
                             );
 
-                    /*
-                     * Claude가 해당 태그를 판단한 경우
-                     * 최종 근거와 reason 역시 Claude 결과를 우선 사용합니다.
-                     *
-                     * Rule 결과는 detector-results에서
-                     * 별도 source evidence로 계속 보존됩니다.
-                     */
+                    // 실제 최종 PRESENT를 만든 출처의 근거를 우선하고,
+                    // 두 출처의 원본 근거는 detector-results에 각각 보존합니다.
                     RiskTagDetectionResult finalSource =
-                            llm != null
+                            llmState == RiskTagState.PRESENT
+                                    ? llm
+                                    : ruleState == RiskTagState.PRESENT
+                                    ? rule
+                                    : llm != null
                                     ? llm
                                     : rule;
 
@@ -197,6 +224,12 @@ public class RiskEvaluator {
                             llm == null
                                     ? null
                                     : llm.confidence(),
+                            llm == null
+                                    ? null
+                                    : llm.severity(),
+                            llm == null
+                                    ? null
+                                    : llm.repeatCount(),
                             evidenceSpans,
                             reason == null || reason.isBlank()
                                     ? null
@@ -215,6 +248,8 @@ public class RiskEvaluator {
                         result.state(),
                         result.ruleState(),
                         RiskTagState.UNKNOWN,
+                        null,
+                        null,
                         null,
                         result.evidenceSpans(),
                         result.reason()
@@ -245,22 +280,8 @@ public class RiskEvaluator {
      * Rule = 1차 탐지
      * Claude = 2차 문맥 검토
      *
-     * Claude 결과가 존재하면 Claude 판단이 최종 상태가 됩니다.
-     * 따라서:
-     *
-     * Rule PRESENT + Claude ABSENT
-     * -> ABSENT
-     *
-     * Rule ABSENT + Claude PRESENT
-     * -> PRESENT
-     *
-     * Rule PRESENT + Claude BOUNDARY
-     * -> BOUNDARY
-     *
-     * Rule PRESENT + Claude UNKNOWN
-     * -> UNKNOWN
-     *
-     * Claude 결과가 없는 경우에만 Rule 결과를 사용합니다.
+     * 결정론적 Rule PRESENT는 LLM이 낮출 수 없고, LLM PRESENT는 Rule에 없던
+     * 문맥 위험을 추가합니다. 이 합집합 상태를 기준으로 태그별 점수의 최댓값을 계산합니다.
      */
     private RiskTagState mergeState(
             RiskTagCode code,
@@ -269,6 +290,10 @@ public class RiskEvaluator {
             RiskTagState ruleState,
             RiskTagState llmState
     ) {
+        if (ruleState == RiskTagState.PRESENT
+                || llmState == RiskTagState.PRESENT) {
+            return RiskTagState.PRESENT;
+        }
         if (llm != null) {
             return llmState;
         }
@@ -364,6 +389,16 @@ public class RiskEvaluator {
                 left.code(),
                 state,
                 confidence,
+                preferred.stream()
+                        .map(RiskTagDetectionResult::severity)
+                        .filter(Objects::nonNull)
+                        .max(Integer::compareTo)
+                        .orElse(null),
+                preferred.stream()
+                        .map(RiskTagDetectionResult::repeatCount)
+                        .filter(Objects::nonNull)
+                        .max(Integer::compareTo)
+                        .orElse(null),
                 evidenceSpans,
                 reason.isBlank()
                         ? null
@@ -402,14 +437,15 @@ public class RiskEvaluator {
             Map<RiskTagCode, RiskTag> definitions
     ) {
         int score = tags.stream()
-                .filter(
-                        FinalRiskTagResponse::detected
-                )
-                .map(
-                        FinalRiskTagResponse::code
-                )
-                .distinct()
-                .mapToInt(code -> {
+                .collect(Collectors.toMap(
+                        FinalRiskTagResponse::code,
+                        Function.identity(),
+                        (left, right) -> left
+                ))
+                .values()
+                .stream()
+                .mapToInt(tagResult -> {
+                    RiskTagCode code = tagResult.code();
                     RiskTag tag =
                             definitions.get(code);
 
@@ -423,11 +459,24 @@ public class RiskEvaluator {
                         );
                     }
 
-                    return tag.getDefaultScore();
+                    int ruleScore = tagResult.ruleState() == RiskTagState.PRESENT
+                            ? tag.getDefaultScore()
+                            : 0;
+                    int llmScore = tagResult.llmState() == RiskTagState.PRESENT
+                            ? scorePolicy.llmScore(tag.getDefaultScore(), tagResult.severity())
+                            : 0;
+                    return Math.max(ruleScore, llmScore);
                 })
-                .sum();
+                .reduce(0, Math::addExact);
 
-        return Math.min(70, score);
+        return scorePolicy.cap(score);
+    }
+
+    public int applySafetyFlags(
+            int calculatedScore,
+            com.teacherhub.risk.dto.llm.SafetyFlags safetyFlags
+    ) {
+        return scorePolicy.applySafetyFlags(calculatedScore, safetyFlags);
     }
 
     // 위험 수준 계산

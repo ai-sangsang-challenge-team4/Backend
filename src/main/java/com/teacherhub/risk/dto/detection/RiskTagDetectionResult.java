@@ -10,6 +10,8 @@ public record RiskTagDetectionResult(
         RiskTagCode code,
         RiskTagState state,
         Double confidence,
+        Integer severity,
+        Integer repeatCount,
         List<EvidenceSpan> evidenceSpans,
         String reason
 ) {
@@ -21,9 +23,19 @@ public record RiskTagDetectionResult(
             RiskTagCode code,
             RiskTagState state,
             Double confidence,
+            List<EvidenceSpan> evidenceSpans,
+            String reason
+    ) {
+        this(code, state, confidence, null, null, evidenceSpans, reason);
+    }
+
+    public RiskTagDetectionResult(
+            RiskTagCode code,
+            RiskTagState state,
+            Double confidence,
             List<EvidenceSpan> evidenceSpans
     ) {
-        this(code, state, confidence, evidenceSpans, null);
+        this(code, state, confidence, null, null, evidenceSpans, null);
     }
 
     public RiskTagDetectionResult(
@@ -46,6 +58,8 @@ public record RiskTagDetectionResult(
                 code,
                 detected ? RiskTagState.PRESENT : RiskTagState.ABSENT,
                 confidence,
+                null,
+                null,
                 evidence == null || evidence.isBlank()
                         ? List.of()
                         : List.of(EvidenceSpan.unlocated(evidence)),
@@ -67,6 +81,8 @@ public record RiskTagDetectionResult(
                 code,
                 state,
                 confidence,
+                severity,
+                repeatCount,
                 evidenceSpans.stream().map(span -> span.locateIn(content)).toList(),
                 reason
         );

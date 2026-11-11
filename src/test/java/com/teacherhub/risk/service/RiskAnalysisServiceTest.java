@@ -78,7 +78,7 @@ class RiskAnalysisServiceTest {
             mock(ComplaintRevisionGenerator.class);
 
     private final RiskEvaluator evaluator =
-            new RiskEvaluator();
+            new RiskEvaluator(new RiskScorePolicy());
 
     private final RepeatAnalysisContextFactory repeatContexts =
             mock(RepeatAnalysisContextFactory.class);

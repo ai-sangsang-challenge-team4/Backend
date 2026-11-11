@@ -3,6 +3,7 @@ package com.teacherhub.risk.dto.response;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.enums.RiskTagState;
 import com.teacherhub.risk.dto.detection.EvidenceSpan;
+import com.teacherhub.risk.dto.llm.SafetyFlags;
 
 import java.util.List;
 
@@ -10,7 +11,8 @@ import java.util.List;
 public record RiskDetectorResponse(
         Long analysisId,
         List<TagResult> results,
-        LlmInfo llm
+        LlmInfo llm,
+        SafetyFlags safetyFlags
 ) {
     public record TagResult(
             RiskTagCode code,
@@ -26,6 +28,8 @@ public record RiskDetectorResponse(
     public record Detection(
             RiskTagState state,
             Double confidence,
+            Integer severity,
+            Integer repeatCount,
             List<EvidenceSpan> evidenceSpans
     ) {
         public boolean detected() {
@@ -34,6 +38,14 @@ public record RiskDetectorResponse(
 
         public List<String> evidences() {
             return evidenceSpans.stream().map(EvidenceSpan::text).toList();
+        }
+
+        public Detection(
+                RiskTagState state,
+                Double confidence,
+                List<EvidenceSpan> evidenceSpans
+        ) {
+            this(state, confidence, null, null, evidenceSpans);
         }
     }
 

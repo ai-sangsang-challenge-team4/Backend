@@ -437,7 +437,10 @@ public class RiskAnalysisService {
             boolean submitting
     ) {
         List<FinalRiskTagResponse> finalTags = mergeAndMaskFinalTags(ruleResults, llmExecution);
-        RiskCalculation calculation = calculateRisk(finalTags);
+        RiskCalculation calculation = calculateRisk(
+                finalTags,
+                llmExecution.result().safetyFlags()
+        );
         RevisionResult revision = emptyRevision();
 
         if (submitting || llmExecution.ruleOnly()) {
@@ -467,7 +470,7 @@ public class RiskAnalysisService {
             return new PreparedAnalysis(
                     fallback,
                     ruleOnlyTags,
-                    calculateRisk(ruleOnlyTags),
+                    calculateRisk(ruleOnlyTags, null),
                     emptyRevision()
             );
         }
@@ -488,6 +491,8 @@ public class RiskAnalysisService {
                         tag.ruleState(),
                         tag.llmState(),
                         tag.confidence(),
+                        tag.severity(),
+                        tag.repeatCount(),
                         tag.evidenceSpans().stream()
                                 .map(span -> new EvidenceSpan(
                                         maskForAi(span.text()),
@@ -564,7 +569,8 @@ public class RiskAnalysisService {
         return new LlmExecutionResult(
                 new LlmRiskAnalysisResult(
                         List.of(),
-                        new LlmAnalysisMetadata("rule-only-fallback", null)
+                        new LlmAnalysisMetadata("rule-only-fallback", null),
+                        null
                 ),
                 status
         );
@@ -587,7 +593,8 @@ public class RiskAnalysisService {
                 raw.tags().stream()
                         .map(tag -> tag.locateEvidenceIn(maskedContent))
                         .toList(),
-                raw.metadata()
+                raw.metadata(),
+                raw.safetyFlags()
         );
     }
 
@@ -600,6 +607,8 @@ public class RiskAnalysisService {
                                 result.code(),
                                 result.state(),
                                 result.confidence(),
+                                result.severity(),
+                                result.repeatCount(),
                                 result.evidenceSpans()
                                         .stream()
                                         .map(span ->
@@ -815,7 +824,10 @@ public class RiskAnalysisService {
         );
     }
 
-    private RiskCalculation calculateRisk(List<FinalRiskTagResponse> tags) {
+    private RiskCalculation calculateRisk(
+            List<FinalRiskTagResponse> tags,
+            com.teacherhub.risk.dto.llm.SafetyFlags safetyFlags
+    ) {
         Map<RiskTagCode, RiskTag> definitions;
         int score;
         RiskLevel level;
@@ -831,6 +843,7 @@ public class RiskAnalysisService {
                 }
             }
             score = riskEvaluator.calculate(tags, definitions);
+            score = riskEvaluator.applySafetyFlags(score, safetyFlags);
             level = riskEvaluator.levelFor(score);
         } catch (RiskAnalysisProcessingException exception) {
             throw exception;
@@ -858,7 +871,8 @@ public class RiskAnalysisService {
                             calculation.level(),
                             llm.metadata().modelName(),
                             llm.metadata().temperature(),
-                            analysisMode
+                            analysisMode,
+                            llm.safetyFlags()
                     )
             );
         } catch (RuntimeException exception) {

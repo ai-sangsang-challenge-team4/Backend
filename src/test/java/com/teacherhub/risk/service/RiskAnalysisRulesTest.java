@@ -7,6 +7,7 @@ import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
 import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
+import com.teacherhub.risk.dto.llm.SafetyFlags;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 import com.teacherhub.complaint.entity.Complaint;
@@ -47,7 +48,7 @@ class RiskAnalysisRulesTest {
     private final RiskAnalysisRepository analyses = mock(RiskAnalysisRepository.class);
     private final ComplaintRiskTagRepository results = mock(ComplaintRiskTagRepository.class);
     private final ComplaintRevisionGenerator revisions = mock(ComplaintRevisionGenerator.class);
-    private final RiskEvaluator evaluator = new RiskEvaluator();
+    private final RiskEvaluator evaluator = new RiskEvaluator(new RiskScorePolicy());
     private final RepeatAnalysisContextFactory repeatContexts = mock(RepeatAnalysisContextFactory.class);
 
     private final RiskAnalysisService service = new RiskAnalysisService(
@@ -178,7 +179,7 @@ class RiskAnalysisRulesTest {
     }
 
     @Test
-    void llmRepeatStateStillOverridesRepeatThresholdRuleSignal() {
+    void repeatThresholdRuleSignalCannotBeLoweredByLlm() {
         when(repeatContexts.create(any(), any())).thenReturn(new RepeatAnalysisContext(
                 true, 7, 3, 3, true,
                 "OPEN_WAITING_FOR_TEACHER", 2, 1, 3, 3, 30, false, List.of()
@@ -199,7 +200,7 @@ class RiskAnalysisRulesTest {
                 .filteredOn(tag -> tag.code() == REPEAT)
                 .singleElement()
                 .extracting(FinalRiskTagResponse::state)
-                .isEqualTo(RiskTagState.ABSENT);
+                .isEqualTo(RiskTagState.PRESENT);
     }
 
     @Test
@@ -252,15 +253,14 @@ class RiskAnalysisRulesTest {
                 .singleElement()
                 .satisfies(tag -> {
                     assertThat(tag.state())
-                            .isEqualTo(RiskTagState.ABSENT);
+                            .isEqualTo(RiskTagState.PRESENT);
                     assertThat(tag.ruleState())
                             .isEqualTo(RiskTagState.PRESENT);
                     assertThat(tag.llmState())
                             .isEqualTo(RiskTagState.ABSENT);
                     assertThat(tag.evidenceSpans())
-                            .isEmpty();
-                    assertThat(tag.reason())
-                            .isNull();
+                            .extracting(com.teacherhub.risk.dto.detection.EvidenceSpan::text)
+                            .containsExactly("rule only");
                 });
 
         assertThat(result.tags())
@@ -312,7 +312,7 @@ class RiskAnalysisRulesTest {
                 .isEqualTo(RiskTagState.ABSENT);
 
         assertThat(result.riskScore())
-                .isEqualTo(4);
+                .isEqualTo(5);
     }
 
     @Test
@@ -355,7 +355,8 @@ class RiskAnalysisRulesTest {
             "41,HIGH",
             "60,HIGH",
             "61,EMERGENCY",
-            "70,EMERGENCY"
+            "70,EMERGENCY",
+            "100,EMERGENCY"
     })
     void classifiesBoundaryScores(
             int score,
@@ -383,7 +384,7 @@ class RiskAnalysisRulesTest {
     }
 
     @Test
-    void capsCombinedTagScoreAtSeventy() {
+    void capsCombinedTagScoreAtOneHundred() {
         var tags = Arrays.stream(RiskTagCode.values())
                 .map(code -> new FinalRiskTagResponse(
                         code,
@@ -403,10 +404,128 @@ class RiskAnalysisRulesTest {
         Map<RiskTagCode, RiskTag> configured = Arrays.stream(RiskTagCode.values())
                 .collect(java.util.stream.Collectors.toMap(
                         code -> code,
-                        code -> new RiskTag(code, code.name(), 15)
+                        code -> new RiskTag(code, code.name(), 20)
                 ));
 
-        assertThat(evaluator.calculate(tags, configured)).isEqualTo(70);
+        assertThat(evaluator.calculate(tags, configured)).isEqualTo(100);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"1,6", "2,12", "3,18"})
+    void appliesBackendSeverityMultiplier(int severity, int expectedScore) {
+        var result = new FinalRiskTagResponse(
+                PROFANITY,
+                RiskTagState.PRESENT,
+                RiskTagState.ABSENT,
+                RiskTagState.PRESENT,
+                0.01,
+                severity,
+                5,
+                List.of(com.teacherhub.risk.dto.detection.EvidenceSpan.unlocated("표현")),
+                "문맥 판단"
+        );
+
+        assertThat(evaluator.calculate(
+                List.of(result),
+                Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 6))
+        )).isEqualTo(expectedScore);
+    }
+
+    @Test
+    void usesMaximumRuleOrLlmScoreWithoutDuplicateAddition() {
+        var result = new FinalRiskTagResponse(
+                PROFANITY,
+                RiskTagState.PRESENT,
+                RiskTagState.PRESENT,
+                RiskTagState.PRESENT,
+                0.99,
+                2,
+                4,
+                List.of(com.teacherhub.risk.dto.detection.EvidenceSpan.unlocated("표현")),
+                null
+        );
+
+        assertThat(evaluator.calculate(
+                List.of(result),
+                Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 6))
+        )).isEqualTo(12);
+    }
+
+    @Test
+    void confidenceDoesNotChangeSeverityScore() {
+        var lowConfidence = new FinalRiskTagResponse(
+                PROFANITY, RiskTagState.PRESENT, RiskTagState.ABSENT, RiskTagState.PRESENT,
+                0.01, 2, 2, List.of(), null
+        );
+        var highConfidence = new FinalRiskTagResponse(
+                PROFANITY, RiskTagState.PRESENT, RiskTagState.ABSENT, RiskTagState.PRESENT,
+                0.99, 2, 2, List.of(), null
+        );
+        var configured = Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 6));
+
+        assertThat(evaluator.calculate(List.of(lowConfidence), configured))
+                .isEqualTo(evaluator.calculate(List.of(highConfidence), configured))
+                .isEqualTo(12);
+    }
+
+    @Test
+    void legitimateLegalNoticeDoesNotIncreaseScore() {
+        var merged = evaluator.merge(
+                List.of(new RiskTagDetectionResult(
+                        LEGAL,
+                        RiskTagState.BOUNDARY,
+                        null,
+                        List.of(com.teacherhub.risk.dto.detection.EvidenceSpan.unlocated("정식으로 신고하겠습니다")),
+                        "법적 대응 언급"
+                )),
+                List.of(new RiskTagDetectionResult(
+                        LEGAL,
+                        RiskTagState.ABSENT,
+                        0.99,
+                        0,
+                        1,
+                        List.of(),
+                        "정당한 권리 행사 예고"
+                ))
+        );
+        var legal = merged.stream().filter(tag -> tag.code() == LEGAL).toList();
+
+        assertThat(legal).singleElement()
+                .extracting(FinalRiskTagResponse::state)
+                .isEqualTo(RiskTagState.ABSENT);
+        assertThat(evaluator.calculate(
+                legal,
+                Map.of(LEGAL, new RiskTag(LEGAL, "법적 조치 언급", 4))
+        )).isZero();
+    }
+
+    @Test
+    void safetyFlagForcesEmergencyReviewAtOneHundred() {
+        when(rules.detect(anyString())).thenReturn(List.of());
+        var extendedTags = Arrays.stream(RiskTagCode.values())
+                .map(code -> new RiskTagDetectionResult(
+                        code,
+                        RiskTagState.ABSENT,
+                        0.9,
+                        0,
+                        0,
+                        List.of(),
+                        null
+                ))
+                .toList();
+        when(llm.analyze(anyString(), anyList(), any(RepeatAnalysisContext.class)))
+                .thenReturn(new LlmRiskAnalysisResult(
+                        extendedTags,
+                        new LlmAnalysisMetadata("test", 0.0),
+                        new SafetyFlags(true, false, false)
+                ));
+
+        var response = service.analyze(1L, 42L);
+
+        assertThat(response.riskScore()).isEqualTo(100);
+        assertThat(response.riskLevel()).isEqualTo(RiskLevel.EMERGENCY);
+        verify(analyses).save(argThat(analysis ->
+                Boolean.TRUE.equals(analysis.safetyFlags().credibleThreat())));
     }
 
     @Test
