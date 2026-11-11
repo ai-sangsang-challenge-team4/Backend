@@ -309,12 +309,13 @@ DTO를 반환하는 기존 API의 응답은 유지한다. 빈 성공 응답을 �
 - POST `/complaints`: `ComplaintCreateRequest`(`studentId`, `teacherId`, `title`, `content`)로 최초 초안을 생성한다. 선택한 교사는 해당 학생의 담당 교사여야 한다.
 - PATCH `/complaints/{complaintId}`: 200, `{"message":"민원 내용이 수정되었습니다."}`.
   기존 204에서 200으로 변경했다. 요청 본문은 `ComplaintDraftUpdateRequest`(`content`)를 사용한다.
-- POST `/complaints/{complaintId}/send`: 200, 제출 상태와 `aiAnalysisStatus`,
+- POST `/complaints/{complaintId}/send`: 200, 제출 상태와 `submissionAnalysisStatus`,
   `aiAnalysisMessage`, `riskAnalysis` 요약을 반환한다. Rule-only이면 이 중첩 객체의 점수·등급과
-  바깥과 동일한 `aiAnalysisStatus`, `analysisMode=RULE_ONLY`, `manualReviewRequired=true`로
-  프론트가 잠정 결과를 표시한다.
+  바깥의 `submissionAnalysisStatus`와 동일한 값인 `riskAnalysis.aiAnalysisStatus`,
+  `analysisMode=RULE_ONLY`, `manualReviewRequired=true`로 프론트가 잠정 결과를 표시한다.
   `SKIPPED_LIMIT`처럼 분석 결과가 없으면 `riskAnalysis=null`이다.
-- 추가 문의 전송 응답도 같은 세 필드를 반환해 최초 민원과 동일하게 처리한다.
+- 추가 문의 전송 응답도 `submissionAnalysisStatus`, `aiAnalysisMessage`, `riskAnalysis`를
+  반환해 최초 민원과 동일하게 처리한다.
   요청 본문은 없다.
 - GET `/complaints/{complaintId}/status`: 200, 기존 ComplaintResponse 사용.
 

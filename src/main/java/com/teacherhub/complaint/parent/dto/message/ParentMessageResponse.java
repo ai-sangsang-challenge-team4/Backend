@@ -21,7 +21,7 @@ public record ParentMessageResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         LocalDateTime sentAt,
-        SubmissionAnalysisStatus aiAnalysisStatus,
+        SubmissionAnalysisStatus submissionAnalysisStatus,
         String aiAnalysisMessage,
         RiskSummaryResponse riskAnalysis
 ) {

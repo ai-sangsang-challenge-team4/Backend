@@ -55,7 +55,7 @@ class ComplaintSubmissionControllerTest {
         ));
 
         mvc.perform(post("/complaints/42/send").principal(auth)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.aiAnalysisStatus").value("RULE_ONLY_AI_UNAVAILABLE"))
+                .andExpect(jsonPath("$.submissionAnalysisStatus").value("RULE_ONLY_AI_UNAVAILABLE"))
                 .andExpect(jsonPath("$.riskAnalysis.riskScore").value(6))
                 .andExpect(jsonPath("$.riskAnalysis.riskLevel").value("LOW"))
                 .andExpect(jsonPath("$.riskAnalysis.aiAnalysisStatus")
