@@ -2,6 +2,7 @@ package com.teacherhub.risk.dto.response;
 
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskAnalysisMode;
+import com.teacherhub.risk.enums.SubmissionAnalysisStatus;
 
 // 최종 위험 분석 요약 응답
 public record RiskSummaryResponse(
@@ -9,6 +10,7 @@ public record RiskSummaryResponse(
         Long complaintId,
         Integer riskScore,
         RiskLevel riskLevel,
+        SubmissionAnalysisStatus aiAnalysisStatus,
         RiskAnalysisMode analysisMode,
         boolean manualReviewRequired,
         String analysisMessage
@@ -24,9 +26,10 @@ public record RiskSummaryResponse(
                 complaintId,
                 riskScore,
                 riskLevel,
+                SubmissionAnalysisStatus.COMPLETED,
                 RiskAnalysisMode.HYBRID,
                 false,
-                "Rule과 AI 문맥 분석이 완료되었습니다."
+                SubmissionAnalysisStatus.COMPLETED.userMessage()
         );
     }
 }

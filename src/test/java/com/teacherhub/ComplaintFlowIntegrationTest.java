@@ -143,7 +143,14 @@ public class ComplaintFlowIntegrationTest {
         entityManager.flush();
         entityManager.clear();
         var reused = riskAnalysisService.analyze(parentUser.getId(), id);
-        assertThat(reused).usingRecursiveComparison().isEqualTo(first);
+        assertThat(first.aiAnalysisStatus())
+                .isEqualTo(com.teacherhub.risk.enums.SubmissionAnalysisStatus.COMPLETED);
+        assertThat(reused.aiAnalysisStatus())
+                .isEqualTo(com.teacherhub.risk.enums.SubmissionAnalysisStatus.REUSED);
+        assertThat(reused)
+                .usingRecursiveComparison()
+                .ignoringFields("aiAnalysisStatus", "analysisMessage")
+                .isEqualTo(first);
         assertThat(riskAnalysisRepository.countByComplaintIdAndCompletedTrue(id)).isEqualTo(1);
         assertThat(complaintRepository.findById(id).orElseThrow().getContentVersion()).isEqualTo(3);
         assertThat(complaintRepository.findById(id).orElseThrow().getStatus()).isEqualTo(ComplaintStatus.DRAFT);

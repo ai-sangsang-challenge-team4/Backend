@@ -481,6 +481,8 @@ class RiskAnalysisRulesTest {
         var response = service.analyze(1L, 42L);
 
         assertThat(response.analysisMode()).isEqualTo(RiskAnalysisMode.RULE_ONLY);
+        assertThat(response.aiAnalysisStatus())
+                .isEqualTo(SubmissionAnalysisStatus.RULE_ONLY_AI_UNAVAILABLE);
         assertThat(response.manualReviewRequired()).isTrue();
         assertThat(response.riskScore()).isEqualTo(3);
 

@@ -47,6 +47,7 @@ class ComplaintSubmissionControllerTest {
                         42L,
                         6,
                         RiskLevel.LOW,
+                        SubmissionAnalysisStatus.RULE_ONLY_AI_UNAVAILABLE,
                         RiskAnalysisMode.RULE_ONLY,
                         true,
                         "AI 문맥 분석에 실패하여 Rule 기반 잠정 위험도를 제공합니다. 교사 검토가 필요합니다."
@@ -54,9 +55,11 @@ class ComplaintSubmissionControllerTest {
         ));
 
         mvc.perform(post("/complaints/42/send").principal(auth)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.aiAnalysisStatus").value("RULE_ONLY_AI_UNAVAILABLE"))
+                .andExpect(jsonPath("$.submissionAnalysisStatus").value("RULE_ONLY_AI_UNAVAILABLE"))
                 .andExpect(jsonPath("$.riskAnalysis.riskScore").value(6))
                 .andExpect(jsonPath("$.riskAnalysis.riskLevel").value("LOW"))
+                .andExpect(jsonPath("$.riskAnalysis.aiAnalysisStatus")
+                        .value("RULE_ONLY_AI_UNAVAILABLE"))
                 .andExpect(jsonPath("$.riskAnalysis.analysisMode").value("RULE_ONLY"))
                 .andExpect(jsonPath("$.riskAnalysis.manualReviewRequired").value(true));
         verify(service).submitComplaint(7L, 42L);

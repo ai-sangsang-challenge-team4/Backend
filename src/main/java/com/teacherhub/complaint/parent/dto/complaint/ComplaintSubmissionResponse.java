@@ -11,7 +11,7 @@ public record ComplaintSubmissionResponse(
         Long complaintId,
         ComplaintStatus status,
         WaitingFor waitingFor,
-        SubmissionAnalysisStatus aiAnalysisStatus,
+        SubmissionAnalysisStatus submissionAnalysisStatus,
         String aiAnalysisMessage,
         RiskSummaryResponse riskAnalysis
 ) {
@@ -19,10 +19,10 @@ public record ComplaintSubmissionResponse(
             Long complaintId,
             ComplaintStatus status,
             WaitingFor waitingFor,
-            SubmissionAnalysisStatus aiAnalysisStatus,
+            SubmissionAnalysisStatus submissionAnalysisStatus,
             String aiAnalysisMessage
     ) {
-        this(complaintId, status, waitingFor, aiAnalysisStatus, aiAnalysisMessage, null);
+        this(complaintId, status, waitingFor, submissionAnalysisStatus, aiAnalysisMessage, null);
     }
 
     public static ComplaintSubmissionResponse from(
