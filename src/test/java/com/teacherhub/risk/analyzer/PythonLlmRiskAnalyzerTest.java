@@ -84,11 +84,26 @@ class PythonLlmRiskAnalyzerTest {
 
     @Test
     void rejectsStringSafetyFlagInsteadOfBoolean() throws IOException {
+        assertInvalidResponse(extendedResponse()
+                .replace("\"credibleThreat\":false", "\"credibleThreat\":\"false\""));
+    }
+
+    @Test
+    void rejectsNumericSafetyFlagInsteadOfBoolean() throws IOException {
+        assertInvalidResponse(extendedResponse()
+                .replace("\"credibleThreat\":false", "\"credibleThreat\":1"));
+    }
+
+    @Test
+    void rejectsFractionalSeverityInsteadOfTruncatingIt() throws IOException {
+        assertInvalidResponse(extendedResponse()
+                .replace("\"severity\":2", "\"severity\":1.5"));
+    }
+
+    private void assertInvalidResponse(String responseBody) throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/v1/ai/analyze", exchange -> {
-            byte[] response = extendedResponse()
-                    .replace("\"credibleThreat\":false", "\"credibleThreat\":\"false\"")
-                    .getBytes(StandardCharsets.UTF_8);
+            byte[] response = responseBody.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);
             exchange.close();

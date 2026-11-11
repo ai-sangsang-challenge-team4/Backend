@@ -151,9 +151,12 @@ public class PythonLlmRiskAnalyzer implements LlmRiskAnalyzer {
         ObjectMapper mapper = JsonMapper.builder().build();
         mapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
         mapper.coercionConfigFor(LogicalType.Boolean)
-                .setCoercion(CoercionInputShape.String, CoercionAction.Fail);
+                .setCoercion(CoercionInputShape.String, CoercionAction.Fail)
+                .setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
+                .setCoercion(CoercionInputShape.Float, CoercionAction.Fail);
         mapper.coercionConfigFor(LogicalType.Integer)
-                .setCoercion(CoercionInputShape.String, CoercionAction.Fail);
+                .setCoercion(CoercionInputShape.String, CoercionAction.Fail)
+                .setCoercion(CoercionInputShape.Float, CoercionAction.Fail);
         mapper.coercionConfigFor(LogicalType.Float)
                 .setCoercion(CoercionInputShape.String, CoercionAction.Fail);
         return mapper;
