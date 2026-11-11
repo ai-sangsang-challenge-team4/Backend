@@ -5,6 +5,7 @@ import com.teacherhub.complaint.parent.dto.complaint.ComplaintCreateRequest;
 import com.teacherhub.complaint.parent.dto.complaint.ComplaintDraftUpdateRequest;
 import com.teacherhub.complaint.parent.dto.complaint.ComplaintRecipientResponse;
 import com.teacherhub.complaint.parent.dto.complaint.ComplaintResponse;
+import com.teacherhub.complaint.parent.dto.complaint.ComplaintSubmissionResponse;
 import com.teacherhub.complaint.parent.service.ParentComplaintService;
 import com.teacherhub.complaint.parent.dto.message.ComplaintConversationResponse;
 import com.teacherhub.complaint.parent.dto.message.ParentMessageRequest;
@@ -120,11 +121,12 @@ public class ParentComplaintController {
             }
     )
     @PostMapping("/{complaintId}/send")
-    public ResponseEntity<Map<String, String>> submitComplaint(
+    public ResponseEntity<ComplaintSubmissionResponse> submitComplaint(
             @Parameter(hidden = true) Authentication authentication,
             @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId) {
-        parentComplaintService.submitComplaint(userId(authentication), complaintId);
-        return ResponseEntity.ok(Map.of("message", "민원이 제출되었습니다."));
+        return ResponseEntity.ok(
+                parentComplaintService.submitComplaint(userId(authentication), complaintId)
+        );
     }
 
     // 민원 상태 조회

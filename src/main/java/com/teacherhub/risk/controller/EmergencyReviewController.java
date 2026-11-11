@@ -76,7 +76,7 @@ public class EmergencyReviewController {
 
     @Operation(
             summary = "지정 검토자의 Emergency 재검토 결정 및 안전 잠금 변경",
-            description = "재요청이 승인(APPLIED)되면 같은 요청에서 safetyLock=false로 안전 잠금을 해제할 수 있습니다."
+            description = "하향 재검토가 승인(APPLIED)되면 요청 위험도를 적용하고 Emergency 안전 잠금을 같은 트랜잭션에서 자동 해제합니다."
     )
     @PatchMapping("/admin/emergency-review/{requestId}")
     public ResponseEntity<EmergencyReviewResponse> update(

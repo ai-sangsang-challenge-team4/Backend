@@ -1,5 +1,6 @@
 package com.teacherhub.risk.service;
 
+import com.teacherhub.common.exception.InternalSystemException;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
@@ -425,7 +426,7 @@ class RiskAnalysisRulesTest {
                         List.of()
                 )
         ).isInstanceOf(
-                IllegalStateException.class
+                InternalSystemException.class
         );
 
         weights(-1);
@@ -436,7 +437,7 @@ class RiskAnalysisRulesTest {
                         List.of()
                 )
         ).isInstanceOf(
-                IllegalStateException.class
+                InternalSystemException.class
         );
 
         weights(null);
@@ -447,7 +448,7 @@ class RiskAnalysisRulesTest {
                         List.of()
                 )
         ).isInstanceOf(
-                IllegalStateException.class
+                InternalSystemException.class
         );
 
         verify(analyses, never())

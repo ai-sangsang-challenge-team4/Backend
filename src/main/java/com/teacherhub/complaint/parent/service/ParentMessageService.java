@@ -89,7 +89,11 @@ public class ParentMessageService {
         ComplaintMessage message = findOwnedDraft(userId, complaintId, messageId);
         verifyContentVersion(expectedContentVersion, message.getContentVersion());
 
-        riskAnalysisService.analyzeMessageForSubmission(userId, complaintId, messageId);
+        var analysisResult = riskAnalysisService.analyzeMessageForSubmissionResult(
+                userId,
+                complaintId,
+                messageId
+        );
         markLatestTeacherMessageRead(complaintId, user);
         message.send();
         ComplaintStatus previousStatus = complaint.parentMessageSent();
@@ -104,7 +108,7 @@ public class ParentMessageService {
                     ComplaintStatus.OPEN
             ));
         }
-        return ParentMessageResponse.from(saved);
+        return ParentMessageResponse.submitted(saved, analysisResult);
     }
 
     @Transactional

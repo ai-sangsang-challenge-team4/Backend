@@ -15,6 +15,7 @@ import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
@@ -29,14 +30,14 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class TeacherComplaintQueryServiceTest {
 
     @Test
-    void returnsOriginalMessageWhenBufferedSummaryGenerationFails() {
+    void requiresExplicitOriginalViewWhenBufferedSummaryGenerationFails() {
         ComplaintRepository complaints = mock(ComplaintRepository.class);
         ComplaintEventRepository events = mock(ComplaintEventRepository.class);
         ComplaintMessageRepository messages = mock(ComplaintMessageRepository.class);
@@ -50,9 +51,11 @@ class TeacherComplaintQueryServiceTest {
         ComplaintHistoryService historyService = mock(ComplaintHistoryService.class);
         TeacherSupportContentProvider supportContent = mock(TeacherSupportContentProvider.class);
         TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
+        PiiMaskingService masking = mock(PiiMaskingService.class);
         TeacherComplaintQueryService service = new TeacherComplaintQueryService(
                 complaints, events, messages, analyses, reviews, emergencyReviews, riskTags,
-                studentClasses, users, accessPolicy, historyService, supportContent, supportPolicy);
+                studentClasses, users, accessPolicy, historyService, supportContent, supportPolicy,
+                masking);
 
         User teacher = mock(User.class);
         User parent = mock(User.class);
@@ -69,7 +72,7 @@ class TeacherComplaintQueryServiceTest {
         when(analyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
                 42L, MessageStatus.DRAFT)).thenReturn(Optional.of(analysis));
         when(analysis.getId()).thenReturn(100L);
-        when(analysis.getRiskLevel()).thenReturn(RiskLevel.HIGH);
+        when(analysis.getRiskLevel()).thenReturn(RiskLevel.LOW);
         when(analysis.getMessage()).thenReturn(message);
         when(reviews.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
                 .thenReturn(Optional.empty());
@@ -92,16 +95,20 @@ class TeacherComplaintQueryServiceTest {
         when(message.getContent()).thenReturn("원문 요청과 사실 정보");
         when(message.getSender()).thenReturn(parent);
         when(parent.getName()).thenReturn("학부모");
-        when(supportContent.createBufferedSummary(anyString()))
+        when(masking.mask("원문 요청과 사실 정보")).thenReturn("마스킹된 요청과 사실 정보");
+        when(supportContent.createBufferedSummary("마스킹된 요청과 사실 정보"))
                 .thenThrow(new IllegalStateException("summary unavailable"));
-        when(supportPolicy.allowedActions(RiskLevel.HIGH)).thenReturn(List.of());
+        when(supportPolicy.allowedActions(RiskLevel.LOW)).thenReturn(List.of());
 
         var response = service.findConversation(7L, 42L);
 
         assertThat(response.messages()).singleElement().satisfies(item -> {
-            assertThat(item.content()).isEqualTo("원문 요청과 사실 정보");
+            assertThat(item.content()).isEqualTo("완충 요약을 생성하지 못했습니다. 원문 열람 버튼을 사용해주세요.");
             assertThat(item.summarized()).isFalse();
+            assertThat(item.summaryStatus())
+                    .isEqualTo(com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse.SummaryStatus.UNAVAILABLE);
         });
+        verify(supportContent).createBufferedSummary("마스킹된 요청과 사실 정보");
     }
 
     @Test
@@ -119,9 +126,11 @@ class TeacherComplaintQueryServiceTest {
         ComplaintHistoryService historyService = mock(ComplaintHistoryService.class);
         TeacherSupportContentProvider supportContent = mock(TeacherSupportContentProvider.class);
         TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
+        PiiMaskingService masking = mock(PiiMaskingService.class);
         TeacherComplaintQueryService service = new TeacherComplaintQueryService(
                 complaints, events, messages, analyses, reviews, emergencyReviews, riskTags,
-                studentClasses, users, accessPolicy, historyService, supportContent, supportPolicy);
+                studentClasses, users, accessPolicy, historyService, supportContent, supportPolicy,
+                masking);
 
         User teacher = mock(User.class);
         Complaint complaint = mock(Complaint.class);

@@ -206,7 +206,7 @@ class EmergencyReviewServiceTest {
     }
 
     @Test
-    void approvalLowersRiskButKeepsSafetyLock() {
+    void approvalLowersRiskAndAutomaticallyReleasesSafetyLock() {
         EmergencyRiskReviewRequest request = request();
         when(requestRepository.findForUpdate(300L)).thenReturn(Optional.of(request));
 
@@ -221,7 +221,7 @@ class EmergencyReviewServiceTest {
         );
 
         assertThat(response.status()).isEqualTo(RiskReviewStatus.APPLIED);
-        assertThat(response.safetyLock()).isTrue();
+        assertThat(response.safetyLock()).isFalse();
         verify(reviewRepository).save(any(RiskReview.class));
     }
 

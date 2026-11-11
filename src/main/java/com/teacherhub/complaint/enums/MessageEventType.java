@@ -5,12 +5,20 @@ public enum MessageEventType {
     STATUS_CHANGED,
     // 위험도 분석
     RISK_ANALYZED,
+    // 제출 중 외부 AI 분석 실패 또는 분석 생략
+    AI_ANALYSIS_SKIPPED,
+    // 외부 AI 실패 후 Rule-only 잠정 분석 저장
+    AI_ANALYSIS_RULE_FALLBACK,
     // 위험도 검토
     RISK_REVIEWED,
     // 원문 조회
     ORIGINAL_VIEWED,
     // AI 초안 생성
     AI_DRAFT_GENERATED,
+    // High 위험도 정책으로 생성형 AI 초안 차단
+    AI_DRAFT_BLOCKED_BY_RISK_POLICY,
+    // High 위험도에서 템플릿을 거치지 않은 답변 저장·전송 차단
+    RESPONSE_BLOCKED_BY_RISK_POLICY,
     // Emergency 위험도 또는 안전 잠금으로 교사 답변 작업 차단
     RESPONSE_BLOCKED_BY_SAFETY_LOCK,
     // High 제한형 답변 템플릿 채택

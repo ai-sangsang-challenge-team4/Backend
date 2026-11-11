@@ -88,8 +88,8 @@ Emergency 재검토 요청은 공유와 독립적으로 최신 위험 분석을 
 }
 ```
 
-Emergency 재검토 요청은 관리자 공유와 독립적으로 생성할 수 있다. 승인으로 현재 위험도가
-하향되어도 지정 검토자가 명시적으로 해제하기 전까지 `safetyLock=true`를 유지한다.
+Emergency 재검토 요청은 관리자 공유와 독립적으로 생성할 수 있다. `safetyLock`은 Emergency
+전용이며 지정 검토자가 하향을 승인하면 위험도 적용과 함께 자동 해제한다.
 
 교사 화면과 마찬가지로 상단 정보와 세 탭을 별도 API로 조회한다. 아래는
 `GET /admin/escalations/{escalationId}/messages`의 공유 내용 응답 예시다.
@@ -159,7 +159,7 @@ Emergency 재검토 거부 요청:
 `PENDING_ADMIN_APPROVAL`은 교사 요청 시 서버가 설정하는 상태이므로 검토자 결정 요청값으로
 사용할 수 없으며 409 `ESCALATION_STATE_INVALID`를 반환한다.
 
-결정 이후 안전 잠금만 해제하는 요청:
+기존 Emergency 유지 요청에서 안전 잠금 상태만 변경하는 요청:
 
 ```json
 {
@@ -167,8 +167,8 @@ Emergency 재검토 거부 요청:
 }
 ```
 
-`status`와 `safetyLock`은 하나 이상 전달해야 한다. 둘을 함께 보내면 결정과 잠금 상태를
-한 트랜잭션에서 반영한다. `message`는 승인·거부와 잠금 변경 모두 선택 사항이며,
+`status`와 `safetyLock`은 하나 이상 전달해야 한다. 하향 승인 시에는 `safetyLock`을 생략해도
+자동으로 false가 된다. `message`는 승인·거부와 잠금 변경 모두 선택 사항이며,
 생략하거나 빈 문자열을 보내면 미입력으로 처리한다.
 
 처리 완료 요청:
@@ -192,7 +192,7 @@ Emergency 재검토 거부 요청:
 `POST /teacher/complaints/{complaintId}/emergency-review`로 하향 점수와 사유를
 요청한다. 요청은 `EmergencyRiskReviewRequest`에 저장되고 `status=PENDING_ADMIN_APPROVAL`,
 `safetyLock=true`가 된다. 지정 검토자가 요청 ID 기반 PATCH API에서 승인하면 실제
-`RiskReview`가 생성되며, 같은 PATCH API로 명시적으로 해제할 때까지 안전 잠금이 유지된다.
+`RiskReview`가 생성되고 Emergency 전용 안전 잠금은 같은 트랜잭션에서 자동 해제된다.
 
 ## 주요 오류
 

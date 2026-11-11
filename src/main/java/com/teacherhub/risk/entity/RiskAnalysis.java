@@ -3,6 +3,7 @@ package com.teacherhub.risk.entity;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.enums.RiskAnalysisMode;
 import com.teacherhub.risk.util.ContentFingerprint;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -43,6 +44,10 @@ public class RiskAnalysis {
     private String modelName;
 
     private Double temperature;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private RiskAnalysisMode analysisMode;
 
     @Column(nullable = false)
     private LocalDateTime analyzedAt;
@@ -90,6 +95,11 @@ public class RiskAnalysis {
 
     public RiskAnalysis(ComplaintMessage message, int riskScore, RiskLevel riskLevel,
                         String modelName, Double temperature) {
+        this(message, riskScore, riskLevel, modelName, temperature, RiskAnalysisMode.HYBRID);
+    }
+
+    public RiskAnalysis(ComplaintMessage message, int riskScore, RiskLevel riskLevel,
+                        String modelName, Double temperature, RiskAnalysisMode analysisMode) {
         this.message = message;
         this.complaint = message.getComplaint();
         this.contentVersion = message.getContentVersion();
@@ -98,6 +108,7 @@ public class RiskAnalysis {
         this.riskLevel = riskLevel;
         this.modelName = modelName;
         this.temperature = temperature;
+        this.analysisMode = Objects.requireNonNull(analysisMode, "분석 모드가 필요합니다.");
         this.analyzedAt = LocalDateTime.now();
     }
 }
