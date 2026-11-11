@@ -1,5 +1,7 @@
 package com.teacherhub.complaint.teacher.service;
 
+import com.teacherhub.ai.exception.AiResponseInvalidException;
+import com.teacherhub.common.exception.InternalSystemException;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.access.ComplaintAccessPolicy;
 import com.teacherhub.complaint.entity.Complaint;
@@ -20,10 +22,12 @@ import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseDraftResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseRequest;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseSubmissionResponse;
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
+import com.teacherhub.complaint.template.repository.ResponseTemplateAdoptionRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -47,15 +51,25 @@ public class TeacherResponseService {
     private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository;
     private final RiskAnalysisRepository riskAnalysisRepository;
     private final RiskReviewRepository riskReviewRepository;
+    private final PiiMaskingService piiMaskingService;
+    private final ResponseTemplateAdoptionRepository templateAdoptionRepository;
 
     @Transactional(noRollbackFor = ResponseNotEditableException.class)
     // 교사 AI 초안 생성
     public TeacherAiDraftResponse generateAiDraft(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findEditableComplaintForUpdate(user, complaintId, "AI 초안 생성");
+        ensureAiDraftAllowed(complaint, user);
         var generated = supportContentProvider.createResponseDraft(conversationContext(complaint));
+        if (generated == null) {
+            throw new AiResponseInvalidException("AI 답변 초안이 비어 있습니다.");
+        }
+        var safeGenerated = new TeacherSupportContentProvider.GeneratedResponseDraft(
+                maskForAi(generated.content()),
+                generated.modelName()
+        );
         ComplaintEvent event = eventRepository.save(ComplaintEvent.aiDraftGenerated(complaint));
-        return TeacherAiDraftResponse.from(complaint.getId(), generated, event.getOccurredAt());
+        return TeacherAiDraftResponse.from(complaint.getId(), safeGenerated, event.getOccurredAt());
     }
 
     // 임시 저장된 답변 조회
@@ -84,6 +98,7 @@ public class TeacherResponseService {
     ) {
         User user = findUser(userId);
         Complaint complaint = findEditableComplaintForUpdate(user, complaintId, "답변 임시저장");
+        ensureHighResponseUsesTemplate(complaint, user, request.content(), "답변 임시저장");
         ComplaintMessage draft = messageRepository
                 .findFirstByComplaintIdAndSenderIdAndTypeAndStatusOrderByIdDesc(
                         complaintId,
@@ -136,6 +151,7 @@ public class TeacherResponseService {
         }
         ensureResponseAllowed(complaint, user, "답변 전송");
         ensureEditable(complaint);
+        ensureHighResponseUsesTemplate(complaint, user, request.content(), "답변 전송");
         ComplaintMessage response = messageRepository
                 .findFirstByComplaintIdAndSenderIdAndTypeAndStatusOrderByIdDesc(
                         complaintId,
@@ -222,6 +238,45 @@ public class TeacherResponseService {
         }
     }
 
+    private void ensureAiDraftAllowed(Complaint complaint, User user) {
+        if (effectiveRiskLevel(complaint.getId()) != RiskLevel.HIGH) {
+            return;
+        }
+        eventRepository.save(ComplaintEvent.aiDraftBlockedByRiskPolicy(complaint, user));
+        throw new ResponseNotEditableException(
+                "High 위험도에서는 생성형 AI 초안을 제공하지 않습니다. 제한형 공식 템플릿을 사용해주세요."
+        );
+    }
+
+    private void ensureHighResponseUsesTemplate(
+            Complaint complaint,
+            User user,
+            String content,
+            String operation
+    ) {
+        if (effectiveRiskLevel(complaint.getId()) != RiskLevel.HIGH) {
+            return;
+        }
+        boolean adoptedContent = templateAdoptionRepository
+                .findFirstByComplaintIdAndAdoptedByIdOrderByAdoptedAtDescIdDesc(
+                        complaint.getId(),
+                        user.getId()
+                )
+                .map(adoption -> adoption.getFinalContent().equals(content.trim()))
+                .orElse(false);
+        if (adoptedContent) {
+            return;
+        }
+        eventRepository.save(ComplaintEvent.responseBlockedByRiskPolicy(
+                complaint,
+                user,
+                operation
+        ));
+        throw new ResponseNotEditableException(
+                "High 위험도 답변은 검증된 제한형 공식 템플릿을 채택한 뒤 저장·전송할 수 있습니다."
+        );
+    }
+
     private RiskLevel effectiveRiskLevel(Long complaintId) {
         return riskAnalysisRepository
                 .findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
@@ -297,8 +352,20 @@ public class TeacherResponseService {
         return messageRepository
                 .findByComplaintIdAndStatusNotOrderByIdAsc(complaint.getId(), MessageStatus.DRAFT)
                 .stream()
-                .map(message -> message.getType() + ": " + message.getContent())
+                .map(message -> message.getType() + ": " + maskForAi(message.getContent()))
                 .collect(Collectors.joining("\n\n"));
+    }
+
+    private String maskForAi(String content) {
+        try {
+            String masked = piiMaskingService.mask(content);
+            if (masked == null) {
+                throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
+            }
+            return masked;
+        } catch (RuntimeException exception) {
+            throw new InternalSystemException("개인정보 보호 처리 중 오류가 발생했습니다.", exception);
+        }
     }
 
     private void markLatestParentMessageRead(Long complaintId, User actor) {

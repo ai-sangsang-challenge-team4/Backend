@@ -15,9 +15,12 @@ import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseRequest;
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
+import com.teacherhub.complaint.template.repository.ResponseTemplateAdoptionRepository;
+import com.teacherhub.complaint.template.entity.ResponseTemplateAdoption;
 import com.teacherhub.risk.entity.EmergencyRiskReviewRequest;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
@@ -42,9 +45,12 @@ class TeacherResponseServiceTest {
             mock(EmergencyRiskReviewRequestRepository.class);
     private final RiskAnalysisRepository riskAnalyses = mock(RiskAnalysisRepository.class);
     private final RiskReviewRepository riskReviews = mock(RiskReviewRepository.class);
+    private final PiiMaskingService masking = mock(PiiMaskingService.class);
+    private final ResponseTemplateAdoptionRepository templateAdoptions =
+            mock(ResponseTemplateAdoptionRepository.class);
     private final TeacherResponseService service = new TeacherResponseService(
             complaints, messages, events, users, accessPolicy, contentProvider, emergencyReviews,
-            riskAnalyses, riskReviews
+            riskAnalyses, riskReviews, masking, templateAdoptions
     );
 
     @Test
@@ -125,7 +131,7 @@ class TeacherResponseServiceTest {
     }
 
     @Test
-    void highRiskAllowsAiDraftWhenSafetyLockIsOff() {
+    void highRiskBlocksGenerativeAiDraftAndCreatesAuditEvent() {
         User teacher = mock(User.class);
         Complaint complaint = editableComplaint();
         RiskAnalysis analysis = mock(RiskAnalysis.class);
@@ -139,13 +145,114 @@ class TeacherResponseServiceTest {
         when(analysis.getRiskLevel()).thenReturn(RiskLevel.HIGH);
         when(riskReviews.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
                 .thenReturn(Optional.empty());
-        when(messages.findByComplaintIdAndStatusNotOrderByIdAsc(42L, MessageStatus.DRAFT))
-                .thenReturn(java.util.List.of());
-        when(contentProvider.createResponseDraft(""))
-                .thenReturn(new TeacherSupportContentProvider.GeneratedResponseDraft("답변 초안", "test-model"));
         when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertThat(service.generateAiDraft(7L, 42L).content()).isEqualTo("답변 초안");
+        assertThatThrownBy(() -> service.generateAiDraft(7L, 42L))
+                .isInstanceOf(ResponseNotEditableException.class)
+                .hasMessageContaining("제한형 공식 템플릿");
+
+        verifyNoInteractions(contentProvider);
+        verify(events).save(argThat(event ->
+                event.getEventType() == MessageEventType.AI_DRAFT_BLOCKED_BY_RISK_POLICY));
+    }
+
+    @Test
+    void highRiskBlocksDraftThatWasNotAdoptedFromOfficialTemplate() {
+        User teacher = mock(User.class);
+        Complaint complaint = editableComplaint();
+        RiskAnalysis analysis = mock(RiskAnalysis.class);
+        when(users.findById(7L)).thenReturn(Optional.of(teacher));
+        when(teacher.getId()).thenReturn(7L);
+        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
+        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.empty());
+        when(riskAnalyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                42L, MessageStatus.DRAFT)).thenReturn(Optional.of(analysis));
+        when(analysis.getId()).thenReturn(100L);
+        when(analysis.getRiskLevel()).thenReturn(RiskLevel.HIGH);
+        when(riskReviews.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
+                .thenReturn(Optional.empty());
+        when(templateAdoptions.findFirstByComplaintIdAndAdoptedByIdOrderByAdoptedAtDescIdDesc(
+                42L, 7L)).thenReturn(Optional.empty());
+        when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThatThrownBy(() -> service.saveDraft(
+                7L,
+                42L,
+                new TeacherResponseRequest("임의로 작성한 답변")
+        )).isInstanceOf(ResponseNotEditableException.class)
+                .hasMessageContaining("제한형 공식 템플릿");
+
+        verify(events).save(argThat(event ->
+                event.getEventType() == MessageEventType.RESPONSE_BLOCKED_BY_RISK_POLICY));
+        verify(messages, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void highRiskAllowsDraftThatMatchesLatestOfficialTemplateAdoption() {
+        User teacher = mock(User.class);
+        Complaint complaint = editableComplaint();
+        RiskAnalysis analysis = mock(RiskAnalysis.class);
+        ResponseTemplateAdoption adoption = mock(ResponseTemplateAdoption.class);
+        when(users.findById(7L)).thenReturn(Optional.of(teacher));
+        when(teacher.getId()).thenReturn(7L);
+        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
+        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.empty());
+        when(riskAnalyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                42L, MessageStatus.DRAFT)).thenReturn(Optional.of(analysis));
+        when(analysis.getId()).thenReturn(100L);
+        when(analysis.getRiskLevel()).thenReturn(RiskLevel.HIGH);
+        when(riskReviews.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
+                .thenReturn(Optional.empty());
+        when(templateAdoptions.findFirstByComplaintIdAndAdoptedByIdOrderByAdoptedAtDescIdDesc(
+                42L, 7L)).thenReturn(Optional.of(adoption));
+        when(adoption.getFinalContent()).thenReturn("공식 템플릿 기반 답변");
+        when(messages.findFirstByComplaintIdAndSenderIdAndTypeAndStatusOrderByIdDesc(
+                42L, 7L, MessageType.TEACHER_REPLY, MessageStatus.DRAFT))
+                .thenReturn(Optional.empty());
+        when(messages.saveAndFlush(any(ComplaintMessage.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThatCode(() -> service.saveDraft(
+                7L,
+                42L,
+                new TeacherResponseRequest("공식 템플릿 기반 답변")
+        )).doesNotThrowAnyException();
+
+        verify(messages).saveAndFlush(any(ComplaintMessage.class));
+    }
+
+    @Test
+    void sendsOnlyMaskedConversationToAiDraftProvider() {
+        User teacher = mock(User.class);
+        Complaint complaint = editableComplaint();
+        RiskAnalysis analysis = mock(RiskAnalysis.class);
+        ComplaintMessage message = mock(ComplaintMessage.class);
+        when(users.findById(7L)).thenReturn(Optional.of(teacher));
+        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
+        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.empty());
+        when(riskAnalyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                42L, MessageStatus.DRAFT)).thenReturn(Optional.of(analysis));
+        when(analysis.getId()).thenReturn(100L);
+        when(analysis.getRiskLevel()).thenReturn(RiskLevel.MEDIUM);
+        when(riskReviews.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
+                .thenReturn(Optional.empty());
+        when(messages.findByComplaintIdAndStatusNotOrderByIdAsc(42L, MessageStatus.DRAFT))
+                .thenReturn(java.util.List.of(message));
+        when(message.getType()).thenReturn(MessageType.PARENT_INQUIRY);
+        when(message.getContent()).thenReturn("연락처 010-1234-5678");
+        when(masking.mask("연락처 010-1234-5678")).thenReturn("연락처 [전화번호]");
+        when(contentProvider.createResponseDraft("PARENT_INQUIRY: 연락처 [전화번호]"))
+                .thenReturn(new TeacherSupportContentProvider.GeneratedResponseDraft("안전한 답변", "test-model"));
+        when(masking.mask("안전한 답변")).thenReturn("안전한 답변");
+        when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.generateAiDraft(7L, 42L);
+
+        verify(contentProvider).createResponseDraft("PARENT_INQUIRY: 연락처 [전화번호]");
+        verify(contentProvider, never()).createResponseDraft(contains("010-1234-5678"));
     }
 
     @Test

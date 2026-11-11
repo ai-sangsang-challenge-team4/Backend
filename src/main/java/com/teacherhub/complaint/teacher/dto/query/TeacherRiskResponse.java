@@ -4,6 +4,7 @@ import com.teacherhub.risk.entity.ComplaintRiskTag;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.enums.RiskAnalysisMode;
 import com.teacherhub.risk.enums.RiskReviewDirection;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.enums.RiskTagState;
@@ -33,6 +34,12 @@ public record TeacherRiskResponse(
         @Schema(description = "현재 적용 중인 위험 등급. 교사 검토가 있으면 reviewLevel, 없으면 riskLevel", nullable = true)
         RiskLevel currentRiskLevel,
         boolean safetyLock,
+        @Schema(description = "위험 분석 방식. RULE_ONLY이면 외부 AI 실패 후 Rule 결과만 반영한 잠정 분석", nullable = true)
+        RiskAnalysisMode analysisMode,
+        @Schema(description = "AI 실패 등으로 교사의 명시적 검토가 필요한지 여부")
+        boolean manualReviewRequired,
+        @Schema(description = "분석 상태 안내 문구", nullable = true)
+        String analysisMessage,
         @Schema(description = "분석 완료 시각. 분석이 없으면 null", nullable = true)
         LocalDateTime analyzedAt,
         @Schema(description = "최신 교사 검토 정보. 검토 또는 분석이 없으면 null", nullable = true)
@@ -67,6 +74,13 @@ public record TeacherRiskResponse(
                                 .riskScoreForScale(latestReview.getReviewedScore()),
                 latestReview == null ? analysis.getRiskLevel() : latestReview.getReviewedLevel(),
                 safetyLock,
+                analysis.getAnalysisMode(),
+                analysis.getAnalysisMode() == RiskAnalysisMode.RULE_ONLY && latestReview == null,
+                analysis.getAnalysisMode() == RiskAnalysisMode.RULE_ONLY
+                        ? latestReview == null
+                                ? "AI 문맥 분석에 실패하여 Rule 기반 잠정 위험도를 제공합니다. 교사 검토가 필요합니다."
+                                : "Rule 기반 잠정 위험도를 교사가 검토했습니다."
+                        : "Rule과 AI 문맥 분석이 완료되었습니다.",
                 analysis.getAnalyzedAt(),
                 latestReview == null ? null : LatestReview.from(latestReview),
                 detectedFactors
@@ -86,8 +100,48 @@ public record TeacherRiskResponse(
                 null,
                 safetyLock,
                 null,
+                true,
+                "완료된 위험 분석이 없습니다. 교사 검토가 필요합니다.",
+                null,
                 null,
                 List.of()
+        );
+    }
+
+    public TeacherRiskResponse(
+            Long complaintId,
+            Long riskAnalysisId,
+            Integer riskScore,
+            RiskLevel riskLevel,
+            Integer reviewScale,
+            Integer reviewScore,
+            RiskLevel reviewLevel,
+            Integer currentRiskScore,
+            RiskLevel currentRiskLevel,
+            boolean safetyLock,
+            LocalDateTime analyzedAt,
+            LatestReview latestReview,
+            List<DetectedFactor> detectedFactors
+    ) {
+        this(
+                complaintId,
+                riskAnalysisId,
+                riskScore,
+                riskLevel,
+                reviewScale,
+                reviewScore,
+                reviewLevel,
+                currentRiskScore,
+                currentRiskLevel,
+                safetyLock,
+                riskAnalysisId == null ? null : RiskAnalysisMode.HYBRID,
+                riskAnalysisId == null,
+                riskAnalysisId == null
+                        ? "완료된 위험 분석이 없습니다. 교사 검토가 필요합니다."
+                        : "Rule과 AI 문맥 분석이 완료되었습니다.",
+                analyzedAt,
+                latestReview,
+                detectedFactors
         );
     }
 

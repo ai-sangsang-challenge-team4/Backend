@@ -26,7 +26,9 @@ erDiagram
   context_required, context_subtype, normalization_rule, dataset_version, enabled.
   CSV v1.1의 72개 후보 신호를 저장하며 애플리케이션에서 캐시해 사용한다.
 - `risk_analyses`: complaint_id, message_id, risk_score, risk_level, model_name, temperature,
-  analyzed_at. message_id와 content_version으로 분석 대상 메시지 버전을 구분한다.
+  analysis_mode, analyzed_at. message_id와 content_version으로 분석 대상 메시지 버전을 구분한다.
+  `analysis_mode`은 정상 Rule+LLM 분석인 `HYBRID`와 외부 AI 실패 후 잠정 분석인 `RULE_ONLY`를
+  구분한다. DB migration은 실제 DB 연결·스키마 확정 시 별도 작성한다.
 - `risk_reviews`: risk_analysis_id, reviewed_by, previous_score, previous_level,
   reviewed_score, reviewed_level, direction, reason, reviewed_at. 시스템 분석은 변경하지
   않고 교사의 위험도 검토를 시간순으로 누적한다.
@@ -45,6 +47,8 @@ RiskAnalysisService: 본인/DRAFT 검증 → 원문 마스킹 → CSV Rule 후�
 → 검토 응답. 일반 Rule 후보는 BOUNDARY, HINT_ONLY는 UNKNOWN으로 전달하며 키워드만으로
 PRESENT를 확정하지 않는다. Claude가 같은 태그를 반환하면 Claude 상태가 최종이고, 누락한
 태그만 Rule 상태로 fallback한다. 수정본은 자동 적용하지 않는다.
+LLM 스키마 오류는 한 번 재생성하고, 재생성 실패 또는 외부 AI 장애 시 전체 Rule 결과만으로
+점수·등급을 계산해 `RULE_ONLY`로 저장한다. 이 경우 AI 수정안은 생성하지 않는다.
 
 시스템 분석은 최종 탐지된 태그의 default_score를 합산하고, 같은 태그가 두 탐지기에서
 발견되어도 한 번만 계산한 뒤 최대 70점으로 제한한다. 시스템 점수는 0~20점 LOW,
@@ -59,16 +63,19 @@ LOW 2점, MEDIUM 4점, HIGH 6점, EMERGENCY 7점으로 변환해 정한다. 교�
 
 학부모 메시지는 전송 전에 동일 메시지를 대상으로 위험 분석과 수정 제안을 받는다. 내용 수정 시
 masked_content를 비우고 content_version을 증가시킨다. 최초 메시지를 보내면 민원은 OPEN이며
-교사 차례가 된다. 교사는 mock 기반 AI 답변 초안을 수정하거나 직접 작성해 보낼 수 있고,
+교사 차례가 된다. 교사는 LOW·MEDIUM에서 답변 초안을 검토·수정해 보낼 수 있고,
+HIGH에서는 검증된 제한형 공식 템플릿을 채택한 내용만 저장·전송할 수 있다.
+EMERGENCY에서는 개별 답변 생성을 차단한다.
 교사 답변 뒤에는 학부모 차례가 된다. 학부모는 같은 흐름으로 추가 문의를 보내거나 답변을
 확인하고 민원을 CLOSED로 종료한다. AI 초안 생성 결과는 응답으로만 반환하고 DB에 저장하지
 않는다. 교사가 수정한 내용은 일반 답변 초안 또는 최종 메시지에 저장한다. AI 초안 생성 사실은
-`AI_DRAFT_GENERATED` 이벤트로만 남긴다. 공식 템플릿 조회는 아직 포함하지 않는다.
+`AI_DRAFT_GENERATED` 이벤트로만 남긴다. High 템플릿 조회·채택과 정책 차단도 감사 이벤트로 남긴다.
 
 교사용 대화 조회에서는 모든 학부모 메시지를 각각의 최신 완료 위험 분석과 연결한다.
-LOW 메시지는 원문을 표시하고 MEDIUM, HIGH, EMERGENCY 메시지는 최초/추가 문의 구분 없이
-완충 요약을 표시한다. 완충 요약 생성에 실패하면 원문을 표시한다. 교사 메시지는 원문을
-그대로 표시하며 DRAFT 메시지는 대화에서 제외한다.
+모든 위험도의 학부모 메시지는 최초/추가 문의 구분 없이 완충 요약을 표시한다. 완충 요약
+제공자에는 마스킹된 입력만 전달하고 생성 결과도 다시 마스킹한다. 완충 요약 생성에 실패하면
+원문을 자동 노출하지 않고 `summaryStatus=UNAVAILABLE` 안내를 반환한다. 원문은 별도 열람 API와
+감사 이벤트를 통해 확인한다. 교사 메시지는 원문을 그대로 표시하며 DRAFT 메시지는 대화에서 제외한다.
 
 히스토리 API는 더 이상 여러 도메인 테이블을 합쳐 정렬하지 않고 `complaint_events`를
 발생 시각 역순으로 한 번 조회한다. 읽음 이벤트를 포함하며 현재 도메인 상태와 대조해

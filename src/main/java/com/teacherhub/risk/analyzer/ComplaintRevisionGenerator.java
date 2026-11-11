@@ -20,7 +20,7 @@ public interface ComplaintRevisionGenerator {
             String suggestedExpression, String reason) {}
 
     /** Internal context for generating revisions, separate from public summary responses. */
-    record RiskEvaluation(Long analysisId, Long complaintId,
+    record RiskEvaluation(Long complaintId,
             List<FinalRiskTagResponse> tags, Integer riskScore,
             RiskLevel riskLevel) {}
 }

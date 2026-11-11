@@ -6,6 +6,7 @@ import com.teacherhub.complaint.parent.dto.complaint.ComplaintCreateRequest;
 import com.teacherhub.complaint.parent.dto.complaint.ComplaintDraftUpdateRequest;
 import com.teacherhub.complaint.parent.dto.complaint.ComplaintRecipientResponse;
 import com.teacherhub.complaint.parent.dto.complaint.ComplaintResponse;
+import com.teacherhub.complaint.parent.dto.complaint.ComplaintSubmissionResponse;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.repository.ComplaintRepository;
@@ -154,7 +155,7 @@ public class ParentComplaintService {
 
     //4. 민원 최종 제출
     @Transactional
-    public void submitComplaint(
+    public ComplaintSubmissionResponse submitComplaint(
             Long userId,
             Long complaintId
     ) {
@@ -178,7 +179,7 @@ public class ParentComplaintService {
 
 
         // 전송 요청의 최종 내용을 분석한 후에만 교사를 지정하고 제출을 확정
-        riskAnalysisService.analyzeForSubmission(userId, complaintId);
+        var analysisResult = riskAnalysisService.analyzeForSubmissionResult(userId, complaintId);
 
         // 최종 제출
         complaint.submit();
@@ -190,6 +191,7 @@ public class ParentComplaintService {
                 ComplaintStatus.OPEN
         ));
         eventRepository.save(ComplaintEvent.messageSent(complaint.initialMessage()));
+        return ComplaintSubmissionResponse.from(complaint, analysisResult);
     }
 
     private User findUser(Long userId) {

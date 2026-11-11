@@ -9,7 +9,7 @@
 | 메서드 | 경로 | 동작 | 성공 |
 |---|---|---|---|
 | POST | `/complaints/{complaintId}/mask` | 원문의 규칙 기반 개인정보 마스킹 결과 저장·반환 | 200 |
-| POST | `/complaints/{complaintId}/risk-analysis` | 마스킹 → 룰·LLM 탐지 → 병합 → 점수 계산·저장 → 수정안 생성 | 200 |
+| POST | `/complaints/{complaintId}/risk-analysis` | 마스킹 → 룰·LLM 탐지 → 병합·점수 계산 → 수정안 검증 → 저장 | 200 |
 | POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 학부모 추가 문의 메시지의 위험 분석·수정안 생성 | 200 |
 | GET | `/risk-analyses/{analysisId}` | 저장된 분석의 점수·등급 조회 | 200 |
 | GET | `/risk-analyses/{analysisId}/findings` | 최종 감지 태그·근거·태그별 수정 제안·최종 수정본 조회 | 200 |
@@ -52,19 +52,25 @@
 전화번호(국내 휴대폰·일반 지역번호·050 가상번호·070 및 일부 +82 형태, `-`·`.`·공백 구분), 이메일, 주민등록번호 형태를 정규식으로 치환한다. 이름·자유 형식 주소·계좌번호 등 모든 개인정보를 탐지하는 기능은 아니다. 200은 지원 패턴의 치환 성공을 뜻하며 외부 AI 전송에 안전하다는 보장은 아니다. 불확실성을 판정하는 로직이 없으므로 기존 명세의 422는 현재 제공하지 않는다.
 
 원문은 변경하지 않는다. 민원 수정 시 기존 maskedContent는 초기화된다. 전체 분석 API는 항상 현재 원문을 다시 마스킹하므로 mask API의 선행 호출은 선택 사항이다. 룰의 탐지 근거도 마스킹 후 저장·수정안 생성에 사용한다.
-제출 중 마스킹 자체가 실패하면 원문을 LLM에 전달하지 않고 해당 분석만 건너뛰며 원문 메시지 전송은 유지한다.
+마스킹은 외부 AI보다 앞선 개인정보 가드레일이다. 제출 중에도 마스킹 자체가 실패하면 Rule과
+LLM을 실행하지 않고 500 `PRIVACY_MASKING_FAILED`로 제출을 중단한다. 외부 AI의 타임아웃·연결 실패 또는 검증 불가능한
+응답은 Rule-only 잠정 분석으로 전환한다. Rule, 반복 문맥, 점수 설정과 DB 처리 같은 백엔드
+내부 오류는 fail-open하지 않는다.
 
 ## 분석 실행 응답
 
-POST `/complaints/{complaintId}/risk-analysis`와 GET `/risk-analyses/{analysisId}`는
-동일한 `RiskAnalysisSummaryResponse`를 반환한다.
+POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 API는
+`RiskSummaryResponse`를 반환한다.
 
 ```json
 {
   "analysisId": 10,
   "complaintId": 42,
   "riskScore": 55,
-  "riskLevel": "HIGH"
+  "riskLevel": "HIGH",
+  "analysisMode": "HYBRID",
+  "manualReviewRequired": false,
+  "analysisMessage": "Rule과 AI 문맥 분석이 완료되었습니다."
 }
 ```
 
@@ -77,6 +83,14 @@ POST는 원문을 마스킹한 뒤 원문 Rule 탐지를 실행하고, Rule의 e
 마스킹해 마스킹 본문과 함께 LLM에 전달한다. Claude가 같은 태그를 반환하면 Claude 상태를
 최종값으로 사용하고, Claude가 누락한 태그만 Rule 상태로 fallback한다. 이후 점수 계산과
 수정안 생성·저장을 수행한다.
+LLM 출력이 스키마 검증에 실패하면 한 번 재생성한다. 재생성도 실패하거나 외부 AI가
+연결·시간초과·429·5xx로 불가하면 Rule 결과만으로 점수와 등급을 계산·저장하고 HTTP 200으로
+`analysisMode=RULE_ONLY`, `manualReviewRequired=true`를 반환한다. 이때 LLM 상태는 `UNKNOWN`,
+confidence는 `null`이고 수정안은 생성하지 않는다.
+위험 분석 LLM은 성공했더라도 수정안 생성 AI가 연결·응답 검증에 실패하면 아직 저장하지 않은
+하이브리드 결과를 폐기하고 Rule-only 점수·등급만 한 번 저장한다. 잘못된 수정안을 저장하지 않으며
+같은 수동 검토 안내와 `AI_ANALYSIS_RULE_FALLBACK` 감사 이벤트를 사용한다. 요청 직렬화·설정 같은
+내부 연동 오류는 Rule-only로 전환하지 않고 fail-closed로 처리한다.
 응답에는 요약만 포함하며, 근거와 태그별 수정 제안 및 전체 수정본은
 `GET /risk-analyses/{analysisId}/findings`로 조회한다.
 Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회한다.
@@ -110,10 +124,8 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 - 요청 시 명시한 관리자, 기존 공유 담당 관리자, 기본 관리자 순으로 지정 검토자를 정한다.
   지정 검토자만 승인·거부하거나 안전 잠금을 변경할 수 있다.
 - 지정 검토자가 승인하면 요청된 값으로 `risk_reviews`가 생성되고 현재 위험도에 반영된다.
-  위험도가 하향되어도 `safetyLock`은 자동 해제하지 않는다. 지정 검토자가
-  `PATCH /admin/emergency-review/{requestId}`로 명시적으로 해제해야 하며,
-  잠금 중 교사 화면의 허용 행동은 EMERGENCY 정책을 유지한다. 승인·거부와 잠금 변경은
-  모두 이 PATCH API를 사용한다.
+  `safetyLock`은 Emergency 전용이므로 하향 승인을 `APPLIED`로 처리하는 같은 트랜잭션에서
+  자동 해제한다. 거부 또는 승인 전에는 잠금을 유지한다.
 - 기존 `POST /teacher/complaints/{complaintId}/risk-reviews`에서 EMERGENCY를 하향하는 경우도
   동일한 재검토 요청 흐름을 사용한다.
 - 시스템 분석 결과는 덮어쓰지 않고 `risk_reviews`에 변경 전후 점수·등급과 교사,
@@ -130,11 +142,17 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 - 사용자에게 수정안을 보여주는 AI 검토는 학부모 메시지별 1회만 수행한다.
 - AI 검토 후 내용이 변경됐다면 제출 시 최종 내용의 위험도를 내부적으로 한 번 더 분석한다. 이 분석은 새 수정안을 생성하지 않는다.
 - 내용이 변경되지 않았다면 기존 검토 결과를 재사용한다. 따라서 학부모 메시지별 성공한 AI 분석은 최대 2회다.
-- 분석과 제출 처리 중에는 DRAFT를 유지한다. 권한·상태·입력·저장 오류는 제출을 롤백하지만, LLM 분석 실패는 원문 전송을 막지 않는다.
+- 기존 Rule-only 분석을 재사용한 제출은 `REUSED_RULE_ONLY`와 수동 검토 안내를 반환한다.
+  하이브리드 분석 재사용은 기존처럼 `REUSED`다.
+- 분석과 제출 처리 중에는 DRAFT를 유지한다. 권한·상태·입력·마스킹·Rule·점수·저장 오류는
+  제출을 롤백한다. 외부 LLM의 타임아웃·연결 실패는 즉시, 스키마 검증 실패는 1회 재생성 후
+  Rule-only 잠정 분석으로 전환하므로 원문 전송을 막지 않는다.
 - 동일 내용 저장은 contentVersion을 올리지 않는다. 같은 버전 분석 재요청은 저장 결과를 반환하고 AI 호출/횟수를 추가하지 않는다.
 - PATCH 후 바로 POST send를 호출한다. 서버는 최종 문장이 분석 원문과 같으면 재사용하고, 다르면 한 번 재분석한다. 수정했다가 원문으로 되돌린 경우도 재사용한다.
 - 수정 후 POST risk-analysis 호출은 409 FINAL_ANALYSIS_ON_SUBMIT. 최종 재분석은 send 내부에서만 실행하고 새 수정안을 생성하지 않는다. 최대 성공 분석 2회 제한은 유지한다.
-- POST `/complaints/{complaintId}/send`: Bearer 인증 필요, 본문 없음. 최초 분석이 없어도 서버가 최종 분석을 시도하며, LLM 분석 또는 수정안 생성 실패 이후에도 원문을 전송할 수 있다.
+- POST `/complaints/{complaintId}/send`: Bearer 인증 필요, 본문 없음. 최초 분석이 없어도 서버가
+  최종 분석을 시도한다. 외부 LLM 실패는 Rule-only 점수·등급과 `RULE_ONLY_AI_UNAVAILABLE` 또는
+  `RULE_ONLY_INVALID_RESPONSE`를 반환하면서 제출한다. 분석 횟수 제한은 `SKIPPED_LIMIT`를 반환한다.
 - 최초 민원 제출 성공 시 200이며 상태 및 이력은 DRAFT → OPEN, waitingFor는 TEACHER다.
 - 분석·수정·제출은 동일 민원 행의 비관적 쓰기 잠금으로 동시 실행을 직렬화한다. 현재 동기 처리이므로 AI 호출 동안 잠금이 유지된다.
 
@@ -149,6 +167,16 @@ DB에는 risk_analyses의 content_hash/completed/revision_reason/ai_revision 컬
 | 403 | 다른 작성자의 민원·분석 접근 |
 | 404 | 민원 또는 분석이 없음 |
 | 409 | DRAFT가 아닌 민원에 마스킹/분석 요청 |
+| 500 | `PRIVACY_MASKING_FAILED`: 개인정보 마스킹 실패 |
+| 500 | `RISK_RULE_PROCESSING_FAILED`: Rule·반복 문맥 처리 실패 |
+| 500 | `RISK_SCORE_CALCULATION_FAILED`: 태그 기준 조회·점수/등급 계산 실패 |
+| 500 | `RISK_ANALYSIS_SAVE_FAILED`: 분석·태그·감사 이벤트 저장 실패 |
+| 502 | Rule-only 정책이 없는 일반 AI API에서 외부 AI 응답 검증 실패 |
+| 503 | Rule-only 정책이 없는 일반 AI API에서 외부 AI 연결·타임아웃·429·5xx 장애 |
+
+위험 분석 API에서는 외부 AI의 502/503 원인을 Rule-only HTTP 200 응답으로 변환한다. 마스킹,
+Rule, 점수 계산, 저장 등 내부 가드레일 실패는 변환하지 않고 위 단계별 코드와 HTTP 500을
+반환한다. 이 실패 응답에는 분석 상태나 점수 결과가 없으며 트랜잭션은 롤백된다.
 
 ## 현재 구현 범위
 
@@ -166,9 +194,13 @@ DB에는 risk_analyses의 content_hash/completed/revision_reason/ai_revision 컬
 | ComplaintNotDraftException | 409 | COMPLAINT_NOT_DRAFT |
 | MessageNotEditableException | 409 | MESSAGE_NOT_EDITABLE |
 | MessageDraftNotFoundException | 404 | MESSAGE_DRAFT_NOT_FOUND |
+| RiskAnalysisProcessingException(PRIVACY_MASKING) | 500 | PRIVACY_MASKING_FAILED |
+| RiskAnalysisProcessingException(RULE_PROCESSING) | 500 | RISK_RULE_PROCESSING_FAILED |
+| RiskAnalysisProcessingException(SCORE_CALCULATION) | 500 | RISK_SCORE_CALCULATION_FAILED |
+| RiskAnalysisProcessingException(ANALYSIS_SAVE) | 500 | RISK_ANALYSIS_SAVE_FAILED |
 
 ```json
-{"status":"ERROR","code":"COMPLAINT_ACCESS_DENIED","message":"해당 민원에 접근할 권한이 없습니다.","timestamp":"2026-10-01T09:00:00+09:00","path":"/complaints/42/mask"}
+{"code":"COMPLAINT_ACCESS_DENIED","message":"해당 민원에 접근할 권한이 없습니다.","timestamp":"2026-10-01T09:00:00","path":"/complaints/42/mask"}
 ```
 
 마스킹과 Rule 탐지는 실제 백엔드 규칙 처리다. Rule 탐지기는 DB에 적재한
@@ -271,7 +303,11 @@ DTO를 반환하는 기존 API의 응답은 유지한다. 빈 성공 응답을 �
 - POST `/complaints`: `ComplaintCreateRequest`(`studentId`, `teacherId`, `title`, `content`)로 최초 초안을 생성한다. 선택한 교사는 해당 학생의 담당 교사여야 한다.
 - PATCH `/complaints/{complaintId}`: 200, `{"message":"민원 내용이 수정되었습니다."}`.
   기존 204에서 200으로 변경했다. 요청 본문은 `ComplaintDraftUpdateRequest`(`content`)를 사용한다.
-- POST `/complaints/{complaintId}/send`: 200, `{"message":"민원이 제출되었습니다."}`.
+- POST `/complaints/{complaintId}/send`: 200, 제출 상태와 `aiAnalysisStatus`,
+  `aiAnalysisMessage`, `riskAnalysis` 요약을 반환한다. Rule-only이면 이 중첩 객체의 점수·등급과
+  `analysisMode=RULE_ONLY`, `manualReviewRequired=true`로 프론트가 잠정 결과를 표시한다.
+  `SKIPPED_LIMIT`처럼 분석 결과가 없으면 `riskAnalysis=null`이다.
+- 추가 문의 전송 응답도 같은 세 필드를 반환해 최초 민원과 동일하게 처리한다.
   요청 본문은 없다.
 - GET `/complaints/{complaintId}/status`: 200, 기존 ComplaintResponse 사용.
 
@@ -327,7 +363,9 @@ Postman에서는 생성 후 DRAFT, send 성공 후 OPEN을 조회하고,
 | POST | `/teacher/complaints/{complaintId}/close` | 교사가 답변 후 상담 완료 처리 |
 
 교사 답변 API 경로는 기존 값을 유지한다. AI 초안 생성 시 지금까지 전송된 전체 대화가
-입력 문맥이 되며, 임시저장과 최종 전송은 `complaint_messages`의 `TEACHER_REPLY` 행을
+입력 문맥이 되며 각 메시지는 개인정보 마스킹 후 `TeacherSupportContentProvider` 경계에
+전달한다. 생성 결과는 빈값·최대 1,500자·모델명 형식을 검증하고 다시 마스킹한 뒤 반환한다.
+임시저장과 최종 전송은 `complaint_messages`의 `TEACHER_REPLY` 행을
 사용한다. 교사 전송 후 민원은 계속 OPEN이고 `waitingFor=PARENT`가 된다. 따라서 학부모가
 추가 문의를 보내면 다시 `waitingFor=TEACHER`로 바뀌어 같은 분기 처리를 반복할 수 있다.
 답변 전송만으로 자동 완료되지 않으며, 교사가 별도 완료 API를 호출해야 CLOSED가 된다.
@@ -348,16 +386,22 @@ AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/
 `Idempotency-Key` 헤더가 필수다. 동일 교사가 같은 키와 동일 내용으로 재요청하면 최초 전송
 결과를 반환하며 메시지와 `MESSAGE_SENT` 이벤트를 중복 생성하지 않는다.
 
-유효 위험도가 Emergency이거나 safetyLock이 활성화되면 AI 초안 생성, 임시저장, 최종 전송과
-상담 완료 처리를 서버에서 모두 차단한다. High에서는 safetyLock이 없으면 AI 초안 생성이 가능하다.
-차단 시 `RESPONSE_BLOCKED_BY_SAFETY_LOCK` 감사 이벤트를 남긴다.
-관리자는 재검토를 `APPLIED`로 승인하기 전 safetyLock을 해제할 수 없다.
+Low·Medium에서만 생성형 AI 초안을 허용한다. High는 생성형 AI 초안을 차단하고 검증된 제한형
+공식 템플릿을 채택한 내용만 임시저장·전송할 수 있다. Emergency 또는 safetyLock 상태에서는
+AI 초안 생성, 임시저장, 최종 전송과 상담 완료를 모두 차단한다. 정책 차단은
+`AI_DRAFT_BLOCKED_BY_RISK_POLICY`, `RESPONSE_BLOCKED_BY_RISK_POLICY`,
+`RESPONSE_BLOCKED_BY_SAFETY_LOCK` 감사 이벤트로 구분한다.
+`GET /teacher/complaints/{complaintId}/risk`의 `analysisMode`, `manualReviewRequired`,
+`analysisMessage`로 프론트가 잠정 분석 배지와 직접 검토 안내를 표시할 수 있다.
 
 `GET /teacher/complaints/{complaintId}/messages`은 전송된 모든 메시지를 반환한다.
-학부모 메시지는 메시지별 최신 자동 위험 분석이 LOW일 때 원문을, LOW보다 높을 때 완충
-요약을 반환한다. 최초 민원과 후속 문의에 동일한 규칙을 적용한다. 교사 메시지는 원문을
+모든 위험도의 분석 완료 학부모 메시지는 완충 요약을 반환한다. 완충 요약 생성기에도 마스킹된
+입력만 전달하고 출력은 다시 마스킹한다.
+최초 민원과 후속 문의에 동일한 규칙을 적용한다. 교사 메시지는 원문을
 반환하고 임시저장 DRAFT는 대화 내역에서 제외한다. 완충 요약 생성이 실패하거나 빈 결과를
-반환하면 해당 메시지는 원문과 `summarized=false`로 반환한다.
+반환하면 원문을 자동 노출하지 않고 안내 문구, `summarized=false`,
+`summaryStatus=UNAVAILABLE`을 반환한다. 원문은 별도 열람 API와 `ORIGINAL_VIEWED` 감사 이벤트를
+통해서만 제공한다.
 
 `GET /teacher/complaints/{complaintId}/history`는 `ComplaintEventType`과 함께
 `complaint_events`에 저장된 통합 이력을 발생 시각 역순으로 반환한다. 메시지 최초 읽음은

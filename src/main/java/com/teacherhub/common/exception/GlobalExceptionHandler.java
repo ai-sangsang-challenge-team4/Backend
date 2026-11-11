@@ -1,5 +1,9 @@
 package com.teacherhub.common.exception;
 
+import com.teacherhub.ai.exception.AiRequestPreparationException;
+import com.teacherhub.ai.exception.AiResponseInvalidException;
+import com.teacherhub.ai.exception.AiServiceUnavailableException;
+import com.teacherhub.risk.exception.RiskAnalysisProcessingException;
 import com.teacherhub.auth.exception.SignupConflictException;
 import com.teacherhub.auth.exception.SignupReferenceNotFoundException;
 import com.teacherhub.auth.exception.SignupValidationException;
@@ -318,6 +322,80 @@ public class GlobalExceptionHandler {
     ) {
         log.warn("Data conflict while handling request {}", request.getRequestURI(), e);
         return error(HttpStatus.CONFLICT, "DATA_CONFLICT", "이미 존재하거나 현재 상태와 충돌하는 데이터입니다.", request);
+    }
+
+    @ExceptionHandler(AiResponseInvalidException.class)
+    public ResponseEntity<ErrorResponse> handleAiResponseInvalid(
+            AiResponseInvalidException e,
+            HttpServletRequest request
+    ) {
+        log.warn("Invalid external AI response while handling {}", request.getRequestURI());
+        return error(
+                HttpStatus.BAD_GATEWAY,
+                "AI_RESPONSE_INVALID",
+                "AI 응답을 검증하지 못했습니다. 잠시 후 다시 시도해주세요.",
+                request
+        );
+    }
+
+    @ExceptionHandler(AiServiceUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleAiServiceUnavailable(
+            AiServiceUnavailableException e,
+            HttpServletRequest request
+    ) {
+        log.warn("External AI service unavailable while handling {}", request.getRequestURI());
+        return error(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "AI_SERVICE_UNAVAILABLE",
+                "AI 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.",
+                request
+        );
+    }
+
+    @ExceptionHandler(AiRequestPreparationException.class)
+    public ResponseEntity<ErrorResponse> handleAiRequestPreparation(
+            AiRequestPreparationException e,
+            HttpServletRequest request
+    ) {
+        log.error("Internal AI integration error while handling {}", request.getRequestURI());
+        return error(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "AI_INTEGRATION_ERROR",
+                "AI 요청 처리 중 서버 내부 오류가 발생했습니다.",
+                request
+        );
+    }
+
+    @ExceptionHandler(InternalSystemException.class)
+    public ResponseEntity<ErrorResponse> handleInternalSystem(
+            InternalSystemException e,
+            HttpServletRequest request
+    ) {
+        log.error("Internal system error while handling {}", request.getRequestURI());
+        return error(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "INTERNAL_SERVER_ERROR",
+                "서버 내부 오류가 발생했습니다.",
+                request
+        );
+    }
+
+    @ExceptionHandler(RiskAnalysisProcessingException.class)
+    public ResponseEntity<ErrorResponse> handleRiskAnalysisProcessing(
+            RiskAnalysisProcessingException e,
+            HttpServletRequest request
+    ) {
+        log.error(
+                "Risk analysis internal stage failed while handling {}. stage={}",
+                request.getRequestURI(),
+                e.failureStage()
+        );
+        return error(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                e.errorCode(),
+                e.userMessage(),
+                request
+        );
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

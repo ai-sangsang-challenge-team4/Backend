@@ -249,7 +249,7 @@ public class ComplaintFlowIntegrationTest {
     }
 
     @Test
-    void showsLowRiskParentMessageWithoutBufferedSummary() {
+    void showsBufferedSummaryForLowRiskParentMessage() {
         String content = "학교생활에 관해 확인하고 싶습니다.";
         Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
@@ -273,10 +273,13 @@ public class ComplaintFlowIntegrationTest {
         teacherComplaintQueryService.findConversation(teacherUser.getId(), complaintId);
 
         assertThat(conversation.messages()).singleElement().satisfies(message -> {
-            assertThat(message.content()).isEqualTo(content);
+            assertThat(message.content()).isEqualTo("[MOCK] 학부모가 전달한 민원의 완충 요약을 확인해 주세요.");
             assertThat(message.status()).isEqualTo(MessageStatus.READ);
             assertThat(message.readAt()).isNotNull();
-            assertThat(message.summarized()).isFalse();
+            assertThat(message.summarized()).isTrue();
+            assertThat(message.summaryStatus()).isEqualTo(
+                    com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse.SummaryStatus.GENERATED
+            );
         });
         assertThat(eventRepository.findByComplaintIdOrderByOccurredAtDescIdDesc(complaintId))
                 .filteredOn(event -> event.getEventType() == MessageEventType.MESSAGE_READ)

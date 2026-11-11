@@ -1,5 +1,6 @@
 package com.teacherhub.risk.service;
 
+import com.teacherhub.common.exception.InternalSystemException;
 import com.teacherhub.risk.dto.detection.EvidenceSpan;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.entity.RiskTag;
@@ -205,6 +206,22 @@ public class RiskEvaluator {
                 .toList();
     }
 
+    public List<FinalRiskTagResponse> mergeRuleOnly(
+            List<RiskTagDetectionResult> ruleResults
+    ) {
+        return merge(ruleResults, List.of()).stream()
+                .map(result -> new FinalRiskTagResponse(
+                        result.code(),
+                        result.state(),
+                        result.ruleState(),
+                        RiskTagState.UNKNOWN,
+                        null,
+                        result.evidenceSpans(),
+                        result.reason()
+                ))
+                .toList();
+    }
+
     private RiskTagState normalizedState(
             RiskTagCode code,
             RiskTagDetectionResult result
@@ -400,7 +417,7 @@ public class RiskEvaluator {
                             || tag.getDefaultScore() == null
                             || tag.getDefaultScore() < 0) {
 
-                        throw new IllegalStateException(
+                        throw new InternalSystemException(
                                 "위험 태그의 점수 설정을 확인해주세요: "
                                         + code
                         );

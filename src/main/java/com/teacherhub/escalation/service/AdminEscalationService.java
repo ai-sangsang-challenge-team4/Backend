@@ -1,5 +1,6 @@
 package com.teacherhub.escalation.service;
 
+import com.teacherhub.common.exception.InternalSystemException;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.complaint.entity.ComplaintMessage;
@@ -91,7 +92,7 @@ public class AdminEscalationService {
                                 message,
                                 maskedContent(message),
                                 submittedAt,
-                                false
+                                null
                         ))
                         .toList()
                         : List.of();
@@ -102,7 +103,7 @@ public class AdminEscalationService {
                                 message,
                                 message.getContent(),
                                 submittedAt,
-                                false
+                                null
                         ))
                         .toList()
                         : List.of();
@@ -256,7 +257,7 @@ public class AdminEscalationService {
                         ComplaintStatus.OPEN
                 )
                 .map(ComplaintEvent::getOccurredAt)
-                .orElseThrow(() -> new IllegalStateException("민원 제출 이력을 찾을 수 없습니다."));
+                .orElseThrow(() -> new InternalSystemException("민원 제출 이력이 누락되었습니다."));
     }
 
     private String maskedContent(ComplaintMessage message) {

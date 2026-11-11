@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import com.teacherhub.common.exception.GlobalExceptionHandler;
 import com.teacherhub.complaint.exception.*;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
+import com.teacherhub.risk.exception.RiskAnalysisProcessingException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -90,5 +91,33 @@ class RiskAnalysisControllerTest {
         doThrow(new RiskAnalysisNotFoundException("분석 결과가 없습니다.")).when(query).findFindings(7L, 20L);
         mvc.perform(get("/risk-analyses/20/findings").principal(auth)).andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RISK_ANALYSIS_NOT_FOUND"));
+    }
+
+    @Test
+    void exposesInternalRiskAnalysisFailureStageToFrontend() throws Exception {
+        login();
+        when(review.analyze(7L, 10L))
+                .thenThrow(RiskAnalysisProcessingException.privacyMasking(new IllegalStateException("secret")))
+                .thenThrow(RiskAnalysisProcessingException.ruleProcessing(new IllegalStateException("secret")))
+                .thenThrow(RiskAnalysisProcessingException.scoreCalculation(new IllegalStateException("secret")))
+                .thenThrow(RiskAnalysisProcessingException.analysisSave(new IllegalStateException("secret")));
+
+        String[] codes = {
+                "PRIVACY_MASKING_FAILED",
+                "RISK_RULE_PROCESSING_FAILED",
+                "RISK_SCORE_CALCULATION_FAILED",
+                "RISK_ANALYSIS_SAVE_FAILED"
+        };
+        for (String code : codes) {
+            mvc.perform(post("/complaints/10/risk-analysis").principal(auth))
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(jsonPath("$.code").value(code))
+                    .andExpect(jsonPath("$.message").isNotEmpty())
+                    .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                            org.hamcrest.Matchers.containsString("secret")
+                    )))
+                    .andExpect(jsonPath("$.path").value("/complaints/10/risk-analysis"))
+                    .andExpect(jsonPath("$.timestamp").isNotEmpty());
+        }
     }
 }

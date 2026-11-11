@@ -1,5 +1,6 @@
 package com.teacherhub.complaint.teacher.service;
 
+import com.teacherhub.common.exception.InternalSystemException;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.access.ComplaintAccessPolicy;
 import com.teacherhub.complaint.entity.Complaint;
@@ -17,6 +18,7 @@ import com.teacherhub.complaint.history.service.ComplaintHistoryService;
 import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.teacher.dto.query.TeacherComplaintDetailResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse.BufferedSummary;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherOriginalViewResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
@@ -26,6 +28,7 @@ import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
@@ -63,13 +66,14 @@ public class TeacherComplaintQueryService {
     private final ComplaintHistoryService complaintHistoryService;
     private final TeacherSupportContentProvider supportContentProvider;
     private final TeacherSupportPolicy supportPolicy;
+    private final PiiMaskingService piiMaskingService;
 
     public TeacherComplaintDetailResponse findDetail(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findTeacherComplaint(user, complaintId);
         var schoolClass = studentClassRepository
                 .findTopByStudent_IdOrderBySchoolClass_AcademicYearDesc(complaint.getStudent().getId())
-                .orElseThrow(() -> new IllegalStateException("학생의 학급 정보를 찾을 수 없습니다."))
+                .orElseThrow(() -> new InternalSystemException("학생의 학급 정보가 누락되었습니다."))
                 .getSchoolClass();
         RiskAnalysis analysis = latestAnalysis(complaint).orElse(null);
         return TeacherComplaintDetailResponse.from(
@@ -92,7 +96,7 @@ public class TeacherComplaintQueryService {
         List<ComplaintMessage> messages = messageRepository
                 .findByComplaintIdAndStatusNotOrderByIdAsc(complaintId, MessageStatus.DRAFT);
         Map<Long, RiskLevel> latestRiskByMessage = latestRiskByMessage(complaintId);
-        Map<Long, String> bufferedSummaries = createBufferedSummaries(
+        Map<Long, BufferedSummary> bufferedSummaries = createBufferedSummaries(
                 complaintId,
                 messages,
                 latestRiskByMessage
@@ -115,25 +119,39 @@ public class TeacherComplaintQueryService {
         );
     }
 
-    private Map<Long, String> createBufferedSummaries(
+    private Map<Long, BufferedSummary> createBufferedSummaries(
             Long complaintId,
             List<ComplaintMessage> messages,
             Map<Long, RiskLevel> latestRiskByMessage
     ) {
-        Map<Long, String> summaries = new HashMap<>();
+        Map<Long, BufferedSummary> summaries = new HashMap<>();
         messages.stream()
                 .filter(message -> message.getType() == MessageType.PARENT_INQUIRY)
                 .filter(message -> latestRiskByMessage.get(message.getId()) != null)
-                .filter(message -> latestRiskByMessage.get(message.getId()) != RiskLevel.LOW)
                 .forEach(message -> {
                     try {
-                        String summary = supportContentProvider.createBufferedSummary(message.getContent());
-                        if (summary != null && !summary.isBlank()) {
-                            summaries.put(message.getId(), summary);
+                        String maskedContent = piiMaskingService.mask(message.getContent());
+                        if (maskedContent == null) {
+                            throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
                         }
+                        String summary = supportContentProvider.createBufferedSummary(maskedContent);
+                        if (summary != null && !summary.isBlank() && summary.length() <= 1_500) {
+                            String safeSummary = piiMaskingService.mask(summary);
+                            if (safeSummary != null && !safeSummary.isBlank()) {
+                                summaries.put(message.getId(), BufferedSummary.generated(safeSummary));
+                                return;
+                            }
+                        }
+                        summaries.put(message.getId(), BufferedSummary.unavailable());
                     } catch (RuntimeException exception) {
-                        log.warn("Buffered summary generation failed; returning the original message. complaintId={}, messageId={}",
-                                complaintId, message.getId(), exception);
+                        log.warn(
+                                "Buffered summary generation failed; requiring explicit original view. "
+                                        + "complaintId={}, messageId={}, failureType={}",
+                                complaintId,
+                                message.getId(),
+                                exception.getClass().getSimpleName()
+                        );
+                        summaries.put(message.getId(), BufferedSummary.unavailable());
                     }
                 });
         return summaries;
@@ -227,7 +245,7 @@ public class TeacherComplaintQueryService {
                         ComplaintStatus.OPEN
                 )
                 .map(ComplaintEvent::getOccurredAt)
-                .orElseThrow(() -> new IllegalStateException("민원 제출 이력을 찾을 수 없습니다."));
+                .orElseThrow(() -> new InternalSystemException("민원 제출 이력이 누락되었습니다."));
     }
 
     private Optional<RiskAnalysis> latestAnalysis(Complaint complaint) {

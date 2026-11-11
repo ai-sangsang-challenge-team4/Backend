@@ -1,5 +1,9 @@
 package com.teacherhub.common.exception;
 
+import com.teacherhub.ai.exception.AiRequestPreparationException;
+import com.teacherhub.ai.exception.AiResponseInvalidException;
+import com.teacherhub.ai.exception.AiServiceUnavailableException;
+import com.teacherhub.risk.exception.RiskAnalysisProcessingException;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 
@@ -39,5 +43,84 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().code()).isEqualTo("INVALID_STATE");
         assertThat(response.getBody().message()).isEqualTo("요청을 현재 상태에서 처리할 수 없습니다.");
         assertThat(response.getBody().message()).doesNotContain("secret");
+    }
+
+    @Test
+    void distinguishesInvalidAiOutputFromUnavailableAiAndInternalFailures() {
+        var request = new MockHttpServletRequest("POST", "/complaints/42/risk-analysis");
+
+        var invalid = handler.handleAiResponseInvalid(
+                new AiResponseInvalidException("secret AI body"),
+                request
+        );
+        var unavailable = handler.handleAiServiceUnavailable(
+                new AiServiceUnavailableException("provider secret"),
+                request
+        );
+        var integration = handler.handleAiRequestPreparation(
+                new AiRequestPreparationException("configuration secret"),
+                request
+        );
+        var internal = handler.handleInternalSystem(
+                new InternalSystemException("database secret"),
+                request
+        );
+
+        assertThat(invalid.getStatusCode().value()).isEqualTo(502);
+        assertThat(invalid.getBody()).isNotNull();
+        assertThat(invalid.getBody().code()).isEqualTo("AI_RESPONSE_INVALID");
+        assertThat(invalid.getBody().message()).doesNotContain("secret");
+
+        assertThat(unavailable.getStatusCode().value()).isEqualTo(503);
+        assertThat(unavailable.getBody()).isNotNull();
+        assertThat(unavailable.getBody().code()).isEqualTo("AI_SERVICE_UNAVAILABLE");
+        assertThat(unavailable.getBody().message()).doesNotContain("secret");
+
+        assertThat(integration.getStatusCode().value()).isEqualTo(500);
+        assertThat(integration.getBody()).isNotNull();
+        assertThat(integration.getBody().code()).isEqualTo("AI_INTEGRATION_ERROR");
+
+        assertThat(internal.getStatusCode().value()).isEqualTo(500);
+        assertThat(internal.getBody()).isNotNull();
+        assertThat(internal.getBody().code()).isEqualTo("INTERNAL_SERVER_ERROR");
+    }
+
+    @Test
+    void exposesStableCodesForEachInternalRiskAnalysisStage() {
+        var request = new MockHttpServletRequest("POST", "/complaints/42/risk-analysis");
+
+        var masking = handler.handleRiskAnalysisProcessing(
+                RiskAnalysisProcessingException.privacyMasking(new IllegalStateException("secret")),
+                request
+        );
+        var rule = handler.handleRiskAnalysisProcessing(
+                RiskAnalysisProcessingException.ruleProcessing(new IllegalStateException("secret")),
+                request
+        );
+        var score = handler.handleRiskAnalysisProcessing(
+                RiskAnalysisProcessingException.scoreCalculation(new IllegalStateException("secret")),
+                request
+        );
+        var save = handler.handleRiskAnalysisProcessing(
+                RiskAnalysisProcessingException.analysisSave(new IllegalStateException("secret")),
+                request
+        );
+
+        assertThat(masking.getStatusCode().value()).isEqualTo(500);
+        assertThat(masking.getBody()).isNotNull();
+        assertThat(masking.getBody().code()).isEqualTo("PRIVACY_MASKING_FAILED");
+        assertThat(masking.getBody().message()).doesNotContain("secret");
+
+        assertThat(rule.getStatusCode().value()).isEqualTo(500);
+        assertThat(rule.getBody()).isNotNull();
+        assertThat(rule.getBody().code()).isEqualTo("RISK_RULE_PROCESSING_FAILED");
+
+        assertThat(score.getStatusCode().value()).isEqualTo(500);
+        assertThat(score.getBody()).isNotNull();
+        assertThat(score.getBody().code()).isEqualTo("RISK_SCORE_CALCULATION_FAILED");
+
+        assertThat(save.getStatusCode().value()).isEqualTo(500);
+        assertThat(save.getBody()).isNotNull();
+        assertThat(save.getBody().code()).isEqualTo("RISK_ANALYSIS_SAVE_FAILED");
     }
 }

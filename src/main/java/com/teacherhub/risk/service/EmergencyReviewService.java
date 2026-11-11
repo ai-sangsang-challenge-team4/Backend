@@ -181,11 +181,19 @@ public class EmergencyReviewService {
                     "Emergency 재검토 승인 전에는 안전 잠금을 해제할 수 없습니다."
             );
         }
+        if (Boolean.TRUE.equals(update.safetyLock())
+                && request.getRequestedRiskLevel() != RiskLevel.EMERGENCY) {
+            throw new EscalationStateException(
+                    "Emergency가 아닌 위험도에는 안전 잠금을 적용할 수 없습니다."
+            );
+        }
 
         String message = normalizeMessage(update.message());
+        boolean previousSafetyLock = request.isSafetyLock();
         MessageEventType decisionEventType = null;
         if (update.status() == RiskReviewStatus.APPLIED) {
             request.approve(message);
+            request.updateSafetyLock(false);
             RiskReview review = riskReviewRepository.save(new RiskReview(
                     request.getRiskAnalysis(),
                     request.getRequestedBy(),
@@ -212,11 +220,10 @@ public class EmergencyReviewService {
             decisionEventType = MessageEventType.EMERGENCY_REVIEW_REJECTED;
         }
 
-        boolean safetyLockChanged = update.safetyLock() != null
-                && request.isSafetyLock() != update.safetyLock();
-        if (update.safetyLock() != null) {
+        if (update.status() != RiskReviewStatus.APPLIED && update.safetyLock() != null) {
             request.updateSafetyLock(update.safetyLock());
         }
+        boolean safetyLockChanged = previousSafetyLock != request.isSafetyLock();
         EmergencyRiskReviewRequest saved = requestRepository.saveAndFlush(request);
         if (decisionEventType != null) {
             eventRepository.save(ComplaintEvent.emergencyReviewChanged(

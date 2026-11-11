@@ -21,8 +21,9 @@ public record ComplaintCreateRequest(
         @Size(max = 100, message = "민원 제목은 100자 이하로 입력해주세요.")
         String title,
 
-        @Schema(description = "민원 원문", example = "학생 상담 일정과 진행 절차를 확인하고 싶습니다.")
+        @Schema(description = "민원 원문(최대 5000자)", example = "학생 상담 일정과 진행 절차를 확인하고 싶습니다.")
         @NotBlank(message = "민원 내용을 입력해주세요.")
+        @Size(max = 5_000, message = "민원 내용은 5000자 이하로 입력해주세요.")
         String content
 ) {
 }

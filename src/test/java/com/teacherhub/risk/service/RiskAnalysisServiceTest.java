@@ -1,9 +1,13 @@
 package com.teacherhub.risk.service;
 
+import com.teacherhub.ai.exception.AiServiceUnavailableException;
+import com.teacherhub.ai.exception.AiResponseInvalidException;
+import com.teacherhub.risk.exception.RiskAnalysisProcessingException;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
+import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.analyzer.LlmRiskAnalyzer;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator;
@@ -16,17 +20,23 @@ import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
 import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import com.teacherhub.risk.entity.RiskTag;
+import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.enums.RiskAnalysisMode;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.repository.RiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import org.springframework.test.util.ReflectionTestUtils;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.enums.SubmissionAnalysisStatus;
 import com.teacherhub.user.entity.Parent;
 import com.teacherhub.user.entity.User;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
+import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataAccessResourceFailureException;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -139,8 +149,18 @@ class RiskAnalysisServiceTest {
         );
     }
 
+    private void stubRuleOnlyPersistence() {
+        when(tags.findAll()).thenReturn(
+                Arrays.stream(RiskTagCode.values())
+                        .map(code -> new RiskTag(code, code.name(), 1))
+                        .toList()
+        );
+        when(analyses.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(masking.mask(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
     @Test
-    void generatesRevisionAfterMergedRiskIsSavedIncludingRuleOnlyTags() {
+    void validatesRevisionBeforeSavingMergedRiskIncludingRuleOnlyTags() {
         Complaint complaint = draft();
 
         when(masking.mask(anyString()))
@@ -242,16 +262,10 @@ class RiskAnalysisServiceTest {
 
         var order =
                 inOrder(
+                        revisions,
                         analyses,
-                        detections,
-                        revisions
+                        detections
                 );
-
-        order.verify(analyses)
-                .save(any());
-
-        order.verify(detections)
-                .saveAll(any());
 
         var evaluation =
                 org.mockito.ArgumentCaptor.forClass(
@@ -263,6 +277,12 @@ class RiskAnalysisServiceTest {
                         eq("masked"),
                         evaluation.capture()
                 );
+
+        order.verify(analyses)
+                .save(any());
+
+        order.verify(detections)
+                .saveAll(any());
 
         verifyNoMoreInteractions(
                 rules,
@@ -464,12 +484,8 @@ class RiskAnalysisServiceTest {
                 2L
         );
 
-        assertThatCode(
-                () -> service.analyzeForSubmission(
-                        1L,
-                        42L
-                )
-        ).doesNotThrowAnyException();
+        assertThat(service.analyzeForSubmission(1L, 42L))
+                .isEqualTo(SubmissionAnalysisStatus.SKIPPED_LIMIT);
 
         verifyNoInteractions(
                 rules,
@@ -482,11 +498,15 @@ class RiskAnalysisServiceTest {
                 analyses,
                 never()
         ).save(any());
+        verify(events).save(argThat(event ->
+                event.getEventType() == MessageEventType.AI_ANALYSIS_SKIPPED
+                        && "SKIPPED_LIMIT".equals(event.getReason())));
     }
 
     @Test
     void allowsSubmissionWhenLlmAnalysisFails() {
         Complaint complaint = draft();
+        stubRuleOnlyPersistence();
 
         when(rules.detect(
                 complaint.getContent()
@@ -505,17 +525,13 @@ class RiskAnalysisServiceTest {
                 anyList(),
                 any(RepeatAnalysisContext.class)
         )).thenThrow(
-                new IllegalStateException(
-                        "AI failure"
+                new AiServiceUnavailableException(
+                        "AI unavailable"
                 )
         );
 
-        assertThatCode(
-                () -> service.analyzeForSubmission(
-                        1L,
-                        42L
-                )
-        ).doesNotThrowAnyException();
+        assertThat(service.analyzeForSubmission(1L, 42L))
+                .isEqualTo(SubmissionAnalysisStatus.RULE_ONLY_AI_UNAVAILABLE);
 
         assertThat(
                 complaint.getMaskedContent()
@@ -523,18 +539,162 @@ class RiskAnalysisServiceTest {
                 "masked"
         );
 
-        verify(
-                analyses,
-                never()
-        ).save(any());
+        ArgumentCaptor<RiskAnalysis> analysisCaptor = ArgumentCaptor.forClass(RiskAnalysis.class);
+        verify(analyses).save(analysisCaptor.capture());
+        assertThat(analysisCaptor.getValue().getAnalysisMode())
+                .isEqualTo(RiskAnalysisMode.RULE_ONLY);
 
         verifyNoInteractions(
                 revisions
         );
+        verify(events).save(argThat(event ->
+                event.getEventType() == MessageEventType.AI_ANALYSIS_RULE_FALLBACK
+                        && "RULE_ONLY_AI_UNAVAILABLE".equals(event.getReason())));
     }
 
     @Test
-    void allowsSubmissionWithoutSendingOriginalToLlmWhenMaskingFails() {
+    void reportsInvalidAiResponseSeparatelyWhileSubmissionContinues() {
+        Complaint complaint = draft();
+        stubRuleOnlyPersistence();
+        when(masking.mask(complaint.getContent())).thenReturn("masked");
+        when(rules.detect(complaint.getContent())).thenReturn(List.of());
+        when(llm.analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class)))
+                .thenThrow(new AiResponseInvalidException("invalid response"));
+
+        assertThat(service.analyzeForSubmission(1L, 42L))
+                .isEqualTo(SubmissionAnalysisStatus.RULE_ONLY_INVALID_RESPONSE);
+
+        verify(events).save(argThat(event ->
+                event.getEventType() == MessageEventType.AI_ANALYSIS_RULE_FALLBACK
+                        && "RULE_ONLY_INVALID_RESPONSE".equals(event.getReason())));
+        verify(llm, times(2)).analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class));
+        verify(analyses).save(argThat(analysis ->
+                analysis.getAnalysisMode() == RiskAnalysisMode.RULE_ONLY));
+    }
+
+    @Test
+    void retriesMalformedEvidenceCoordinatesThenUsesRuleOnlyFallback() {
+        Complaint complaint = draft();
+        stubRuleOnlyPersistence();
+        when(masking.mask(complaint.getContent())).thenReturn("masked");
+        when(rules.detect(complaint.getContent())).thenReturn(List.of());
+        com.teacherhub.risk.dto.detection.EvidenceSpan invalidSpan =
+                mock(com.teacherhub.risk.dto.detection.EvidenceSpan.class);
+        when(invalidSpan.text()).thenReturn("근거");
+        when(invalidSpan.start()).thenReturn(-1);
+        when(invalidSpan.end()).thenReturn(2);
+        when(llm.analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class)))
+                .thenReturn(new LlmRiskAnalysisResult(
+                        List.of(new RiskTagDetectionResult(
+                                RiskTagCode.THREAT,
+                                com.teacherhub.risk.enums.RiskTagState.PRESENT,
+                                0.9,
+                                List.of(invalidSpan),
+                                "위협 가능성"
+                        )),
+                        new LlmAnalysisMetadata("test-model", 0.0)
+                ));
+
+        assertThat(service.analyzeForSubmission(1L, 42L))
+                .isEqualTo(SubmissionAnalysisStatus.RULE_ONLY_INVALID_RESPONSE);
+
+        verify(llm, times(2)).analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class));
+        verify(analyses).save(argThat(analysis ->
+                analysis.getAnalysisMode() == RiskAnalysisMode.RULE_ONLY));
+    }
+
+    @Test
+    void completesHybridAnalysisWhenSchemaRetrySucceeds() {
+        Complaint complaint = draft();
+        stubRuleOnlyPersistence();
+        when(masking.mask(complaint.getContent())).thenReturn("masked");
+        when(rules.detect(complaint.getContent())).thenReturn(List.of());
+        when(llm.analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class)))
+                .thenThrow(new AiResponseInvalidException("invalid response"))
+                .thenReturn(new LlmRiskAnalysisResult(
+                        List.of(),
+                        new LlmAnalysisMetadata("test-model", 0.0)
+                ));
+
+        assertThat(service.analyzeForSubmission(1L, 42L))
+                .isEqualTo(SubmissionAnalysisStatus.COMPLETED);
+
+        verify(llm, times(2)).analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class));
+        verify(analyses).save(argThat(analysis ->
+                analysis.getAnalysisMode() == RiskAnalysisMode.HYBRID));
+        verify(events, never()).save(argThat(event ->
+                event.getEventType() == MessageEventType.AI_ANALYSIS_RULE_FALLBACK));
+    }
+
+    @Test
+    void returnsRuleOnlySummaryAfterSchemaRetryAlsoFails() {
+        Complaint complaint = draft();
+        stubRuleOnlyPersistence();
+        when(masking.mask(complaint.getContent())).thenReturn("masked");
+        when(rules.detect(complaint.getContent())).thenReturn(List.of());
+        when(llm.analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class)))
+                .thenThrow(new AiResponseInvalidException("invalid response"));
+
+        var response = service.analyze(1L, 42L);
+
+        assertThat(response.analysisMode()).isEqualTo(RiskAnalysisMode.RULE_ONLY);
+        assertThat(response.manualReviewRequired()).isTrue();
+        assertThat(response.riskScore()).isZero();
+        assertThat(response.analysisMessage()).contains("Rule 기반 잠정 위험도");
+        verify(llm, times(2)).analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class));
+    }
+
+    @Test
+    void identifiesReusedRuleOnlyAnalysisInSubmissionStatus() {
+        Complaint complaint = draft();
+        RiskAnalysis existing = new RiskAnalysis(
+                complaint.initialMessage(),
+                6,
+                RiskLevel.LOW,
+                "rule-only-fallback",
+                null,
+                RiskAnalysisMode.RULE_ONLY
+        );
+        existing.complete(null, null, List.of());
+        when(analyses.findFirstByMessageIdAndContentHashAndCompletedTrueOrderByIdDesc(
+                isNull(),
+                anyString()
+        )).thenReturn(Optional.of(existing));
+
+        var result = service.analyzeForSubmissionResult(1L, 42L);
+
+        assertThat(result.status()).isEqualTo(SubmissionAnalysisStatus.REUSED_RULE_ONLY);
+        assertThat(result.status().userMessage()).contains("규칙 기반 잠정 위험도");
+        assertThat(result.summary()).isNotNull();
+        assertThat(result.summary().manualReviewRequired()).isTrue();
+        verifyNoInteractions(rules, masking, llm, revisions);
+    }
+
+    @Test
+    void rejectsSubmissionWhenDeterministicRuleGuardrailFails() {
+        Complaint complaint = draft();
+
+        when(masking.mask(complaint.getContent())).thenReturn("masked");
+        when(rules.detect(complaint.getContent()))
+                .thenThrow(new IllegalStateException("rule configuration failure"));
+
+        assertThatThrownBy(() -> service.analyzeForSubmission(1L, 42L))
+                .isInstanceOfSatisfying(
+                        RiskAnalysisProcessingException.class,
+                        exception -> {
+                            assertThat(exception.failureStage()).isEqualTo(
+                                    RiskAnalysisProcessingException.FailureStage.RULE_PROCESSING
+                            );
+                            assertThat(exception.errorCode()).isEqualTo("RISK_RULE_PROCESSING_FAILED");
+                        }
+                );
+
+        verifyNoInteractions(llm, revisions);
+        verify(analyses, never()).save(any());
+    }
+
+    @Test
+    void rejectsSubmissionWithoutSendingOriginalToLlmWhenMaskingFails() {
         Complaint complaint = draft();
 
         when(masking.mask(
@@ -545,12 +705,20 @@ class RiskAnalysisServiceTest {
                 )
         );
 
-        assertThatCode(
+        assertThatThrownBy(
                 () -> service.analyzeForSubmission(
                         1L,
                         42L
                 )
-        ).doesNotThrowAnyException();
+        ).isInstanceOfSatisfying(
+                RiskAnalysisProcessingException.class,
+                exception -> {
+                    assertThat(exception.failureStage()).isEqualTo(
+                            RiskAnalysisProcessingException.FailureStage.PRIVACY_MASKING
+                    );
+                    assertThat(exception.errorCode()).isEqualTo("PRIVACY_MASKING_FAILED");
+                }
+        );
 
         verifyNoInteractions(
                 rules,
@@ -562,6 +730,35 @@ class RiskAnalysisServiceTest {
                 analyses,
                 never()
         ).save(any());
+    }
+
+    @Test
+    void reportsAnalysisSaveFailureSeparatelyFromAiAndGuardrailFailures() {
+        Complaint complaint = draft();
+        stubRuleOnlyPersistence();
+        when(rules.detect(complaint.getContent())).thenReturn(List.of());
+        when(llm.analyze(eq(complaint.getContent()), anyList(), any(RepeatAnalysisContext.class)))
+                .thenReturn(new LlmRiskAnalysisResult(
+                        List.of(),
+                        new LlmAnalysisMetadata("test-model", 0.0)
+                ));
+        when(analyses.save(any()))
+                .thenThrow(new DataAccessResourceFailureException("database secret"));
+
+        assertThatThrownBy(() -> service.analyzeForSubmission(1L, 42L))
+                .isInstanceOfSatisfying(
+                        RiskAnalysisProcessingException.class,
+                        exception -> {
+                            assertThat(exception.failureStage()).isEqualTo(
+                                    RiskAnalysisProcessingException.FailureStage.ANALYSIS_SAVE
+                            );
+                            assertThat(exception.errorCode()).isEqualTo("RISK_ANALYSIS_SAVE_FAILED");
+                            assertThat(exception.userMessage()).doesNotContain("database secret");
+                        }
+                );
+
+        verifyNoInteractions(revisions);
+        verify(events, never()).save(any());
     }
 
     @Test

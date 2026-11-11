@@ -23,24 +23,43 @@ public record TeacherConversationResponse(
 ) {
     public static TeacherConversationResponse from(
             Complaint complaint,
-            Map<Long, String> bufferedSummaries,
+            Map<Long, BufferedSummary> bufferedSummaries,
             List<AllowedAction> allowedActions,
             LocalDateTime submittedAt,
             List<ComplaintMessage> sourceMessages
     ) {
         List<Message> messages = sourceMessages.stream()
-                .map(message -> Message.from(
-                        message,
-                        bufferedSummaries.get(message.getId()) == null
-                                ? message.getContent()
-                                : bufferedSummaries.get(message.getId()),
-                        submittedAt,
-                        bufferedSummaries.get(message.getId()) != null
-                ))
+                .map(message -> {
+                    BufferedSummary summary = bufferedSummaries.get(message.getId());
+                    return Message.from(
+                            message,
+                            summary == null ? message.getContent() : summary.content(),
+                            submittedAt,
+                            summary
+                    );
+                })
                 .sorted(Comparator.comparing(Message::sentAt))
                 .toList();
 
         return new TeacherConversationResponse(complaint.getId(), allowedActions, messages);
+    }
+
+    public enum SummaryStatus {
+        GENERATED,
+        UNAVAILABLE
+    }
+
+    public record BufferedSummary(String content, SummaryStatus status) {
+        public static BufferedSummary generated(String content) {
+            return new BufferedSummary(content, SummaryStatus.GENERATED);
+        }
+
+        public static BufferedSummary unavailable() {
+            return new BufferedSummary(
+                    "완충 요약을 생성하지 못했습니다. 원문 열람 버튼을 사용해주세요.",
+                    SummaryStatus.UNAVAILABLE
+            );
+        }
     }
 
     @Schema(name = "TeacherConversationMessage", description = "교사·관리자용 민원 대화 메시지")
@@ -52,13 +71,37 @@ public record TeacherConversationResponse(
             MessageStatus status,
             LocalDateTime sentAt,
             LocalDateTime readAt,
-            boolean summarized
+            boolean summarized,
+            SummaryStatus summaryStatus
     ) {
+        public Message(
+                String messageId,
+                UserRole senderRole,
+                String senderName,
+                String content,
+                MessageStatus status,
+                LocalDateTime sentAt,
+                LocalDateTime readAt,
+                boolean summarized
+        ) {
+            this(
+                    messageId,
+                    senderRole,
+                    senderName,
+                    content,
+                    status,
+                    sentAt,
+                    readAt,
+                    summarized,
+                    summarized ? SummaryStatus.GENERATED : null
+            );
+        }
+
         public static Message from(
                 ComplaintMessage message,
                 String content,
                 LocalDateTime initialSubmittedAt,
-                boolean summarized
+                BufferedSummary summary
         ) {
             return new Message(
                     "message:" + message.getId(),
@@ -72,7 +115,8 @@ public record TeacherConversationResponse(
                             ? initialSubmittedAt
                             : message.getSentAt(),
                     message.getReadAt(),
-                    summarized
+                    summary != null && summary.status() == SummaryStatus.GENERATED,
+                    summary == null ? null : summary.status()
             );
         }
     }

@@ -2,11 +2,13 @@ package com.teacherhub.complaint.parent.dto.message;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 @Schema(description = "학부모 추가 문의 요청")
 public record ParentMessageRequest(
-        @Schema(description = "추가 문의 내용", example = "답변 감사합니다. 상담 시간도 확인 부탁드립니다.")
+        @Schema(description = "추가 문의 내용(최대 5000자)", example = "답변 감사합니다. 상담 시간도 확인 부탁드립니다.")
         @NotBlank(message = "추가 문의 내용을 입력해주세요.")
+        @Size(max = 5_000, message = "추가 문의 내용은 5000자 이하로 입력해주세요.")
         String content,
 
         @Schema(

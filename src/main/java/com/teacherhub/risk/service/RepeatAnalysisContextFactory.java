@@ -8,6 +8,7 @@ import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import com.teacherhub.risk.dto.llm.RepeatAnalysisContext.HistoryMessage;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.exception.RiskAnalysisProcessingException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -149,7 +150,7 @@ public class RepeatAnalysisContextFactory {
                 break;
             }
 
-            String masked = piiMaskingService.mask(message.getContent());
+            String masked = maskHistoryContent(message.getContent());
             int characterCount = masked.codePointCount(0, masked.length());
             boolean truncated = characterCount > remainingCharacters;
             String content = truncated
@@ -161,6 +162,20 @@ public class RepeatAnalysisContextFactory {
         }
 
         return selected;
+    }
+
+    private String maskHistoryContent(String content) {
+        try {
+            String masked = piiMaskingService.mask(content);
+            if (masked == null) {
+                throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
+            }
+            return masked;
+        } catch (RiskAnalysisProcessingException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw RiskAnalysisProcessingException.privacyMasking(exception);
+        }
     }
 
     private String handlingStatus(Complaint complaint) {

@@ -118,6 +118,38 @@ public class ComplaintEvent {
         return event;
     }
 
+    public static ComplaintEvent aiAnalysisSkipped(
+            Complaint complaint,
+            Long messageId,
+            String failureCode
+    ) {
+        ComplaintEvent event = new ComplaintEvent(
+                complaint,
+                null,
+                MessageEventType.AI_ANALYSIS_SKIPPED,
+                "COMPLAINT_MESSAGE",
+                messageId
+        );
+        event.reason = failureCode;
+        return event;
+    }
+
+    public static ComplaintEvent aiAnalysisRuleFallback(
+            Complaint complaint,
+            Long analysisId,
+            String fallbackCode
+    ) {
+        ComplaintEvent event = new ComplaintEvent(
+                complaint,
+                null,
+                MessageEventType.AI_ANALYSIS_RULE_FALLBACK,
+                "RISK_ANALYSIS",
+                analysisId
+        );
+        event.reason = fallbackCode;
+        return event;
+    }
+
     public static ComplaintEvent riskReviewed(
             Complaint complaint,
             User actor,
@@ -157,6 +189,37 @@ public class ComplaintEvent {
                 "COMPLAINT",
                 complaint.getId()
         );
+    }
+
+    public static ComplaintEvent aiDraftBlockedByRiskPolicy(
+            Complaint complaint,
+            User actor
+    ) {
+        ComplaintEvent event = new ComplaintEvent(
+                complaint,
+                actor,
+                MessageEventType.AI_DRAFT_BLOCKED_BY_RISK_POLICY,
+                "COMPLAINT",
+                complaint.getId()
+        );
+        event.reason = "High 위험도에서는 생성형 AI 초안을 제공하지 않습니다.";
+        return event;
+    }
+
+    public static ComplaintEvent responseBlockedByRiskPolicy(
+            Complaint complaint,
+            User actor,
+            String operation
+    ) {
+        ComplaintEvent event = new ComplaintEvent(
+                complaint,
+                actor,
+                MessageEventType.RESPONSE_BLOCKED_BY_RISK_POLICY,
+                "COMPLAINT",
+                complaint.getId()
+        );
+        event.reason = "High 위험도 제한형 템플릿 정책으로 " + operation + " 작업이 차단되었습니다.";
+        return event;
     }
 
     public static ComplaintEvent responseBlockedBySafetyLock(

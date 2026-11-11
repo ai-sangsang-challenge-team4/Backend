@@ -1,5 +1,8 @@
 package com.teacherhub.risk.service;
 
+import com.teacherhub.ai.exception.AiRequestPreparationException;
+import com.teacherhub.ai.exception.AiServiceUnavailableException;
+import com.teacherhub.risk.exception.RiskAnalysisProcessingException;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
@@ -7,6 +10,7 @@ import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 import com.teacherhub.complaint.entity.Complaint;
+import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
@@ -419,36 +423,15 @@ class RiskAnalysisRulesTest {
         when(definitions.findAll())
                 .thenReturn(List.of());
 
-        assertThatThrownBy(
-                () -> analyze(
-                        detected,
-                        List.of()
-                )
-        ).isInstanceOf(
-                IllegalStateException.class
-        );
+        assertScoreCalculationFailure(detected);
 
         weights(-1);
 
-        assertThatThrownBy(
-                () -> analyze(
-                        detected,
-                        List.of()
-                )
-        ).isInstanceOf(
-                IllegalStateException.class
-        );
+        assertScoreCalculationFailure(detected);
 
         weights(null);
 
-        assertThatThrownBy(
-                () -> analyze(
-                        detected,
-                        List.of()
-                )
-        ).isInstanceOf(
-                IllegalStateException.class
-        );
+        assertScoreCalculationFailure(detected);
 
         verify(analyses, never())
                 .save(any());
@@ -459,23 +442,47 @@ class RiskAnalysisRulesTest {
         );
     }
 
-    @Test
-    void failedRevisionDoesNotMarkAnalysisCompleted() {
-        when(revisions.generate(anyString(), any()))
-                .thenThrow(
-                        new IllegalStateException(
-                                "AI failure"
-                        )
+    private void assertScoreCalculationFailure(List<RiskTagDetectionResult> detected) {
+        assertThatThrownBy(() -> analyze(detected, List.of()))
+                .isInstanceOfSatisfying(
+                        RiskAnalysisProcessingException.class,
+                        exception -> {
+                            assertThat(exception.failureStage()).isEqualTo(
+                                    RiskAnalysisProcessingException.FailureStage.SCORE_CALCULATION
+                            );
+                            assertThat(exception.errorCode()).isEqualTo("RISK_SCORE_CALCULATION_FAILED");
+                        }
                 );
+    }
 
-        assertThatThrownBy(
-                () -> analyze(
-                        List.of(),
-                        List.of()
-                )
-        ).hasMessage(
-                "AI failure"
-        );
+    @Test
+    void externalRevisionFailureFallsBackToCompletedRuleOnlyAnalysis() {
+        when(rules.detect(anyString())).thenReturn(List.of(new RiskTagDetectionResult(
+                THREAT,
+                RiskTagState.PRESENT,
+                null,
+                List.of(com.teacherhub.risk.dto.detection.EvidenceSpan.unlocated("위협 표현")),
+                "Rule 근거"
+        )));
+        when(llm.analyze(anyString(), anyList(), any(RepeatAnalysisContext.class)))
+                .thenReturn(new LlmRiskAnalysisResult(
+                        List.of(new RiskTagDetectionResult(
+                                THREAT,
+                                RiskTagState.ABSENT,
+                                0.9,
+                                List.of(),
+                                "문맥상 위협이 아님"
+                        )),
+                        new LlmAnalysisMetadata("test", 0.0)
+                ));
+        when(revisions.generate(anyString(), any()))
+                .thenThrow(new AiServiceUnavailableException("AI failure"));
+
+        var response = service.analyze(1L, 42L);
+
+        assertThat(response.analysisMode()).isEqualTo(RiskAnalysisMode.RULE_ONLY);
+        assertThat(response.manualReviewRequired()).isTrue();
+        assertThat(response.riskScore()).isEqualTo(3);
 
         var captured =
                 org.mockito.ArgumentCaptor.forClass(
@@ -487,21 +494,24 @@ class RiskAnalysisRulesTest {
                         captured.capture()
                 );
 
-        assertThat(
-                captured.getValue()
-                        .isCompleted()
-        ).isFalse();
+        assertThat(captured.getValue().isCompleted()).isTrue();
+        assertThat(captured.getValue().getAnalysisMode()).isEqualTo(RiskAnalysisMode.RULE_ONLY);
+        assertThat(captured.getValue().getAiRevision()).isNull();
+        verify(events).save(argThat(event ->
+                event.getEventType() == MessageEventType.AI_ANALYSIS_RULE_FALLBACK
+                        && "RULE_ONLY_AI_UNAVAILABLE".equals(event.getReason())));
+    }
 
-        clearInvocations(revisions);
+    @Test
+    void internalRevisionRequestFailureRemainsFailClosedBeforeSaving() {
+        when(revisions.generate(anyString(), any()))
+                .thenThrow(new AiRequestPreparationException("invalid configuration"));
 
-        assertThatCode(
-                () -> service.analyzeForSubmission(
-                        1L,
-                        42L
-                )
-        ).doesNotThrowAnyException();
+        assertThatThrownBy(() -> analyze(List.of(), List.of()))
+                .isInstanceOf(AiRequestPreparationException.class);
 
-        verifyNoInteractions(revisions);
+        verify(analyses, never()).save(any());
+        verify(results, never()).saveAll(any());
     }
 
     @Test
