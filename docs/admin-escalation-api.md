@@ -69,7 +69,7 @@ Emergency 재검토 요청은 공유와 독립적으로 최신 위험 분석을 
   "currentRiskLevel": "HIGH",
   "escalationStatus": "UNDER_REVIEW",
   "riskReviewStatus": "APPLIED",
-  "safetyLock": true,
+  "safetyLock": false,
   "sharedAt": "2026-10-27T14:18:31"
 }
 ```
@@ -84,7 +84,7 @@ Emergency 재검토 요청은 공유와 독립적으로 최신 위험 분석을 
   "riskReviewStatus": "APPLIED",
   "currentRiskScore": 50,
   "currentRiskLevel": "HIGH",
-  "safetyLock": true
+  "safetyLock": false
 }
 ```
 
@@ -138,13 +138,13 @@ Emergency 재검토 승인 요청:
 
 ```json
 {
-  "status": "APPLIED",
-  "safetyLock": true
+  "status": "APPLIED"
 }
 ```
 
 `PATCH /admin/emergency-review/{requestId}`는 지정 검토자만 호출할 수 있다.
-`status=APPLIED`이면 요청된 점수로 `RiskReview`를 생성하지만 안전 잠금은 유지한다.
+`status=APPLIED`이면 요청된 점수로 `RiskReview`를 생성하고 Emergency 전용 안전 잠금은
+같은 트랜잭션에서 자동 해제한다. 요청의 `safetyLock=true` 여부와 관계없이 승인 결과는 false다.
 
 Emergency 재검토 거부 요청:
 

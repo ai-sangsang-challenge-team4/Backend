@@ -13,6 +13,8 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class LlmRiskOutputValidatorTest {
 
@@ -75,6 +77,26 @@ class LlmRiskOutputValidatorTest {
     }
 
     @Test
+    void rejectsNegativeOrReversedEvidenceCoordinatesAsInvalidAiOutput() {
+        EvidenceSpan negativeSpan = mock(EvidenceSpan.class);
+        when(negativeSpan.text()).thenReturn("근");
+        when(negativeSpan.start()).thenReturn(-1);
+        when(negativeSpan.end()).thenReturn(1);
+        EvidenceSpan reversedSpan = mock(EvidenceSpan.class);
+        when(reversedSpan.text()).thenReturn("근");
+        when(reversedSpan.start()).thenReturn(2);
+        when(reversedSpan.end()).thenReturn(1);
+
+        var negativeStart = resultWithSpan(negativeSpan);
+        var reversedRange = resultWithSpan(reversedSpan);
+
+        assertThatThrownBy(() -> LlmRiskOutputValidator.validate(negativeStart, "근거 입력"))
+                .isInstanceOf(AiResponseInvalidException.class);
+        assertThatThrownBy(() -> LlmRiskOutputValidator.validate(reversedRange, "근거 입력"))
+                .isInstanceOf(AiResponseInvalidException.class);
+    }
+
+    @Test
     void rejectsEvidenceCoordinatesThatPointToDifferentText() {
         var result = new LlmRiskAnalysisResult(
                 List.of(new RiskTagDetectionResult(
@@ -98,6 +120,19 @@ class LlmRiskOutputValidatorTest {
                 confidence,
                 List.of(),
                 null
+        );
+    }
+
+    private LlmRiskAnalysisResult resultWithSpan(EvidenceSpan span) {
+        return new LlmRiskAnalysisResult(
+                List.of(new RiskTagDetectionResult(
+                        RiskTagCode.THREAT,
+                        RiskTagState.PRESENT,
+                        0.8,
+                        List.of(span),
+                        "위협 가능성"
+                )),
+                new LlmAnalysisMetadata("claude-test", 0.0)
         );
     }
 }

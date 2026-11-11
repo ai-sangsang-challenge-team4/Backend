@@ -2,7 +2,7 @@ package com.teacherhub.risk.service;
 
 import com.teacherhub.ai.exception.AiServiceUnavailableException;
 import com.teacherhub.ai.exception.AiResponseInvalidException;
-import com.teacherhub.common.exception.InternalSystemException;
+import com.teacherhub.risk.exception.RiskAnalysisProcessingException;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
@@ -34,6 +34,7 @@ import com.teacherhub.user.entity.User;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataAccessResourceFailureException;
 
 import java.util.Arrays;
 import java.util.List;
@@ -159,7 +160,7 @@ class RiskAnalysisServiceTest {
     }
 
     @Test
-    void generatesRevisionAfterMergedRiskIsSavedIncludingRuleOnlyTags() {
+    void validatesRevisionBeforeSavingMergedRiskIncludingRuleOnlyTags() {
         Complaint complaint = draft();
 
         when(masking.mask(anyString()))
@@ -261,16 +262,10 @@ class RiskAnalysisServiceTest {
 
         var order =
                 inOrder(
+                        revisions,
                         analyses,
-                        detections,
-                        revisions
+                        detections
                 );
-
-        order.verify(analyses)
-                .save(any());
-
-        order.verify(detections)
-                .saveAll(any());
 
         var evaluation =
                 org.mockito.ArgumentCaptor.forClass(
@@ -282,6 +277,12 @@ class RiskAnalysisServiceTest {
                         eq("masked"),
                         evaluation.capture()
                 );
+
+        order.verify(analyses)
+                .save(any());
+
+        order.verify(detections)
+                .saveAll(any());
 
         verifyNoMoreInteractions(
                 rules,
@@ -572,6 +573,37 @@ class RiskAnalysisServiceTest {
     }
 
     @Test
+    void retriesMalformedEvidenceCoordinatesThenUsesRuleOnlyFallback() {
+        Complaint complaint = draft();
+        stubRuleOnlyPersistence();
+        when(masking.mask(complaint.getContent())).thenReturn("masked");
+        when(rules.detect(complaint.getContent())).thenReturn(List.of());
+        com.teacherhub.risk.dto.detection.EvidenceSpan invalidSpan =
+                mock(com.teacherhub.risk.dto.detection.EvidenceSpan.class);
+        when(invalidSpan.text()).thenReturn("근거");
+        when(invalidSpan.start()).thenReturn(-1);
+        when(invalidSpan.end()).thenReturn(2);
+        when(llm.analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class)))
+                .thenReturn(new LlmRiskAnalysisResult(
+                        List.of(new RiskTagDetectionResult(
+                                RiskTagCode.THREAT,
+                                com.teacherhub.risk.enums.RiskTagState.PRESENT,
+                                0.9,
+                                List.of(invalidSpan),
+                                "위협 가능성"
+                        )),
+                        new LlmAnalysisMetadata("test-model", 0.0)
+                ));
+
+        assertThat(service.analyzeForSubmission(1L, 42L))
+                .isEqualTo(SubmissionAnalysisStatus.RULE_ONLY_INVALID_RESPONSE);
+
+        verify(llm, times(2)).analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class));
+        verify(analyses).save(argThat(analysis ->
+                analysis.getAnalysisMode() == RiskAnalysisMode.RULE_ONLY));
+    }
+
+    @Test
     void completesHybridAnalysisWhenSchemaRetrySucceeds() {
         Complaint complaint = draft();
         stubRuleOnlyPersistence();
@@ -613,6 +645,32 @@ class RiskAnalysisServiceTest {
     }
 
     @Test
+    void identifiesReusedRuleOnlyAnalysisInSubmissionStatus() {
+        Complaint complaint = draft();
+        RiskAnalysis existing = new RiskAnalysis(
+                complaint.initialMessage(),
+                6,
+                RiskLevel.LOW,
+                "rule-only-fallback",
+                null,
+                RiskAnalysisMode.RULE_ONLY
+        );
+        existing.complete(null, null, List.of());
+        when(analyses.findFirstByMessageIdAndContentHashAndCompletedTrueOrderByIdDesc(
+                isNull(),
+                anyString()
+        )).thenReturn(Optional.of(existing));
+
+        var result = service.analyzeForSubmissionResult(1L, 42L);
+
+        assertThat(result.status()).isEqualTo(SubmissionAnalysisStatus.REUSED_RULE_ONLY);
+        assertThat(result.status().userMessage()).contains("규칙 기반 잠정 위험도");
+        assertThat(result.summary()).isNotNull();
+        assertThat(result.summary().manualReviewRequired()).isTrue();
+        verifyNoInteractions(rules, masking, llm, revisions);
+    }
+
+    @Test
     void rejectsSubmissionWhenDeterministicRuleGuardrailFails() {
         Complaint complaint = draft();
 
@@ -621,8 +679,15 @@ class RiskAnalysisServiceTest {
                 .thenThrow(new IllegalStateException("rule configuration failure"));
 
         assertThatThrownBy(() -> service.analyzeForSubmission(1L, 42L))
-                .isInstanceOf(InternalSystemException.class)
-                .hasMessage("위험 분석 가드레일 처리 중 오류가 발생했습니다.");
+                .isInstanceOfSatisfying(
+                        RiskAnalysisProcessingException.class,
+                        exception -> {
+                            assertThat(exception.failureStage()).isEqualTo(
+                                    RiskAnalysisProcessingException.FailureStage.RULE_PROCESSING
+                            );
+                            assertThat(exception.errorCode()).isEqualTo("RISK_RULE_PROCESSING_FAILED");
+                        }
+                );
 
         verifyNoInteractions(llm, revisions);
         verify(analyses, never()).save(any());
@@ -645,8 +710,15 @@ class RiskAnalysisServiceTest {
                         1L,
                         42L
                 )
-        ).isInstanceOf(InternalSystemException.class)
-                .hasMessage("개인정보 보호 처리 중 오류가 발생했습니다.");
+        ).isInstanceOfSatisfying(
+                RiskAnalysisProcessingException.class,
+                exception -> {
+                    assertThat(exception.failureStage()).isEqualTo(
+                            RiskAnalysisProcessingException.FailureStage.PRIVACY_MASKING
+                    );
+                    assertThat(exception.errorCode()).isEqualTo("PRIVACY_MASKING_FAILED");
+                }
+        );
 
         verifyNoInteractions(
                 rules,
@@ -658,6 +730,35 @@ class RiskAnalysisServiceTest {
                 analyses,
                 never()
         ).save(any());
+    }
+
+    @Test
+    void reportsAnalysisSaveFailureSeparatelyFromAiAndGuardrailFailures() {
+        Complaint complaint = draft();
+        stubRuleOnlyPersistence();
+        when(rules.detect(complaint.getContent())).thenReturn(List.of());
+        when(llm.analyze(eq(complaint.getContent()), anyList(), any(RepeatAnalysisContext.class)))
+                .thenReturn(new LlmRiskAnalysisResult(
+                        List.of(),
+                        new LlmAnalysisMetadata("test-model", 0.0)
+                ));
+        when(analyses.save(any()))
+                .thenThrow(new DataAccessResourceFailureException("database secret"));
+
+        assertThatThrownBy(() -> service.analyzeForSubmission(1L, 42L))
+                .isInstanceOfSatisfying(
+                        RiskAnalysisProcessingException.class,
+                        exception -> {
+                            assertThat(exception.failureStage()).isEqualTo(
+                                    RiskAnalysisProcessingException.FailureStage.ANALYSIS_SAVE
+                            );
+                            assertThat(exception.errorCode()).isEqualTo("RISK_ANALYSIS_SAVE_FAILED");
+                            assertThat(exception.userMessage()).doesNotContain("database secret");
+                        }
+                );
+
+        verifyNoInteractions(revisions);
+        verify(events, never()).save(any());
     }
 
     @Test

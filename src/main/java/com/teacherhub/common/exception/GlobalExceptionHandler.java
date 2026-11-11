@@ -3,6 +3,7 @@ package com.teacherhub.common.exception;
 import com.teacherhub.ai.exception.AiRequestPreparationException;
 import com.teacherhub.ai.exception.AiResponseInvalidException;
 import com.teacherhub.ai.exception.AiServiceUnavailableException;
+import com.teacherhub.risk.exception.RiskAnalysisProcessingException;
 import com.teacherhub.auth.exception.SignupConflictException;
 import com.teacherhub.auth.exception.SignupReferenceNotFoundException;
 import com.teacherhub.auth.exception.SignupValidationException;
@@ -375,6 +376,24 @@ public class GlobalExceptionHandler {
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "INTERNAL_SERVER_ERROR",
                 "서버 내부 오류가 발생했습니다.",
+                request
+        );
+    }
+
+    @ExceptionHandler(RiskAnalysisProcessingException.class)
+    public ResponseEntity<ErrorResponse> handleRiskAnalysisProcessing(
+            RiskAnalysisProcessingException e,
+            HttpServletRequest request
+    ) {
+        log.error(
+                "Risk analysis internal stage failed while handling {}. stage={}",
+                request.getRequestURI(),
+                e.failureStage()
+        );
+        return error(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                e.errorCode(),
+                e.userMessage(),
                 request
         );
     }

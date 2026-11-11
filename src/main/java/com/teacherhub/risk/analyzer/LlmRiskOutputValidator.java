@@ -85,7 +85,10 @@ public final class LlmRiskOutputValidator {
             throw invalid();
         }
         if (span.start() != null) {
-            if (span.end() == null || span.end() > maskedContent.length()) {
+            if (span.end() == null
+                    || span.start() < 0
+                    || span.start() > span.end()
+                    || span.end() > maskedContent.length()) {
                 throw invalid();
             }
             if (!maskedContent.substring(span.start(), span.end()).equals(span.text())) {

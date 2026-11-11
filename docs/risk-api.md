@@ -9,7 +9,7 @@
 | 메서드 | 경로 | 동작 | 성공 |
 |---|---|---|---|
 | POST | `/complaints/{complaintId}/mask` | 원문의 규칙 기반 개인정보 마스킹 결과 저장·반환 | 200 |
-| POST | `/complaints/{complaintId}/risk-analysis` | 마스킹 → 룰·LLM 탐지 → 병합 → 점수 계산·저장 → 수정안 생성 | 200 |
+| POST | `/complaints/{complaintId}/risk-analysis` | 마스킹 → 룰·LLM 탐지 → 병합·점수 계산 → 수정안 검증 → 저장 | 200 |
 | POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 학부모 추가 문의 메시지의 위험 분석·수정안 생성 | 200 |
 | GET | `/risk-analyses/{analysisId}` | 저장된 분석의 점수·등급 조회 | 200 |
 | GET | `/risk-analyses/{analysisId}/findings` | 최종 감지 태그·근거·태그별 수정 제안·최종 수정본 조회 | 200 |
@@ -52,8 +52,8 @@
 전화번호(국내 휴대폰·일반 지역번호·050 가상번호·070 및 일부 +82 형태, `-`·`.`·공백 구분), 이메일, 주민등록번호 형태를 정규식으로 치환한다. 이름·자유 형식 주소·계좌번호 등 모든 개인정보를 탐지하는 기능은 아니다. 200은 지원 패턴의 치환 성공을 뜻하며 외부 AI 전송에 안전하다는 보장은 아니다. 불확실성을 판정하는 로직이 없으므로 기존 명세의 422는 현재 제공하지 않는다.
 
 원문은 변경하지 않는다. 민원 수정 시 기존 maskedContent는 초기화된다. 전체 분석 API는 항상 현재 원문을 다시 마스킹하므로 mask API의 선행 호출은 선택 사항이다. 룰의 탐지 근거도 마스킹 후 저장·수정안 생성에 사용한다.
-마스킹은 외부 AI보다 앞선 개인정보 가드레일이다. 제출 중에도 마스킹 자체가 실패하면 원문을
-LLM에 전달하지 않고 500으로 제출을 중단한다. 외부 AI의 타임아웃·연결 실패 또는 검증 불가능한
+마스킹은 외부 AI보다 앞선 개인정보 가드레일이다. 제출 중에도 마스킹 자체가 실패하면 Rule과
+LLM을 실행하지 않고 500 `PRIVACY_MASKING_FAILED`로 제출을 중단한다. 외부 AI의 타임아웃·연결 실패 또는 검증 불가능한
 응답은 Rule-only 잠정 분석으로 전환한다. Rule, 반복 문맥, 점수 설정과 DB 처리 같은 백엔드
 내부 오류는 fail-open하지 않는다.
 
@@ -87,6 +87,10 @@ LLM 출력이 스키마 검증에 실패하면 한 번 재생성한다. 재생�
 연결·시간초과·429·5xx로 불가하면 Rule 결과만으로 점수와 등급을 계산·저장하고 HTTP 200으로
 `analysisMode=RULE_ONLY`, `manualReviewRequired=true`를 반환한다. 이때 LLM 상태는 `UNKNOWN`,
 confidence는 `null`이고 수정안은 생성하지 않는다.
+위험 분석 LLM은 성공했더라도 수정안 생성 AI가 연결·응답 검증에 실패하면 아직 저장하지 않은
+하이브리드 결과를 폐기하고 Rule-only 점수·등급만 한 번 저장한다. 잘못된 수정안을 저장하지 않으며
+같은 수동 검토 안내와 `AI_ANALYSIS_RULE_FALLBACK` 감사 이벤트를 사용한다. 요청 직렬화·설정 같은
+내부 연동 오류는 Rule-only로 전환하지 않고 fail-closed로 처리한다.
 응답에는 요약만 포함하며, 근거와 태그별 수정 제안 및 전체 수정본은
 `GET /risk-analyses/{analysisId}/findings`로 조회한다.
 Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회한다.
@@ -138,6 +142,8 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 - 사용자에게 수정안을 보여주는 AI 검토는 학부모 메시지별 1회만 수행한다.
 - AI 검토 후 내용이 변경됐다면 제출 시 최종 내용의 위험도를 내부적으로 한 번 더 분석한다. 이 분석은 새 수정안을 생성하지 않는다.
 - 내용이 변경되지 않았다면 기존 검토 결과를 재사용한다. 따라서 학부모 메시지별 성공한 AI 분석은 최대 2회다.
+- 기존 Rule-only 분석을 재사용한 제출은 `REUSED_RULE_ONLY`와 수동 검토 안내를 반환한다.
+  하이브리드 분석 재사용은 기존처럼 `REUSED`다.
 - 분석과 제출 처리 중에는 DRAFT를 유지한다. 권한·상태·입력·마스킹·Rule·점수·저장 오류는
   제출을 롤백한다. 외부 LLM의 타임아웃·연결 실패는 즉시, 스키마 검증 실패는 1회 재생성 후
   Rule-only 잠정 분석으로 전환하므로 원문 전송을 막지 않는다.
@@ -161,12 +167,16 @@ DB에는 risk_analyses의 content_hash/completed/revision_reason/ai_revision 컬
 | 403 | 다른 작성자의 민원·분석 접근 |
 | 404 | 민원 또는 분석이 없음 |
 | 409 | DRAFT가 아닌 민원에 마스킹/분석 요청 |
-| 500 | 마스킹·Rule·점수 설정·AI 요청 구성 등 백엔드 내부 오류 |
+| 500 | `PRIVACY_MASKING_FAILED`: 개인정보 마스킹 실패 |
+| 500 | `RISK_RULE_PROCESSING_FAILED`: Rule·반복 문맥 처리 실패 |
+| 500 | `RISK_SCORE_CALCULATION_FAILED`: 태그 기준 조회·점수/등급 계산 실패 |
+| 500 | `RISK_ANALYSIS_SAVE_FAILED`: 분석·태그·감사 이벤트 저장 실패 |
 | 502 | Rule-only 정책이 없는 일반 AI API에서 외부 AI 응답 검증 실패 |
 | 503 | Rule-only 정책이 없는 일반 AI API에서 외부 AI 연결·타임아웃·429·5xx 장애 |
 
 위험 분석 API에서는 외부 AI의 502/503 원인을 Rule-only HTTP 200 응답으로 변환한다. 마스킹,
-Rule, 점수 계산, 저장 등 내부 가드레일 실패는 변환하지 않고 500 또는 해당 업무 오류를 반환한다.
+Rule, 점수 계산, 저장 등 내부 가드레일 실패는 변환하지 않고 위 단계별 코드와 HTTP 500을
+반환한다. 이 실패 응답에는 분석 상태나 점수 결과가 없으며 트랜잭션은 롤백된다.
 
 ## 현재 구현 범위
 
@@ -184,9 +194,13 @@ Rule, 점수 계산, 저장 등 내부 가드레일 실패는 변환하지 않�
 | ComplaintNotDraftException | 409 | COMPLAINT_NOT_DRAFT |
 | MessageNotEditableException | 409 | MESSAGE_NOT_EDITABLE |
 | MessageDraftNotFoundException | 404 | MESSAGE_DRAFT_NOT_FOUND |
+| RiskAnalysisProcessingException(PRIVACY_MASKING) | 500 | PRIVACY_MASKING_FAILED |
+| RiskAnalysisProcessingException(RULE_PROCESSING) | 500 | RISK_RULE_PROCESSING_FAILED |
+| RiskAnalysisProcessingException(SCORE_CALCULATION) | 500 | RISK_SCORE_CALCULATION_FAILED |
+| RiskAnalysisProcessingException(ANALYSIS_SAVE) | 500 | RISK_ANALYSIS_SAVE_FAILED |
 
 ```json
-{"status":"ERROR","code":"COMPLAINT_ACCESS_DENIED","message":"해당 민원에 접근할 권한이 없습니다.","timestamp":"2026-10-01T09:00:00+09:00","path":"/complaints/42/mask"}
+{"code":"COMPLAINT_ACCESS_DENIED","message":"해당 민원에 접근할 권한이 없습니다.","timestamp":"2026-10-01T09:00:00","path":"/complaints/42/mask"}
 ```
 
 마스킹과 Rule 탐지는 실제 백엔드 규칙 처리다. Rule 탐지기는 DB에 적재한

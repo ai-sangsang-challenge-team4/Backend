@@ -1,9 +1,7 @@
 package com.teacherhub.risk.service;
 
 import com.teacherhub.ai.exception.AiProcessingException;
-import com.teacherhub.ai.exception.AiRequestPreparationException;
 import com.teacherhub.ai.exception.AiResponseInvalidException;
-import com.teacherhub.common.exception.InternalSystemException;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 import com.teacherhub.risk.analyzer.LlmRiskOutputValidator;
@@ -18,6 +16,8 @@ import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.enums.RiskTagState;
 import com.teacherhub.risk.enums.RiskAnalysisMode;
 import com.teacherhub.risk.enums.SubmissionAnalysisStatus;
+import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.exception.RiskAnalysisProcessingException;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 
 import com.teacherhub.complaint.entity.Complaint;
@@ -66,6 +66,27 @@ public class RiskAnalysisService {
         private boolean ruleOnly() {
             return fallbackStatus != null;
         }
+    }
+
+    private record RuleExecutionResult(
+            List<RiskTagDetectionResult> ruleResults,
+            RepeatAnalysisContext repeatContext
+    ) {
+    }
+
+    private record RiskCalculation(
+            Map<RiskTagCode, RiskTag> definitions,
+            int score,
+            RiskLevel level
+    ) {
+    }
+
+    private record PreparedAnalysis(
+            LlmExecutionResult llmExecution,
+            List<FinalRiskTagResponse> finalTags,
+            RiskCalculation calculation,
+            RevisionResult revision
+    ) {
     }
 
     private final ComplaintRepository complaintRepository;
@@ -267,9 +288,12 @@ public class RiskAnalysisService {
                         );
 
         if (existing.isPresent()) {
+            RiskAnalysis reused = existing.get();
             return new AnalysisExecutionResult(
-                    Optional.of(summary(existing.get())),
-                    SubmissionAnalysisStatus.REUSED
+                    Optional.of(summary(reused)),
+                    reused.getAnalysisMode() == RiskAnalysisMode.RULE_ONLY
+                            ? SubmissionAnalysisStatus.REUSED_RULE_ONLY
+                            : SubmissionAnalysisStatus.REUSED
             );
         }
 
@@ -314,161 +338,168 @@ public class RiskAnalysisService {
                 maskedContent
         );
 
-        List<RiskTagDetectionResult> ruleResults;
-        LlmExecutionResult llmExecution;
+        RuleExecutionResult ruleExecution = analyzeRules(
+                complaint,
+                message,
+                originalContent
+        );
+        List<RiskTagDetectionResult> ruleResults = ruleExecution.ruleResults();
 
-        try {
-            // 1차: Rule 기반 탐지
-            // Rule은 개인정보가 포함된 원문을 기준으로 탐지합니다.
-            ruleResults =
-                    ruleBasedRiskDetector
-                            .detect(originalContent)
-                            .stream()
-                            .map(ruleResult ->
-                                    ruleResult.locateEvidenceIn(
-                                            originalContent
-                                    )
-                            )
-                            .toList();
+        // 외부 AI에 Rule 결과를 전달하기 전
+        // evidence와 reason에 포함될 수 있는 개인정보를 마스킹합니다.
+        List<RiskTagDetectionResult> maskedRuleResults = maskRuleResultsForLlm(ruleResults);
 
-            var repeatContext = repeatAnalysisContextFactory.create(
-                    complaint,
-                    message
-            );
+        // 2차: Claude 문맥 기반 분석. 스키마 오류는 한 번만 재생성하고,
+        // 그래도 실패하거나 외부 AI가 불가하면 Rule-only 잠정 결과를 사용합니다.
+        LlmExecutionResult llmExecution = analyzeLlmWithFallback(
+                complaint,
+                message,
+                maskedContent,
+                maskedRuleResults,
+                ruleExecution.repeatContext()
+        );
 
-            ruleResults = applyRepeatThreshold(
-                    ruleResults,
-                    repeatContext
-            );
+        PreparedAnalysis prepared = prepareAnalysis(
+                complaint,
+                message,
+                maskedContent,
+                ruleResults,
+                llmExecution,
+                submitting
+        );
 
-            // 외부 AI에 Rule 결과를 전달하기 전
-            // evidence와 reason에 포함될 수 있는 개인정보를 마스킹합니다.
-            List<RiskTagDetectionResult> maskedRuleResults =
-                    maskRuleResultsForLlm(
-                            ruleResults
-                    );
-
-            // 2차: Claude 문맥 기반 분석. 스키마 오류는 한 번만 재생성하고,
-            // 그래도 실패하거나 외부 AI가 불가하면 Rule-only 잠정 결과를 사용합니다.
-            llmExecution = analyzeLlmWithFallback(
-                    complaint,
-                    message,
-                    maskedContent,
-                    maskedRuleResults,
-                    repeatContext
-            );
-        } catch (AiRequestPreparationException | InternalSystemException exception) {
-            throw exception;
-        } catch (RuntimeException exception) {
-            throw new InternalSystemException(
-                    "위험 분석 가드레일 처리 중 오류가 발생했습니다.",
-                    exception
-            );
-        }
-
-        // 규칙 기반 및 LLM 위험 태그 결과 병합
-        // 룰 근거는 원문에서 추출될 수 있으므로 수정안 생성기에 전달하기 전에 마스킹
-        var finalTags =
-                (llmExecution.ruleOnly()
-                        ? riskEvaluator.mergeRuleOnly(ruleResults)
-                        : riskEvaluator.merge(ruleResults, llmExecution.result().tags()))
-                        .stream()
-                        .map(tag ->
-                                new FinalRiskTagResponse(
-                                        tag.code(),
-                                        tag.state(),
-                                        tag.ruleState(),
-                                        tag.llmState(),
-                                        tag.confidence(),
-                                        tag.evidenceSpans()
-                                                .stream()
-                                                .map(span ->
-                                                        new EvidenceSpan(
-                                                                maskForAi(
-                                                                        span.text()
-                                                                ),
-                                                                span.start(),
-                                                                span.end()
-                                                        )
-                                                )
-                                                .toList(),
-                                        tag.reason() == null
-                                                || tag.reason().isBlank()
-                                                ? tag.reason()
-                                                : maskForAi(
-                                                        tag.reason()
-                                                )
-                                )
-                        )
-                        .toList();
-
-        // 최종 점수는 룰 엔진이 계산하고 전체/태그별 분석 결과를 함께 저장
-        RiskAnalysis savedAnalysis =
-                calculateAndSave(
-                        message,
-                        finalTags,
-                        llmExecution.result(),
-                        ruleResults,
-                        llmExecution.ruleOnly()
-                                ? RiskAnalysisMode.RULE_ONLY
-                                : RiskAnalysisMode.HYBRID
-                );
-
-        RiskEvaluation evaluation =
-                new RiskEvaluation(
-                        savedAnalysis.getId(),
-                        complaint.getId(),
-                        finalTags,
-                        savedAnalysis.getRiskScore(),
-                        savedAnalysis.getRiskLevel()
-                );
-
-        // 최종 위험 요소를 바탕으로 수정안 생성
-        var revision =
-                submitting || llmExecution.ruleOnly()
-                        ? new RevisionResult(
-                        null,
-                        List.of()
-                )
-                        : complaintRevisionGenerator.generate(
-                        maskedContent,
-                        evaluation
-                );
-
-        validateSuggestions(
-                finalTags,
-                revision
+        // 수정안 AI까지 검증한 최종 결과만 한 번 저장합니다.
+        RiskAnalysis savedAnalysis = saveAnalysis(
+                message,
+                prepared.finalTags(),
+                prepared.llmExecution().result(),
+                ruleResults,
+                prepared.llmExecution().ruleOnly()
+                        ? RiskAnalysisMode.RULE_ONLY
+                        : RiskAnalysisMode.HYBRID,
+                prepared.calculation()
         );
 
         completeAnalysis(
                 savedAnalysis,
-                revision
+                prepared.revision()
         );
 
-        eventRepository.save(
-                ComplaintEvent.riskAnalyzed(
-                        complaint,
-                        savedAnalysis.getId(),
-                        savedAnalysis.getRiskScore(),
-                        savedAnalysis.getRiskLevel()
-                )
-        );
-
-        if (llmExecution.ruleOnly()) {
-            eventRepository.save(ComplaintEvent.aiAnalysisRuleFallback(
-                    complaint,
-                    savedAnalysis.getId(),
-                    llmExecution.fallbackStatus().name()
-            ));
-        }
+        saveAnalysisEvents(complaint, savedAnalysis, prepared.llmExecution());
+        flushAnalysisPersistence();
 
         // 상세 근거와 수정 제안은 별도 GET으로 조회합니다.
         return new AnalysisExecutionResult(
                 Optional.of(summary(savedAnalysis)),
-                llmExecution.ruleOnly()
-                        ? llmExecution.fallbackStatus()
+                prepared.llmExecution().ruleOnly()
+                        ? prepared.llmExecution().fallbackStatus()
                         : SubmissionAnalysisStatus.COMPLETED
         );
+    }
+
+    private RuleExecutionResult analyzeRules(
+            Complaint complaint,
+            ComplaintMessage message,
+            String originalContent
+    ) {
+        try {
+            // Rule은 서버 내부에서 개인정보가 포함된 원문을 기준으로 탐지합니다.
+            List<RiskTagDetectionResult> ruleResults = ruleBasedRiskDetector
+                    .detect(originalContent)
+                    .stream()
+                    .map(result -> result.locateEvidenceIn(originalContent))
+                    .toList();
+            RepeatAnalysisContext repeatContext = repeatAnalysisContextFactory.create(
+                    complaint,
+                    message
+            );
+            return new RuleExecutionResult(
+                    applyRepeatThreshold(ruleResults, repeatContext),
+                    repeatContext
+            );
+        } catch (RiskAnalysisProcessingException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw RiskAnalysisProcessingException.ruleProcessing(exception);
+        }
+    }
+
+    private PreparedAnalysis prepareAnalysis(
+            Complaint complaint,
+            ComplaintMessage message,
+            String maskedContent,
+            List<RiskTagDetectionResult> ruleResults,
+            LlmExecutionResult llmExecution,
+            boolean submitting
+    ) {
+        List<FinalRiskTagResponse> finalTags = mergeAndMaskFinalTags(ruleResults, llmExecution);
+        RiskCalculation calculation = calculateRisk(finalTags);
+        RevisionResult revision = emptyRevision();
+
+        if (submitting || llmExecution.ruleOnly()) {
+            return new PreparedAnalysis(llmExecution, finalTags, calculation, revision);
+        }
+
+        try {
+            revision = complaintRevisionGenerator.generate(
+                    maskedContent,
+                    new RiskEvaluation(
+                            complaint.getId(),
+                            finalTags,
+                            calculation.score(),
+                            calculation.level()
+                    )
+            );
+            validateSuggestions(finalTags, revision);
+            return new PreparedAnalysis(llmExecution, finalTags, calculation, revision);
+        } catch (AiProcessingException exception) {
+            LlmExecutionResult fallback = ruleOnlyFallback(
+                    complaint,
+                    message,
+                    exception,
+                    "revision-generation"
+            );
+            List<FinalRiskTagResponse> ruleOnlyTags = mergeAndMaskFinalTags(ruleResults, fallback);
+            return new PreparedAnalysis(
+                    fallback,
+                    ruleOnlyTags,
+                    calculateRisk(ruleOnlyTags),
+                    emptyRevision()
+            );
+        }
+    }
+
+    private List<FinalRiskTagResponse> mergeAndMaskFinalTags(
+            List<RiskTagDetectionResult> ruleResults,
+            LlmExecutionResult llmExecution
+    ) {
+        // 룰 근거는 원문에서 추출될 수 있으므로 저장·수정안 생성 전에 다시 마스킹합니다.
+        return (llmExecution.ruleOnly()
+                ? riskEvaluator.mergeRuleOnly(ruleResults)
+                : riskEvaluator.merge(ruleResults, llmExecution.result().tags()))
+                .stream()
+                .map(tag -> new FinalRiskTagResponse(
+                        tag.code(),
+                        tag.state(),
+                        tag.ruleState(),
+                        tag.llmState(),
+                        tag.confidence(),
+                        tag.evidenceSpans().stream()
+                                .map(span -> new EvidenceSpan(
+                                        maskForAi(span.text()),
+                                        span.start(),
+                                        span.end()
+                                ))
+                                .toList(),
+                        tag.reason() == null || tag.reason().isBlank()
+                                ? tag.reason()
+                                : maskForAi(tag.reason())
+                ))
+                .toList();
+    }
+
+    private RevisionResult emptyRevision() {
+        return new RevisionResult(null, List.of());
     }
 
     private LlmExecutionResult analyzeLlmWithFallback(
@@ -500,23 +531,39 @@ public class RiskAnalysisService {
             }
             return new LlmExecutionResult(result, null);
         } catch (AiProcessingException exception) {
-            SubmissionAnalysisStatus status = exception instanceof AiResponseInvalidException
-                    ? SubmissionAnalysisStatus.RULE_ONLY_INVALID_RESPONSE
-                    : SubmissionAnalysisStatus.RULE_ONLY_AI_UNAVAILABLE;
-            log.warn(
-                    "External AI risk analysis failed; using Rule-only fallback. complaintId={}, messageId={}, failureType={}",
-                    complaint.getId(),
-                    message.getId(),
-                    exception.getClass().getSimpleName()
-            );
-            return new LlmExecutionResult(
-                    new LlmRiskAnalysisResult(
-                            List.of(),
-                            new LlmAnalysisMetadata("rule-only-fallback", null)
-                    ),
-                    status
+            return ruleOnlyFallback(
+                    complaint,
+                    message,
+                    exception,
+                    "risk-analysis"
             );
         }
+    }
+
+    private LlmExecutionResult ruleOnlyFallback(
+            Complaint complaint,
+            ComplaintMessage message,
+            AiProcessingException exception,
+            String failedCapability
+    ) {
+        SubmissionAnalysisStatus status = exception instanceof AiResponseInvalidException
+                ? SubmissionAnalysisStatus.RULE_ONLY_INVALID_RESPONSE
+                : SubmissionAnalysisStatus.RULE_ONLY_AI_UNAVAILABLE;
+        log.warn(
+                "External AI capability failed; using Rule-only fallback. "
+                        + "complaintId={}, messageId={}, capability={}, failureType={}",
+                complaint.getId(),
+                message.getId(),
+                failedCapability,
+                exception.getClass().getSimpleName()
+        );
+        return new LlmExecutionResult(
+                new LlmRiskAnalysisResult(
+                        List.of(),
+                        new LlmAnalysisMetadata("rule-only-fallback", null)
+                ),
+                status
+        );
     }
 
     private LlmRiskAnalysisResult invokeAndValidateLlm(
@@ -620,11 +667,46 @@ public class RiskAnalysisService {
                 throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
             }
             return masked;
+        } catch (RiskAnalysisProcessingException exception) {
+            throw exception;
         } catch (RuntimeException exception) {
-            throw new InternalSystemException(
-                    "개인정보 보호 처리 중 오류가 발생했습니다.",
-                    exception
+            throw RiskAnalysisProcessingException.privacyMasking(exception);
+        }
+    }
+
+    private void saveAnalysisEvents(
+            Complaint complaint,
+            RiskAnalysis analysis,
+            LlmExecutionResult llmExecution
+    ) {
+        try {
+            eventRepository.save(
+                    ComplaintEvent.riskAnalyzed(
+                            complaint,
+                            analysis.getId(),
+                            analysis.getRiskScore(),
+                            analysis.getRiskLevel()
+                    )
             );
+            if (llmExecution.ruleOnly()) {
+                eventRepository.save(ComplaintEvent.aiAnalysisRuleFallback(
+                        complaint,
+                        analysis.getId(),
+                        llmExecution.fallbackStatus().name()
+                ));
+            }
+        } catch (RuntimeException exception) {
+            throw RiskAnalysisProcessingException.analysisSave(exception);
+        }
+    }
+
+    private void flushAnalysisPersistence() {
+        try {
+            analysisRepository.flush();
+            resultRepository.flush();
+            eventRepository.flush();
+        } catch (RuntimeException exception) {
+            throw RiskAnalysisProcessingException.analysisSave(exception);
         }
     }
 
@@ -729,59 +811,55 @@ public class RiskAnalysisService {
         );
     }
 
-    // 민원 위험 점수 계산 및 DB 저장
-    private RiskAnalysis calculateAndSave(
+    private RiskCalculation calculateRisk(List<FinalRiskTagResponse> tags) {
+        Map<RiskTagCode, RiskTag> definitions;
+        int score;
+        RiskLevel level;
+        try {
+            definitions = tagRepository.findAll()
+                    .stream()
+                    .collect(Collectors.toMap(RiskTag::getCode, Function.identity()));
+            for (var tag : tags) {
+                if (!definitions.containsKey(tag.code())) {
+                    throw new IllegalStateException(
+                            "위험 태그 기준 정보가 누락되었습니다."
+                    );
+                }
+            }
+            score = riskEvaluator.calculate(tags, definitions);
+            level = riskEvaluator.levelFor(score);
+        } catch (RiskAnalysisProcessingException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw RiskAnalysisProcessingException.scoreCalculation(exception);
+        }
+        return new RiskCalculation(definitions, score, level);
+    }
+
+    // 검증과 점수 계산이 끝난 위험 분석 및 출처별 태그 결과를 함께 저장합니다.
+    private RiskAnalysis saveAnalysis(
             ComplaintMessage message,
             List<FinalRiskTagResponse> tags,
             LlmRiskAnalysisResult llm,
             List<RiskTagDetectionResult> ruleResults,
-            RiskAnalysisMode analysisMode
+            RiskAnalysisMode analysisMode,
+            RiskCalculation calculation
     ) {
-        var definitions =
-                tagRepository.findAll()
-                        .stream()
-                        .collect(
-                                Collectors.toMap(
-                                        RiskTag::getCode,
-                                        Function.identity()
-                                )
-                        );
-
-        for (var tag : tags) {
-
-            if (!definitions.containsKey(
-                    tag.code()
-            )) {
-                throw new InternalSystemException(
-                        "위험 태그 기준 정보가 누락되었습니다."
-                );
-            }
+        RiskAnalysis analysis;
+        try {
+            analysis = analysisRepository.save(
+                    new RiskAnalysis(
+                            message,
+                            calculation.score(),
+                            calculation.level(),
+                            llm.metadata().modelName(),
+                            llm.metadata().temperature(),
+                            analysisMode
+                    )
+            );
+        } catch (RuntimeException exception) {
+            throw RiskAnalysisProcessingException.analysisSave(exception);
         }
-
-        int score =
-                riskEvaluator.calculate(
-                        tags,
-                        definitions
-                );
-
-        var level =
-                riskEvaluator.levelFor(
-                        score
-                );
-
-        var analysis =
-                analysisRepository.save(
-                        new RiskAnalysis(
-                                message,
-                                score,
-                                level,
-                                llm.metadata()
-                                        .modelName(),
-                                llm.metadata()
-                                        .temperature(),
-                                analysisMode
-                        )
-                );
 
         var rules =
                 riskEvaluator.index(
@@ -793,14 +871,13 @@ public class RiskAnalysisService {
                         llm.tags()
                 );
 
-        resultRepository.saveAll(
-                tags.stream()
+        List<ComplaintRiskTag> savedTags = tags.stream()
                         .map(tag -> {
 
                             var saved =
                                     new ComplaintRiskTag(
                                             analysis,
-                                            definitions.get(
+                                            calculation.definitions().get(
                                                     tag.code()
                                             ),
                                             tag
@@ -845,8 +922,12 @@ public class RiskAnalysisService {
                             return saved;
 
                         })
-                        .toList()
-        );
+                        .toList();
+        try {
+            resultRepository.saveAll(savedTags);
+        } catch (RuntimeException exception) {
+            throw RiskAnalysisProcessingException.analysisSave(exception);
+        }
 
         return analysis;
     }

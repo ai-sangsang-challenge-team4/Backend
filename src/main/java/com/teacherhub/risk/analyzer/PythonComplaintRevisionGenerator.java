@@ -204,22 +204,40 @@ public class PythonComplaintRevisionGenerator
                         ? List.of()
                         : response.tagSuggestions()
                                 .stream()
-                                .map(suggestion ->
-                                        new TagRevisionSuggestion(
-                                                RiskTagCode.valueOf(
-                                                        suggestion.code()
-                                                ),
-                                                suggestion.originalExpression(),
-                                                suggestion.suggestedExpression(),
-                                                suggestion.reason()
-                                        )
-                                )
+                                .map(this::toTagRevisionSuggestion)
                                 .toList();
 
         return new RevisionResult(
                 finalRevision,
                 suggestions
         );
+    }
+
+    private TagRevisionSuggestion toTagRevisionSuggestion(
+            TagRevisionSuggestionResponse suggestion
+    ) {
+        if (suggestion == null) {
+            throw new AiResponseInvalidException(
+                    "AI 수정안 응답에 비어 있는 태그 제안이 포함되어 있습니다."
+            );
+        }
+        return new TagRevisionSuggestion(
+                parseRiskTagCode(suggestion.code()),
+                suggestion.originalExpression(),
+                suggestion.suggestedExpression(),
+                suggestion.reason()
+        );
+    }
+
+    RiskTagCode parseRiskTagCode(String value) {
+        try {
+            return RiskTagCode.valueOf(value);
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            throw new AiResponseInvalidException(
+                    "AI 수정안 응답에 허용되지 않은 위험 태그가 포함되어 있습니다.",
+                    exception
+            );
+        }
     }
 
     private record RevisionRequest(
