@@ -289,11 +289,13 @@ public class RiskAnalysisService {
 
         if (existing.isPresent()) {
             RiskAnalysis reused = existing.get();
-            return new AnalysisExecutionResult(
-                    Optional.of(summary(reused)),
+            SubmissionAnalysisStatus reusedStatus =
                     reused.getAnalysisMode() == RiskAnalysisMode.RULE_ONLY
                             ? SubmissionAnalysisStatus.REUSED_RULE_ONLY
-                            : SubmissionAnalysisStatus.REUSED
+                            : SubmissionAnalysisStatus.REUSED;
+            return new AnalysisExecutionResult(
+                    Optional.of(summary(reused, reusedStatus)),
+                    reusedStatus
             );
         }
 
@@ -388,12 +390,14 @@ public class RiskAnalysisService {
         saveAnalysisEvents(complaint, savedAnalysis, prepared.llmExecution());
         flushAnalysisPersistence();
 
+        SubmissionAnalysisStatus analysisStatus = prepared.llmExecution().ruleOnly()
+                ? prepared.llmExecution().fallbackStatus()
+                : SubmissionAnalysisStatus.COMPLETED;
+
         // 상세 근거와 수정 제안은 별도 GET으로 조회합니다.
         return new AnalysisExecutionResult(
-                Optional.of(summary(savedAnalysis)),
-                prepared.llmExecution().ruleOnly()
-                        ? prepared.llmExecution().fallbackStatus()
-                        : SubmissionAnalysisStatus.COMPLETED
+                Optional.of(summary(savedAnalysis, analysisStatus)),
+                analysisStatus
         );
     }
 
@@ -794,7 +798,8 @@ public class RiskAnalysisService {
     }
 
     private RiskSummaryResponse summary(
-            RiskAnalysis analysis
+            RiskAnalysis analysis,
+            SubmissionAnalysisStatus analysisStatus
     ) {
         boolean ruleOnly = analysis.getAnalysisMode() == RiskAnalysisMode.RULE_ONLY;
         return new RiskSummaryResponse(
@@ -803,11 +808,10 @@ public class RiskAnalysisService {
                         .getId(),
                 analysis.getRiskScore(),
                 analysis.getRiskLevel(),
+                analysisStatus,
                 analysis.getAnalysisMode(),
                 ruleOnly,
-                ruleOnly
-                        ? "AI 문맥 분석에 실패하여 Rule 기반 잠정 위험도를 제공합니다. 교사 검토가 필요합니다."
-                        : "Rule과 AI 문맥 분석이 완료되었습니다."
+                analysisStatus.userMessage()
         );
     }
 

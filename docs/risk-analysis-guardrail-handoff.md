@@ -20,6 +20,8 @@ fail-closed로 처리하되, 프론트가 실패 지점을 구분해 안내할 �
   Rule 결과로 점수·등급을 계산해 HTTP 200 Rule-only 잠정 분석을 제공한다.
 - 아래 네 내부 단계 실패: 분석과 제출을 중단하고 트랜잭션을 롤백한다. Rule-only로 전환하지 않는다.
 - 마스킹 실패 시 Rule도 실행하지 않으며 원문을 외부 AI에 보내지 않는다.
+- 일반 위험 분석 성공 응답도 `aiAnalysisStatus`를 반환해 새 분석, 재사용, Rule-only 원인을
+  프론트가 최종 제출 전부터 구분할 수 있다.
 - 실패 응답에는 성공 응답의 `analysisMode`, `manualReviewRequired`, `riskScore` 또는 별도
   `aiAnalysisStatus`가 포함되지 않는다. 프론트는 HTTP 상태만이 아니라 `code`를 기준으로 분기한다.
 

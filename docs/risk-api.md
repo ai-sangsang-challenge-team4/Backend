@@ -68,11 +68,17 @@ POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 AP
   "complaintId": 42,
   "riskScore": 55,
   "riskLevel": "HIGH",
+  "aiAnalysisStatus": "COMPLETED",
   "analysisMode": "HYBRID",
   "manualReviewRequired": false,
-  "analysisMessage": "Rule과 AI 문맥 분석이 완료되었습니다."
+  "analysisMessage": "AI 위험 분석이 완료되었습니다."
 }
 ```
+
+일반 위험 분석과 추가 문의 위험 분석 모두 `aiAnalysisStatus`를 반환한다. 새 하이브리드 분석은
+`COMPLETED`, 기존 하이브리드 결과는 `REUSED`, 기존 Rule-only 결과는 `REUSED_RULE_ONLY`,
+외부 AI 장애는 `RULE_ONLY_AI_UNAVAILABLE`, 무효 응답은 `RULE_ONLY_INVALID_RESPONSE`다.
+내부 가드레일 오류는 성공 응답 대신 단계별 HTTP 500 오류 코드를 반환하므로 이 필드가 없다.
 
 시스템 위험 점수는 감지된 태그 원점수 합계를 최대 70점으로 제한한 값이다. 기본 태그 점수는
 `PROFANITY 6`, `INSULT 10`, `THREAT 25`, `LEGAL 4`, `EXPOSURE 12`, `REPEAT 6`,
@@ -305,7 +311,8 @@ DTO를 반환하는 기존 API의 응답은 유지한다. 빈 성공 응답을 �
   기존 204에서 200으로 변경했다. 요청 본문은 `ComplaintDraftUpdateRequest`(`content`)를 사용한다.
 - POST `/complaints/{complaintId}/send`: 200, 제출 상태와 `aiAnalysisStatus`,
   `aiAnalysisMessage`, `riskAnalysis` 요약을 반환한다. Rule-only이면 이 중첩 객체의 점수·등급과
-  `analysisMode=RULE_ONLY`, `manualReviewRequired=true`로 프론트가 잠정 결과를 표시한다.
+  바깥과 동일한 `aiAnalysisStatus`, `analysisMode=RULE_ONLY`, `manualReviewRequired=true`로
+  프론트가 잠정 결과를 표시한다.
   `SKIPPED_LIMIT`처럼 분석 결과가 없으면 `riskAnalysis=null`이다.
 - 추가 문의 전송 응답도 같은 세 필드를 반환해 최초 민원과 동일하게 처리한다.
   요청 본문은 없다.

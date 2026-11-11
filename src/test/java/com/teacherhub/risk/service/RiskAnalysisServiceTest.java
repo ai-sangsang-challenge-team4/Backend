@@ -638,9 +638,11 @@ class RiskAnalysisServiceTest {
         var response = service.analyze(1L, 42L);
 
         assertThat(response.analysisMode()).isEqualTo(RiskAnalysisMode.RULE_ONLY);
+        assertThat(response.aiAnalysisStatus())
+                .isEqualTo(SubmissionAnalysisStatus.RULE_ONLY_INVALID_RESPONSE);
         assertThat(response.manualReviewRequired()).isTrue();
         assertThat(response.riskScore()).isZero();
-        assertThat(response.analysisMessage()).contains("Rule 기반 잠정 위험도");
+        assertThat(response.analysisMessage()).contains("규칙 기반 잠정 위험도");
         verify(llm, times(2)).analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class));
     }
 
@@ -666,6 +668,8 @@ class RiskAnalysisServiceTest {
         assertThat(result.status()).isEqualTo(SubmissionAnalysisStatus.REUSED_RULE_ONLY);
         assertThat(result.status().userMessage()).contains("규칙 기반 잠정 위험도");
         assertThat(result.summary()).isNotNull();
+        assertThat(result.summary().aiAnalysisStatus())
+                .isEqualTo(SubmissionAnalysisStatus.REUSED_RULE_ONLY);
         assertThat(result.summary().manualReviewRequired()).isTrue();
         verifyNoInteractions(rules, masking, llm, revisions);
     }

@@ -50,6 +50,7 @@ class RiskAnalysisControllerTest {
                 .andExpect(jsonPath("$.analysisId").value(20))
                 .andExpect(jsonPath("$.riskScore").value(5))
                 .andExpect(jsonPath("$.riskLevel").value("HIGH"))
+                .andExpect(jsonPath("$.aiAnalysisStatus").value("COMPLETED"))
                 .andExpect(jsonPath("$.riskAnalysis").doesNotExist())
                 .andExpect(jsonPath("$.originalContent").doesNotExist())
                 .andExpect(jsonPath("$.riskyExpressions").doesNotExist())
@@ -59,7 +60,8 @@ class RiskAnalysisControllerTest {
         mvc.perform(post("/complaints/10/messages/30/risk-analysis").principal(auth))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.analysisId").value(21))
-                .andExpect(jsonPath("$.riskLevel").value("MEDIUM"));
+                .andExpect(jsonPath("$.riskLevel").value("MEDIUM"))
+                .andExpect(jsonPath("$.aiAnalysisStatus").value("COMPLETED"));
         mvc.perform(get("/risk-analyses/20/findings").principal(auth)).andExpect(status().isOk());
         mvc.perform(get("/risk-analyses/20/detector-results").principal(auth)).andExpect(status().isOk());
         verify(query).findFindings(7L, 20L);
