@@ -14,9 +14,10 @@ import com.teacherhub.complaint.query.dto.ComplaintPageResponse;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.query.repository.ComplaintSearchQueryRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
-import com.teacherhub.complaint.teacher.provider.ComplaintSummaryProvider;
+import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
+import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.school.repository.StudentClassRepository;
@@ -24,6 +25,7 @@ import com.teacherhub.user.entity.User;
 import com.teacherhub.user.enums.UserRole;
 import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,8 +33,11 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 public class ComplaintQueryService {
+
+    private static final String SUMMARY_UNAVAILABLE = "AI 요약을 생성하지 못했습니다.";
 
     private final ComplaintRepository complaintRepository;
     private final ComplaintSearchQueryRepository complaintSearchQueryRepository;
@@ -42,7 +47,8 @@ public class ComplaintQueryService {
     private final StudentClassRepository studentClassRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
-    private final ComplaintSummaryProvider complaintSummaryProvider;
+    private final TeacherSupportContentProvider supportContentProvider;
+    private final PiiMaskingService piiMaskingService;
 
 
     // 민원 목록 조회
@@ -143,16 +149,32 @@ public class ComplaintQueryService {
                 analysis,
                 latestReview(analysis),
                 schoolClass,
-                complaintSummaryProvider.createSummary(
+                createListSummary(
+                        complaint.getId(),
                         latestParentMessage
-                                .map(message -> message.getMaskedContent() == null
-                                        ? message.getContent()
-                                        : message.getMaskedContent())
+                                .map(message -> message.getContent())
                                 .orElse(complaint.getContent())
                 ),
                 latestReceivedAt,
                 viewerRole
         );
+    }
+
+    private String createListSummary(Long complaintId, String originalContent) {
+        try {
+            String maskedContent = piiMaskingService.mask(originalContent);
+            if (maskedContent == null || maskedContent.isBlank()) {
+                throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
+            }
+            return supportContentProvider.createBufferedSummary(maskedContent);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "Complaint list summary unavailable. complaintId={}, failureType={}",
+                    complaintId,
+                    exception.getClass().getSimpleName()
+            );
+            return SUMMARY_UNAVAILABLE;
+        }
     }
 
     private RiskReview latestReview(RiskAnalysis analysis) {

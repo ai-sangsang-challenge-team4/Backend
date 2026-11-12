@@ -1,5 +1,6 @@
 package com.teacherhub.risk.analyzer;
 
+import com.teacherhub.risk.dto.detection.EvidenceSpan;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
@@ -11,6 +12,7 @@ import com.teacherhub.risk.enums.RiskTagState;
 import java.util.Arrays;
 import java.util.List;
 
+/** 고정 결과가 필요한 단위·통합 테스트 전용 fake입니다. */
 public class MockLlmRiskAnalyzer implements LlmRiskAnalyzer {
 
     @Override
@@ -19,7 +21,6 @@ public class MockLlmRiskAnalyzer implements LlmRiskAnalyzer {
             List<RiskTagDetectionResult> ruleResults,
             RepeatAnalysisContext repeatContext
     ) {
-        // 모든 값은 파이프라인 연결 확인용 예시이며 실제 내용을 분석하지 않습니다.
         return new LlmRiskAnalysisResult(
                 Arrays.stream(RiskTagCode.values())
                         .map(code -> {
@@ -43,15 +44,12 @@ public class MockLlmRiskAnalyzer implements LlmRiskAnalyzer {
                                     detected ? 1 : 0,
                                     evidence == null
                                             ? List.of()
-                                            : List.of(com.teacherhub.risk.dto.detection.EvidenceSpan.unlocated(evidence)),
+                                            : List.of(EvidenceSpan.unlocated(evidence)),
                                     reason
                             );
                         })
                         .toList(),
-                new LlmAnalysisMetadata(
-                        "mock-llm",
-                        0.0
-                ),
+                new LlmAnalysisMetadata("mock-llm", 0.0),
                 new SafetyFlags(false, false, false)
         );
     }

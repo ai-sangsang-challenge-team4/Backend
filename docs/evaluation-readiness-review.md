@@ -41,7 +41,7 @@ API 문서, 코드의 일치 여부를 기준으로 판단했다.
 | Emergency hard guardrail | 서버 승인 Rule | **미구현** |
 | Emergency/safety lock의 답변 차단 | 서버 정책 | 구현 |
 | Emergency 하향·잠금 해제 | 지정 관리자 | 구현 |
-| 답변 초안·완충 요약 | `TeacherSupportContentProvider` | 경계는 구현, 실제 제공자는 Mock |
+| 답변 초안·완충 요약 | `PythonTeacherSupportContentProvider` | FastAPI `/response-draft`, `/summary` 연동 구현 |
 
 핵심 원칙은 “LLM은 제안하고 서버가 검증·결정한다”이다. 외부 AI 결과는 enum, 중복 태그,
 confidence, 모델 정보, 근거 개수·길이·좌표를 검증한 뒤에만 점수 계산과 저장에 사용한다.
@@ -54,6 +54,9 @@ confidence, 모델 정보, 근거 개수·길이·좌표를 검증한 뒤에만 
 | AI 연결·timeout·429·5xx | 외부 AI 장애 | Rule-only 잠정 결과 | Rule-only 결과로 제출 계속 | 위험 분석 200 / 일반 AI 503 |
 | AI JSON 파싱·스키마·허용값 오류 | 신뢰 불가 AI 출력 | 1회 재생성 후 Rule-only | 1회 재생성 후 Rule-only 제출 | 위험 분석 200 / 일반 AI 502 |
 | 수정안 생성 AI 연결·응답 검증 실패 | 외부 AI 장애/신뢰 불가 출력 | 수정안 없이 Rule-only 저장 | 제출 분석에서는 수정안 미생성 | 위험 분석 200 |
+| 완충 요약 AI 연결·응답 검증 실패 | 외부 AI 장애/신뢰 불가 출력 | `summaryStatus=UNAVAILABLE` | 해당 없음 | 대화 조회 200 |
+| 답변 초안 AI 연결·timeout·429·5xx | 외부 AI 장애 | 초안 생성 실패 | 해당 없음 | 503 `AI_SERVICE_UNAVAILABLE` |
+| 답변 초안 AI JSON·스키마 오류 | 신뢰 불가 AI 출력 | 초안 생성 실패 | 해당 없음 | 502 `AI_RESPONSE_INVALID` |
 | 개인정보 마스킹 실패 | 내부 개인정보 가드레일 | 실패 | **제출 중단** | 500 `PRIVACY_MASKING_FAILED` |
 | Rule/반복 문맥 처리 실패 | 내부 결정론적 가드레일 | 실패 | **제출 중단** | 500 `RISK_RULE_PROCESSING_FAILED` |
 | 점수·등급 계산 실패 | 내부 결정론적 가드레일 | 실패 | **제출 중단** | 500 `RISK_SCORE_CALCULATION_FAILED` |
@@ -81,7 +84,7 @@ confidence, 모델 정보, 근거 개수·길이·좌표를 검증한 뒤에만 
 
 | 위험도 | 대화 기본 표시 | `allowedActions` | 답변 기능 | 실제 구현 일치 여부 |
 |---|---|---|---|---|
-| LOW 0~20 | 완충 요약 | 없음 | RAG 초안·저장·전송 | 요약 분기 구현, 실제 RAG 미구현 |
+| LOW 0~20 | 완충 요약 | 없음 | RAG 초안·저장·전송 | FastAPI 초안 연동, 근거 출처 응답 미지원 |
 | MEDIUM 21~40 | 완충 요약 | 없음 | AI 초안·저장·전송 가능 | 명세와 일치 |
 | HIGH 41~60 | 완충 요약 | 템플릿, 증거 패키지, 관리자 검토 | 생성형 AI 금지, 채택 템플릿만 저장·전송 | **부분 구현** |
 | EMERGENCY 61~100 | 완충 요약 | 증거 패키지, 관리자 검토, 공식 절차 | AI 초안·저장·전송·완료 차단 | 차단·관리자 공유/재검토 구현, 일부 행동 미구현 |
@@ -128,7 +131,7 @@ confidence, 모델 정보, 근거 개수·길이·좌표를 검증한 뒤에만 
 1. 스키마 오류 1회 재생성은 구현됐지만 연결 장애 retry, circuit breaker와 Rule-only 전환 지표가 없다.
 2. 골든셋 데이터, 독립 라벨 결과, 평가 runner, confusion matrix, 기준선 비교 결과가 없다.
 3. prompt/dataset 버전과 AI 처리 시간·성공/실패·사용자 수정 결과를 저장/관측하지 않는다.
-4. 실제 교사 초안·완충 요약 제공자가 없고 Mock 구현만 있다.
+4. FastAPI 답변 초안 응답에는 RAG 근거 출처 필드가 없어 백엔드가 출처를 제공하지 못한다.
 5. 생성 수정안의 전체 리스트 크기·각 필드 최대 길이 검증은 아직 부분적이다.
 6. 위험도별 `allowedActions`와 실제 실행 API가 일치하지 않는다.
 7. 개인정보 보관 기간·삭제 절차의 실제 API/배치/운영 증거가 확인되지 않는다.
