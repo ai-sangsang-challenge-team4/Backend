@@ -108,8 +108,9 @@ POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 AP
 `UNFAIR_REQUEST 8`, `PRIVACY 15`다. 등급은
 0~20 LOW, 21~40 MEDIUM, 41~60 HIGH, 61~100 EMERGENCY다.
 
-신규 LLM 응답은 전체 8개 태그에 `severity`와 `repeatCount`를 반환한다. Severity는
-`PRESENT=1~3`, `ABSENT=0`, `BOUNDARY/UNKNOWN=null`만 허용한다. LLM 점수는 서버의
+신규 LLM 응답은 전체 8개 태그에 `severity`와 `repeatCount` 필드를 반환한다. 두 값은
+`PRESENT=severity 1~3/repeatCount 0 이상`, `ABSENT=0/0`,
+`BOUNDARY/UNKNOWN=null/null`만 허용한다. LLM 점수는 서버의
 `RiskScorePolicy`가 `defaultScore × severity`로 계산하고, confidence는 점수에 사용하지 않는다.
 같은 태그의 최종 점수는 `max(Rule 점수, LLM 점수)`이므로 중복 합산하지 않는다. 신규 필드가
 모두 없는 구형 응답은 기존 고정 점수(1배)로 처리하지만, 신규 필드를 일부만 보내거나 상태와

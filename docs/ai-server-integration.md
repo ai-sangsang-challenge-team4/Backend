@@ -27,11 +27,12 @@ AI 저장소의 `.env`와 API 키는 백엔드 저장소에 복사하거나 커�
 ```properties
 AI_SERVER_URL=http://localhost:8000
 AI_SERVER_CONNECT_TIMEOUT_MS=2000
-AI_SERVER_REQUEST_TIMEOUT_MS=5000
+AI_SERVER_REQUEST_TIMEOUT_MS=60000
 ```
 
 같은 EC2 배치를 유지하는 한 `localhost`가 올바르다. 서비스를 다른 인스턴스로 분리할 때만
 사설 DNS 또는 사설 IP로 `AI_SERVER_URL`을 변경하고, 보안 그룹과 전송 암호화를 함께 검토한다.
+실제 위험 분석 호출은 약 18초가 걸릴 수 있으므로 요청 제한 시간 기본값은 60초다.
 
 ## 직접 확인 순서
 

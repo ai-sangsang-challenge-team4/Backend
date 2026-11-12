@@ -34,7 +34,7 @@ public class AiServerClient {
     public AiServerClient(
             @Value("${ai.server.url:http://localhost:8000}") String aiServerUrl,
             @Value("${ai.server.connect-timeout-ms:2000}") long connectTimeoutMs,
-            @Value("${ai.server.request-timeout-ms:5000}") long requestTimeoutMs
+            @Value("${ai.server.request-timeout-ms:60000}") long requestTimeoutMs
     ) {
         if (connectTimeoutMs < 1 || requestTimeoutMs < 1) {
             throw new IllegalArgumentException("AI 서버 제한 시간은 1ms 이상이어야 합니다.");

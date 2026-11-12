@@ -155,7 +155,7 @@ class LlmRiskOutputValidatorTest {
     }
 
     @Test
-    void acceptsNullSeverityForBoundaryAndUnknown() {
+    void acceptsNullSeverityAndRepeatCountForBoundaryAndUnknown() {
         var boundary = new LlmRiskAnalysisResult(
                 extendedTags(RiskTagCode.LEGAL, RiskTagState.BOUNDARY, null),
                 new LlmAnalysisMetadata("claude-test", 0.0),
@@ -184,13 +184,23 @@ class LlmRiskOutputValidatorTest {
                         code == selected ? selectedState : RiskTagState.ABSENT,
                         0.9,
                         code == selected ? selectedSeverity : Integer.valueOf(0),
-                        code == selected && selectedState == RiskTagState.PRESENT ? 2 : 0,
+                        code == selected
+                                ? repeatCountFor(selectedState)
+                                : Integer.valueOf(0),
                         code == selected && selectedState == RiskTagState.PRESENT
                                 ? List.of(EvidenceSpan.unlocated("표현"))
                                 : List.of(),
                         null
                 ))
                 .toList();
+    }
+
+    private Integer repeatCountFor(RiskTagState state) {
+        return switch (state) {
+            case PRESENT -> 2;
+            case ABSENT -> 0;
+            case BOUNDARY, UNKNOWN -> null;
+        };
     }
 
     private RiskTagDetectionResult tag(RiskTagCode code, double confidence) {

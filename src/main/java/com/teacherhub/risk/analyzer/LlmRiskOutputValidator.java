@@ -51,13 +51,13 @@ public final class LlmRiskOutputValidator {
                 && (tag.severity() != null || tag.repeatCount() != null));
         if (extendedSchema && (result.safetyFlags() == null
                 || tags.size() != RiskTagCode.values().length
-                || tags.stream().anyMatch(tag -> tag == null || tag.repeatCount() == null))) {
+                || tags.stream().anyMatch(tag -> tag == null))) {
             throw invalid();
         }
 
         Set<RiskTagCode> uniqueCodes = new HashSet<>();
         for (RiskTagDetectionResult tag : tags) {
-            validateTag(tag, maskedContent, uniqueCodes);
+            validateTag(tag, maskedContent, uniqueCodes, extendedSchema);
         }
         return result;
     }
@@ -65,7 +65,8 @@ public final class LlmRiskOutputValidator {
     private static void validateTag(
             RiskTagDetectionResult tag,
             String maskedContent,
-            Set<RiskTagCode> uniqueCodes
+            Set<RiskTagCode> uniqueCodes,
+            boolean extendedSchema
     ) {
         if (tag == null || tag.code() == null || tag.state() == null
                 || !uniqueCodes.add(tag.code())) {
@@ -81,7 +82,7 @@ public final class LlmRiskOutputValidator {
             throw invalid();
         }
 
-        validateSeverity(tag);
+        validateSeverity(tag, extendedSchema);
 
         List<EvidenceSpan> spans = tag.evidenceSpans();
         if (spans == null || spans.size() > MAX_EVIDENCE_SPANS_PER_TAG) {
@@ -92,31 +93,38 @@ public final class LlmRiskOutputValidator {
         }
     }
 
-    private static void validateSeverity(RiskTagDetectionResult tag) {
+    private static void validateSeverity(
+            RiskTagDetectionResult tag,
+            boolean extendedSchema
+    ) {
         Integer severity = tag.severity();
         Integer repeatCount = tag.repeatCount();
-        boolean extendedTag = severity != null || repeatCount != null;
-        if (!extendedTag) {
+        if (!extendedSchema) {
             return;
         }
-        if (repeatCount == null || repeatCount < 0 || repeatCount > MAX_REPEAT_COUNT) {
-            throw invalid();
-        }
         if (tag.state() == RiskTagState.PRESENT) {
-            if (severity == null || severity < 1 || severity > 3) {
+            if (severity == null || severity < 1 || severity > 3
+                    || !validRepeatCount(repeatCount)) {
                 throw invalid();
             }
             return;
         }
         if (tag.state() == RiskTagState.ABSENT) {
-            if (!Integer.valueOf(0).equals(severity)) {
+            if (!Integer.valueOf(0).equals(severity)
+                    || !Integer.valueOf(0).equals(repeatCount)) {
                 throw invalid();
             }
             return;
         }
-        if (severity != null) {
+        if (severity != null || repeatCount != null) {
             throw invalid();
         }
+    }
+
+    private static boolean validRepeatCount(Integer repeatCount) {
+        return repeatCount != null
+                && repeatCount >= 0
+                && repeatCount <= MAX_REPEAT_COUNT;
     }
 
     private static void validateEvidence(EvidenceSpan span, String maskedContent) {
