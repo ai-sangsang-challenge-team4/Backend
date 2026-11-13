@@ -43,6 +43,7 @@ import com.teacherhub.user.repository.UserRepository;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -111,6 +112,26 @@ public class ComplaintFlowIntegrationTest {
                 com.teacherhub.risk.enums.RiskTagCode.PRIVACY, 15
         ));
         assertThat(scores.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(86);
+    }
+
+    @Test
+    void masksComplaintIdentityContextBeforeRiskLlmCall() {
+        String original = "3학년 2반 홍길동 학생과 김선생 선생님, "
+                + "학번 20260001, 교번 T-2026-001에게 직접 찾아가겠습니다.";
+        Long complaintId = parentComplaintService.createDraft(
+                parentUser.getId(),
+                createRequest(original)
+        ).getComplaintId();
+
+        riskAnalysisService.analyze(parentUser.getId(), complaintId);
+
+        ArgumentCaptor<String> maskedContent = ArgumentCaptor.forClass(String.class);
+        verify(llmRiskAnalyzer).analyze(maskedContent.capture(), anyList(), any());
+        assertThat(maskedContent.getValue())
+                .contains("[학생정보]", "[교사명]", "[학번]", "[교직원번호]")
+                .doesNotContain("홍길동", "김선생", "20260001", "T-2026-001");
+        assertThat(complaintRepository.findById(complaintId).orElseThrow().getMaskedContent())
+                .isEqualTo(maskedContent.getValue());
     }
 
     @Test
@@ -508,13 +529,13 @@ public class ComplaintFlowIntegrationTest {
         entityManager.clear();
 
         var findings = riskAnalysisQueryService.findFindings(parentUser.getId(), analysisId);
+        assertThat(findings.revisionStatus())
+                .isEqualTo(com.teacherhub.risk.enums.RevisionStatus.PENDING);
         assertThat(findings.findings()).hasSize(2).allSatisfy(finding -> {
             assertThat(finding.evidences()).isNotEmpty();
-            assertThat(finding.revisionSuggestions()).hasSize(1);
-            assertThat(finding.revisionSuggestions().get(0).suggestedExpression()).isNotBlank();
+            assertThat(finding.revisionSuggestions()).isEmpty();
         });
-        assertThat(findings.finalRevision().content()).isEqualTo(
-                riskAnalysisRepository.findById(analysisId).orElseThrow().getAiRevision());
+        assertThat(findings.finalRevision()).isNull();
         assertThat(riskAnalysisQueryService.findFindings(parentUser.getId(), analysisId)).isEqualTo(findings);
         var detail = riskAnalysisQueryService.findDetectorResults(parentUser.getId(), analysisId);
         assertThat(detail.results()).hasSize(com.teacherhub.risk.enums.RiskTagCode.values().length);
@@ -1121,8 +1142,9 @@ public class ComplaintFlowIntegrationTest {
         assertThat(reviewResponse.riskLevel())
                 .isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
         var findings = riskAnalysisQueryService.findFindings(parentUser.getId(), reviewResponse.analysisId());
-        assertThat(findings.finalRevision().reason()).isNotBlank();
-        assertThat(findings.finalRevision().content()).isNotBlank();
+        assertThat(findings.revisionStatus())
+                .isEqualTo(com.teacherhub.risk.enums.RevisionStatus.PENDING);
+        assertThat(findings.finalRevision()).isNull();
         assertThat(draft.getContent()).isEqualTo(createRequest.content());
         assertThat(riskAnalysisQueryService.findDetectorResults(parentUser.getId(), reviewResponse.analysisId()).results())
                 .hasSize(com.teacherhub.risk.enums.RiskTagCode.values().length);

@@ -30,6 +30,8 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -95,7 +97,7 @@ class TeacherComplaintQueryServiceTest {
         when(message.getContent()).thenReturn("원문 요청과 사실 정보");
         when(message.getSender()).thenReturn(parent);
         when(parent.getName()).thenReturn("학부모");
-        when(masking.mask("원문 요청과 사실 정보")).thenReturn("마스킹된 요청과 사실 정보");
+        when(masking.mask(eq("원문 요청과 사실 정보"), any())).thenReturn("마스킹된 요청과 사실 정보");
         when(supportContent.createBufferedSummary("마스킹된 요청과 사실 정보"))
                 .thenThrow(new IllegalStateException("summary unavailable"));
         when(supportPolicy.allowedActions(RiskLevel.LOW)).thenReturn(List.of());

@@ -8,6 +8,7 @@ import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import com.teacherhub.risk.dto.llm.RepeatAnalysisContext.HistoryMessage;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.exception.RiskAnalysisProcessingException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -102,7 +103,10 @@ public class RepeatAnalysisContextFactory {
         int parentCountIncludingCurrent = parentCount
                 + (currentMessage.getType() == MessageType.PARENT_INQUIRY ? 1 : 0);
 
-        List<SelectedMessage> selectedNewestFirst = selectWithinLimits(history);
+        List<SelectedMessage> selectedNewestFirst = selectWithinLimits(
+                history,
+                PiiMaskingContext.from(complaint)
+        );
         boolean historyTruncated = selectedNewestFirst.size() < history.size()
                 || selectedNewestFirst.stream().anyMatch(SelectedMessage::contentTruncated);
 
@@ -141,7 +145,10 @@ public class RepeatAnalysisContextFactory {
         );
     }
 
-    private List<SelectedMessage> selectWithinLimits(List<ComplaintMessage> history) {
+    private List<SelectedMessage> selectWithinLimits(
+            List<ComplaintMessage> history,
+            PiiMaskingContext maskingContext
+    ) {
         List<SelectedMessage> selected = new ArrayList<>();
         int remainingCharacters = maxCharacters;
 
@@ -150,7 +157,7 @@ public class RepeatAnalysisContextFactory {
                 break;
             }
 
-            String masked = maskHistoryContent(message.getContent());
+            String masked = maskHistoryContent(message.getContent(), maskingContext);
             int characterCount = masked.codePointCount(0, masked.length());
             boolean truncated = characterCount > remainingCharacters;
             String content = truncated
@@ -164,9 +171,9 @@ public class RepeatAnalysisContextFactory {
         return selected;
     }
 
-    private String maskHistoryContent(String content) {
+    private String maskHistoryContent(String content, PiiMaskingContext maskingContext) {
         try {
-            String masked = piiMaskingService.mask(content);
+            String masked = piiMaskingService.mask(content, maskingContext);
             if (masked == null) {
                 throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
             }

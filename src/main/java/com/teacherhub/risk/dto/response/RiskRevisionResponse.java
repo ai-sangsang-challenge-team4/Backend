@@ -1,11 +1,13 @@
 package com.teacherhub.risk.dto.response;
 
 import com.teacherhub.risk.enums.RiskTagCode;
+import com.teacherhub.risk.enums.RevisionStatus;
 
 import java.util.List;
 
 // 민원의 위험 근거, 수정 제안 및 최종 수정본 응답
 public record RiskRevisionResponse(
+        RevisionStatus revisionStatus,
         List<Finding> findings,
         FinalRevision finalRevision
 ) {

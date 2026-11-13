@@ -17,6 +17,7 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
     Optional<Complaint> findDetailById(@Param("id") Long id);
 
     // 분석·수정·제출 요청을 민원 단위로 직렬화
+    @EntityGraph(attributePaths = {"parent.user", "student", "teacher.user", "messages"})
     @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Complaint c where c.id = :id")
     Optional<Complaint> findForUpdate(@Param("id") Long id);

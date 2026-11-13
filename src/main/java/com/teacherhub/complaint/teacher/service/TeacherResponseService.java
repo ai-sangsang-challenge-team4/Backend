@@ -28,6 +28,7 @@ import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -65,7 +66,7 @@ public class TeacherResponseService {
             throw new AiResponseInvalidException("AI 답변 초안이 비어 있습니다.");
         }
         var safeGenerated = new TeacherSupportContentProvider.GeneratedResponseDraft(
-                maskForAi(generated.content()),
+                maskForAi(generated.content(), complaint),
                 generated.modelName()
         );
         ComplaintEvent event = eventRepository.save(ComplaintEvent.aiDraftGenerated(complaint));
@@ -352,13 +353,16 @@ public class TeacherResponseService {
         return messageRepository
                 .findByComplaintIdAndStatusNotOrderByIdAsc(complaint.getId(), MessageStatus.DRAFT)
                 .stream()
-                .map(message -> message.getType() + ": " + maskForAi(message.getContent()))
+                .map(message -> message.getType() + ": " + maskForAi(message.getContent(), complaint))
                 .collect(Collectors.joining("\n\n"));
     }
 
-    private String maskForAi(String content) {
+    private String maskForAi(String content, Complaint complaint) {
         try {
-            String masked = piiMaskingService.mask(content);
+            String masked = piiMaskingService.mask(
+                    content,
+                    PiiMaskingContext.from(complaint)
+            );
             if (masked == null) {
                 throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
             }

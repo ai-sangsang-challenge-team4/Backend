@@ -45,7 +45,7 @@ public class RiskAnalysisQueryService {
                 : new RiskRevisionResponse.FinalRevision(
                         analysis.getRevisionReason(), analysis.getAiRevision());
 
-        return new RiskRevisionResponse(findings, revision);
+        return new RiskRevisionResponse(analysis.getRevisionStatus(), findings, revision);
     }
 
     // 민원 위험 분석 결과에서 감지된 태그별 탐지기 결과 조회

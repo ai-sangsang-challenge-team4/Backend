@@ -26,10 +26,10 @@ erDiagram
   context_required, context_subtype, normalization_rule, dataset_version, enabled.
   CSV v1.1의 72개 후보 신호를 저장하며 애플리케이션에서 캐시해 사용한다.
 - `risk_analyses`: complaint_id, message_id, risk_score, risk_level, model_name, temperature,
-  analysis_mode, credible_threat, student_safety_concern, privacy_exposure, analyzed_at.
+  analysis_mode, revision_status, credible_threat, student_safety_concern, privacy_exposure, analyzed_at.
   message_id와 content_version으로 분석 대상 메시지 버전을 구분한다.
   `analysis_mode`은 정상 Rule+LLM 분석인 `HYBRID`와 외부 AI 실패 후 잠정 분석인 `RULE_ONLY`를
-  구분한다. Severity와 안전 신호 증분 컬럼은 Flyway migration으로 관리한다.
+  구분한다. 현재는 H2 create-drop이 엔티티 정의에 따라 컬럼을 생성한다.
 - `risk_reviews`: risk_analysis_id, reviewed_by, previous_score, previous_level,
   reviewed_score, reviewed_level, direction, reason, reviewed_at. 시스템 분석은 변경하지
   않고 교사의 위험도 검토를 시간순으로 누적한다.
@@ -43,14 +43,18 @@ erDiagram
 
 ## 현재 파이프라인
 
-RiskAnalysisService: 본인/DRAFT 검증 → 원문 마스킹 → CSV Rule 후보 탐지 → Rule 근거 마스킹
-→ 마스킹 본문과 Rule 후보를 LLM에 전달 → Claude 우선 태그 병합 → 점수 계산 및 결과 저장
-→ 검토 응답. 일반 Rule 후보는 BOUNDARY, HINT_ONLY는 UNKNOWN으로 전달하며 키워드만으로
+RiskAnalysisService: 본인/DRAFT 검증 → 학생·교사 관계자 마스킹 컨텍스트 생성 → 원문 마스킹
+→ CSV Rule 후보 탐지 → 같은 컨텍스트로 Rule 근거 마스킹
+→ 마스킹 본문과 Rule 후보를 LLM에 전달 → AI 출력 근거 재마스킹 → Claude 우선 태그 병합 → 점수 계산 및 결과 저장
+→ 검토 응답 → 비동기 수정안 생성. 외부 LLM 호출 전후에는 짧은 트랜잭션만 사용하고,
+AI 대기 중에는 민원 잠금을 유지하지 않는다. 일반 Rule 후보는 BOUNDARY, HINT_ONLY는 UNKNOWN으로 전달하며 키워드만으로
 PRESENT를 확정하지 않는다. 결정론적 Rule PRESENT와 LLM PRESENT는 합집합으로 보존하고,
 태그별 점수는 두 출처 중 최댓값만 사용한다. 누락한 태그는 Rule 상태로 fallback한다.
-수정본은 자동 적용하지 않는다.
+수정안 출력도 분석 요청과 같은 관계자 컨텍스트로 다시 마스킹하며, 수정본은 자동 적용하지 않는다.
 LLM 스키마 오류는 한 번 재생성하고, 재생성 실패 또는 외부 AI 장애 시 전체 Rule 결과만으로
 점수·등급을 계산해 `RULE_ONLY`로 저장한다. 이 경우 AI 수정안은 생성하지 않는다.
+위험 분석 성공 후 수정안 생성만 실패하면 HYBRID 판정은 유지하고 revision_status를
+`UNAVAILABLE`로 저장한다.
 
 시스템 분석은 Rule 점수와 `default_score × severity`인 LLM 점수 중 태그별 최댓값을 합산한다.
 같은 태그가 두 탐지기에서 발견되어도 중복 계산하지 않고 최대 100점으로 제한한다.
@@ -94,12 +98,8 @@ RiskTagResponse(태그 기준 정보). 규칙 탐지기는 List<RiskTagDetection
 
 ## 스키마 적용
 
-현재 개발 환경은 H2 메모리 DB와 ddl-auto=create-drop으로 엔티티에 따라 생성한다.
-영구 DB에는 자동 적용하지 않았다. 기존 complaint 테이블이 있는 환경은 배포 전에
-complaints 상태/차례 컬럼, complaint_messages 테이블, risk_analyses.message_id 생성을 위한
-별도 마이그레이션이 필요하다. complaint_events 테이블을 생성하고 기존
-complaint_status_history, complaint_original_view_logs뿐 아니라 완료된 risk_analyses,
-risk_reviews, 전송된 complaint_messages도 이벤트 행으로 백필해야 기존 히스토리가
-유지된다. 기존 complaints 본문과 responses 데이터는 메시지 행으로 이관해야 한다.
+현재 개발 환경은 H2 메모리 DB와 ddl-auto=create-drop으로 엔티티에 따라 생성하며 영구 DB는
+아직 사용하지 않는다. 영구 DB 도입 시 현재 엔티티 전체를 기준으로 초기 마이그레이션을 만들고,
+운영 데이터가 생긴 이후의 증분 변경부터 백필·롤백 정책을 함께 관리한다.
 기존 ai_drafts는 필요하면 `AI_DRAFT_GENERATED` 이벤트로 변환한 후 테이블과
 complaint_messages.ai_draft_id 외래 키를 제거한다. created_at은 민원 DRAFT 생성 시간이다.

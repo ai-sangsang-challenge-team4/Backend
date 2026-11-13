@@ -26,6 +26,7 @@ import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.EmergencyRiskReviewRequest;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.masking.PiiMaskingServiceImpl;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
@@ -52,7 +53,7 @@ class AdminEscalationServiceTest {
     private final RiskReviewRepository riskReviewRepository = mock(RiskReviewRepository.class);
     private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository =
             mock(EmergencyRiskReviewRequestRepository.class);
-    private final PiiMaskingService piiMaskingService = mock(PiiMaskingService.class);
+    private final PiiMaskingService piiMaskingService = new PiiMaskingServiceImpl();
     private final ComplaintHistoryService complaintHistoryService = mock(ComplaintHistoryService.class);
     private final AdminEscalationService service = new AdminEscalationService(
             escalationRepository,
