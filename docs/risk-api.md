@@ -109,7 +109,7 @@ POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 AP
 0~20 LOW, 21~40 MEDIUM, 41~60 HIGH, 61~100 EMERGENCY다.
 
 신규 LLM 응답은 전체 8개 태그에 `severity`와 `repeatCount` 필드를 반환한다. 두 값은
-`PRESENT=severity 1~3/repeatCount 0 이상`, `ABSENT=0/0`,
+`PRESENT=severity 1~3/repeatCount 0~10,000`, `ABSENT=0/0`,
 `BOUNDARY/UNKNOWN=null/null`만 허용한다. LLM 점수는 서버의
 `RiskScorePolicy`가 `defaultScore × severity`로 계산하고, confidence는 점수에 사용하지 않는다.
 같은 태그의 최종 점수는 `max(Rule 점수, LLM 점수)`이므로 중복 합산하지 않는다. 신규 필드가
@@ -415,9 +415,10 @@ Postman에서는 생성 후 DRAFT, send 성공 후 OPEN을 조회하고,
 | `sort` | `LATEST` | `LATEST`(최근 활동순), `OLDEST`(오래된순) |
 
 페이지 크기는 10개로 고정하며 클라이언트가 `size`를 변경할 수 없다. 교사 목록과 검색에서는 제출되지 않은 민원과 DRAFT 메시지를 제외한다. `riskLevel`은 최신 완료 분석에 최신 교사 검토가 있으면 그 등급을 기준으로 필터링한다.
-목록의 `aiSummary`도 `TeacherSupportContentProvider`를 통해 실제 FastAPI 요약을 사용하며,
-원문을 서버에서 다시 마스킹한 뒤 전달한다. 마스킹 또는 AI 요약이 실패하면 목록 전체를
-실패시키거나 원문을 대신 노출하지 않고 `AI 요약을 생성하지 못했습니다.`를 반환한다.
+목록의 `aiSummary`는 전체 민원의 핵심 내용과 현재 요청을 표시하는 일반 요약용 필드다.
+FastAPI에는 현재 교사용 감정 완충 요약만 있고 일반 민원 요약 계약은 없으므로 이번 연동에서는
+`null`을 반환한다. 목록 조회는 완충 요약 API를 호출하지 않는다. 일반 요약 API와 생성·저장
+시점이 합의되면 메시지별 완충 요약과 별도 경계 및 저장 구조로 연동한다.
 
 ```json
 {

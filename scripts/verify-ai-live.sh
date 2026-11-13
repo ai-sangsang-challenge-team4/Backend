@@ -53,21 +53,25 @@ def load(name):
     with (result_dir / name).open(encoding="utf-8") as handle:
         return json.load(handle)
 
+def nonblank(value):
+    return isinstance(value, str) and bool(value.strip())
+
 analyze = load("analyze.json")
 assert isinstance(analyze.get("tags"), list)
-assert isinstance(analyze.get("metadata", {}).get("modelName"), str)
+assert nonblank(analyze.get("metadata", {}).get("modelName"))
 
 revision = load("revision.json")
-assert isinstance(revision.get("finalRevision", {}).get("content"), str)
+assert nonblank(revision.get("finalRevision", {}).get("content"))
+assert nonblank(revision.get("finalRevision", {}).get("reason"))
 assert isinstance(revision.get("tagSuggestions"), list)
 
 summary = load("summary.json")
-assert isinstance(summary.get("summary"), str)
-assert isinstance(summary.get("modelName"), str)
+assert nonblank(summary.get("summary"))
+assert nonblank(summary.get("modelName"))
 
 draft = load("response-draft.json")
-assert isinstance(draft.get("content"), str)
-assert isinstance(draft.get("modelName"), str)
+assert nonblank(draft.get("content"))
+assert nonblank(draft.get("modelName"))
 PY
 
 printf '%s\n' 'AI live smoke passed: analyze, revision, summary, response-draft'

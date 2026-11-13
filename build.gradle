@@ -63,6 +63,8 @@ tasks.named('test') {
 tasks.register('liveAiTest', Test) {
     group = 'verification'
     description = 'Runs opt-in tests against the deployed FastAPI server.'
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf('Calls an external AI service') { true }
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {

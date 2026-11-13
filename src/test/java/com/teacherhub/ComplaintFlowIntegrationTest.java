@@ -55,6 +55,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 
 @SpringBootTest
@@ -113,22 +114,19 @@ public class ComplaintFlowIntegrationTest {
     }
 
     @Test
-    void masksComplaintListSummaryInputAndKeepsListAvailableWhenAiFails() {
+    void doesNotGenerateBufferedSummaryDuringComplaintListLookup() {
         Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
                 createRequest("연락처는 010-1234-5678입니다.")
         ).getComplaintId();
-        when(teacherSupportContentProvider.createBufferedSummary(anyString()))
-                .thenThrow(new IllegalStateException("summary unavailable"));
 
         var item = complaintQueryService.findComplaints(parentUser.getId()).stream()
                 .filter(candidate -> candidate.complaintId().equals(complaintId))
                 .findFirst()
                 .orElseThrow();
 
-        verify(teacherSupportContentProvider)
-                .createBufferedSummary("연락처는 [전화번호]입니다.");
-        assertThat(item.aiSummary()).isEqualTo("AI 요약을 생성하지 못했습니다.");
+        verifyNoInteractions(teacherSupportContentProvider);
+        assertThat(item.aiSummary()).isNull();
     }
 
     @Test
@@ -1264,7 +1262,7 @@ public class ComplaintFlowIntegrationTest {
         assertThat(teacherListItem.counterpartRole()).isEqualTo(UserRole.PARENT);
         assertThat(teacherListItem.grade()).isEqualTo(3);
         assertThat(teacherListItem.classNo()).isEqualTo(2);
-        assertThat(teacherListItem.aiSummary()).isNotBlank();
+        assertThat(teacherListItem.aiSummary()).isNull();
         assertThat(teacherListItem.latestReceivedAt()).isCloseTo(
                 teacherDetail.submittedAt(),
                 org.assertj.core.api.Assertions.within(1, java.time.temporal.ChronoUnit.SECONDS)
