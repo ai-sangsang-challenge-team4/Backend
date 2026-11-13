@@ -7,9 +7,6 @@ import java.util.HexFormat;
 
 public final class ContentFingerprint {
 
-    private ContentFingerprint() {
-    }
-
     public static String sha256(String content) {
         if (content == null) {
             throw new IllegalArgumentException("원문이 필요합니다.");

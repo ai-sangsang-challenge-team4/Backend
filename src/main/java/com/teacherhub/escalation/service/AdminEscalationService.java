@@ -4,6 +4,7 @@ import com.teacherhub.common.exception.InternalSystemException;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.complaint.entity.ComplaintMessage;
+import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.complaint.enums.MessageStatus;
@@ -29,6 +30,7 @@ import com.teacherhub.risk.enums.RiskReviewStatus;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.entity.EmergencyRiskReviewRequest;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
@@ -90,7 +92,7 @@ public class AdminEscalationService {
                         ? sourceMessages.stream()
                         .map(message -> TeacherConversationResponse.Message.from(
                                 message,
-                                maskedContent(message),
+                                maskedContent(message, escalation.getComplaint()),
                                 submittedAt,
                                 null
                         ))
@@ -260,11 +262,11 @@ public class AdminEscalationService {
                 .orElseThrow(() -> new InternalSystemException("민원 제출 이력이 누락되었습니다."));
     }
 
-    private String maskedContent(ComplaintMessage message) {
-        if (message.getMaskedContent() != null && !message.getMaskedContent().isBlank()) {
-            return message.getMaskedContent();
-        }
-        return piiMaskingService.mask(message.getContent());
+    private String maskedContent(ComplaintMessage message, Complaint complaint) {
+        return piiMaskingService.mask(
+                message.getContent(),
+                PiiMaskingContext.from(complaint)
+        );
     }
 
 }

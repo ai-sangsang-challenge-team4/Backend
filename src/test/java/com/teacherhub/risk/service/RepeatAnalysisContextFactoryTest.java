@@ -57,9 +57,9 @@ class RepeatAnalysisContextFactoryTest {
                 any(LocalDateTime.class),
                 eq(99L)
         )).thenReturn(List.of(teacher, parent));
-        when(masking.mask("010-1234-5678로 연락주세요"))
+        when(masking.mask(eq("010-1234-5678로 연락주세요"), any()))
                 .thenReturn("[PHONE]로 연락주세요");
-        when(masking.mask("확인 후 답변드렸습니다"))
+        when(masking.mask(eq("확인 후 답변드렸습니다"), any()))
                 .thenReturn("확인 후 답변드렸습니다");
 
         var context = factory(7, 3, 20, 8_000).create(complaint, current);
@@ -112,7 +112,7 @@ class RepeatAnalysisContextFactoryTest {
 
         when(messages.findRiskAnalysisHistory(any(), any(), any(), any()))
                 .thenReturn(List.of(previousTwo, teacher, previousOne));
-        when(masking.mask(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(masking.mask(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         var context = factory(7, 3, 20, 8_000)
                 .create(complaint(), currentMessage());
@@ -138,7 +138,7 @@ class RepeatAnalysisContextFactoryTest {
 
         when(messages.findRiskAnalysisHistory(any(), any(), any(), any()))
                 .thenReturn(history);
-        when(masking.mask(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(masking.mask(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         var context = factory(7, 3, 20, 8_000).create(complaint(), currentMessage());
 
@@ -172,7 +172,7 @@ class RepeatAnalysisContextFactoryTest {
 
         when(messages.findRiskAnalysisHistory(any(), any(), any(), any()))
                 .thenReturn(List.of(newest, older));
-        when(masking.mask(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(masking.mask(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         var context = factory(7, 3, 20, 1_000).create(complaint(), currentMessage());
 

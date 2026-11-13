@@ -243,10 +243,10 @@ class TeacherResponseServiceTest {
                 .thenReturn(java.util.List.of(message));
         when(message.getType()).thenReturn(MessageType.PARENT_INQUIRY);
         when(message.getContent()).thenReturn("연락처 010-1234-5678");
-        when(masking.mask("연락처 010-1234-5678")).thenReturn("연락처 [전화번호]");
+        when(masking.mask(eq("연락처 010-1234-5678"), any())).thenReturn("연락처 [전화번호]");
         when(contentProvider.createResponseDraft("PARENT_INQUIRY: 연락처 [전화번호]"))
                 .thenReturn(new TeacherSupportContentProvider.GeneratedResponseDraft("안전한 답변", "test-model"));
-        when(masking.mask("안전한 답변")).thenReturn("안전한 답변");
+        when(masking.mask(eq("안전한 답변"), any())).thenReturn("안전한 답변");
         when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.generateAiDraft(7L, 42L);

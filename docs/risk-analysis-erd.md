@@ -43,13 +43,14 @@ erDiagram
 
 ## 현재 파이프라인
 
-RiskAnalysisService: 본인/DRAFT 검증 → 원문 마스킹 → CSV Rule 후보 탐지 → Rule 근거 마스킹
-→ 마스킹 본문과 Rule 후보를 LLM에 전달 → Claude 우선 태그 병합 → 점수 계산 및 결과 저장
+RiskAnalysisService: 본인/DRAFT 검증 → 학생·교사 관계자 마스킹 컨텍스트 생성 → 원문 마스킹
+→ CSV Rule 후보 탐지 → 같은 컨텍스트로 Rule 근거 마스킹
+→ 마스킹 본문과 Rule 후보를 LLM에 전달 → AI 출력 근거 재마스킹 → Claude 우선 태그 병합 → 점수 계산 및 결과 저장
 → 검토 응답 → 비동기 수정안 생성. 외부 LLM 호출 전후에는 짧은 트랜잭션만 사용하고,
 AI 대기 중에는 민원 잠금을 유지하지 않는다. 일반 Rule 후보는 BOUNDARY, HINT_ONLY는 UNKNOWN으로 전달하며 키워드만으로
 PRESENT를 확정하지 않는다. 결정론적 Rule PRESENT와 LLM PRESENT는 합집합으로 보존하고,
 태그별 점수는 두 출처 중 최댓값만 사용한다. 누락한 태그는 Rule 상태로 fallback한다.
-수정본은 자동 적용하지 않는다.
+수정안 출력도 분석 요청과 같은 관계자 컨텍스트로 다시 마스킹하며, 수정본은 자동 적용하지 않는다.
 LLM 스키마 오류는 한 번 재생성하고, 재생성 실패 또는 외부 AI 장애 시 전체 Rule 결과만으로
 점수·등급을 계산해 `RULE_ONLY`로 저장한다. 이 경우 AI 수정안은 생성하지 않는다.
 위험 분석 성공 후 수정안 생성만 실패하면 HYBRID 판정은 유지하고 revision_status를

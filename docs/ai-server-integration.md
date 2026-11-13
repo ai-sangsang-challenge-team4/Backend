@@ -48,6 +48,9 @@ sudo journalctl -u teacherhub-ai.service --since "10 minutes ago" --no-pager
 ```
 
 그다음 테스트 계정과 비식별 입력으로 Spring Boot의 위험 분석 API를 호출해 다음을 확인한다.
+Spring Boot는 전화번호·이메일·주민등록번호와 현재 민원의 학생명·교사명·학번·교직원번호를
+먼저 마스킹하고, 동일한 관계자 컨텍스트를 Rule 근거·반복 문맥과 AI 생성 출력에 재사용한다.
+따라서 FastAPI 요청·응답 로그에는 실제 관계자 값이 없어야 한다.
 
 FastAPI 네 경로의 실제 모델 호출은 EC2의 백엔드 소스 디렉터리에서 아래 스크립트로 먼저
 검증할 수 있다. 이 스크립트는 비식별 고정 입력만 사용하며 응답 본문을 출력하지 않는다.
@@ -79,8 +82,9 @@ HYBRID 결과를 유지하고 `revisionStatus=UNAVAILABLE`로 전환한다. 완�
 ## 배포 후 관측과 롤백
 
 - 확인 지표: capability·attempt별 AI 호출 성공률과 durationMs, Rule-only 전환율,
-  수정안 UNAVAILABLE 비율, 429·5xx·timeout, p95 지연, EC2 가용 메모리
+  수정안 UNAVAILABLE 비율, 개인정보 마스킹 실패율, 429·5xx·timeout, p95 지연, EC2 가용 메모리
 - 비용 지표: Claude, Gemini, Cloudflare Workers AI 호출량
 - 데이터 지표: ChromaDB 백업 성공과 최근 복구 시험 시각
-- 롤백 조건: Spring Boot 오류율 급증, 지속적인 AI timeout, 메모리 부족 재시작, 잘못된 스키마 응답
+- 롤백 조건: Spring Boot 오류율 급증, 개인정보 마스킹 실패 또는 과도한 오탐 급증, 지속적인 AI timeout,
+  메모리 부족 재시작, 잘못된 스키마 응답
 - 롤백 방법: 백엔드 배포를 이전 버전으로 되돌리고 AI 장애 중에는 서버의 기존 Rule-only 정책을 유지한다.

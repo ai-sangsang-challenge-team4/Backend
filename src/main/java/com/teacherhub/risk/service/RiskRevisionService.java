@@ -6,6 +6,7 @@ import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
+import com.teacherhub.risk.masking.PiiMaskingContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -35,9 +36,19 @@ public class RiskRevisionService {
         this.executor = executor;
     }
 
-    public void schedule(Long analysisId, String maskedContent, RiskEvaluation evaluation) {
+    public void schedule(
+            Long analysisId,
+            String maskedContent,
+            RiskEvaluation evaluation,
+            PiiMaskingContext maskingContext
+    ) {
         try {
-            executor.execute(() -> generate(analysisId, maskedContent, evaluation));
+            executor.execute(() -> generate(
+                    analysisId,
+                    maskedContent,
+                    evaluation,
+                    maskingContext
+            ));
         } catch (RejectedExecutionException exception) {
             log.warn("Revision generation queue rejected task; marking unavailable. analysisId={}", analysisId);
             persistenceService.markUnavailable(analysisId);
@@ -47,27 +58,33 @@ public class RiskRevisionService {
     public void scheduleAfterCommit(
             Long analysisId,
             String maskedContent,
-            RiskEvaluation evaluation
+            RiskEvaluation evaluation,
+            PiiMaskingContext maskingContext
     ) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || !TransactionSynchronizationManager.isSynchronizationActive()) {
-            schedule(analysisId, maskedContent, evaluation);
+            schedule(analysisId, maskedContent, evaluation, maskingContext);
             return;
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                schedule(analysisId, maskedContent, evaluation);
+                schedule(analysisId, maskedContent, evaluation, maskingContext);
             }
         });
     }
 
-    private void generate(Long analysisId, String maskedContent, RiskEvaluation evaluation) {
+    private void generate(
+            Long analysisId,
+            String maskedContent,
+            RiskEvaluation evaluation,
+            PiiMaskingContext maskingContext
+    ) {
         long startedAt = System.nanoTime();
         try {
             RevisionResult revision = revisionGenerator.generate(maskedContent, evaluation);
             validateSuggestions(evaluation.tags(), revision);
-            persistenceService.complete(analysisId, revision);
+            persistenceService.complete(analysisId, revision, maskingContext);
             log.info(
                     "AI capability completed. capability=revision-generation attempt=1 durationMs={} outcome=SUCCESS analysisId={}",
                     elapsedMillis(startedAt),

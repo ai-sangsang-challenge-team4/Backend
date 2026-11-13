@@ -33,6 +33,7 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.risk.analyzer.*;
 import com.teacherhub.risk.entity.*;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.repository.*;
 import com.teacherhub.risk.util.ContentFingerprint;
 
@@ -93,6 +94,7 @@ public class RiskAnalysisService {
             Long messageId,
             long contentVersion,
             String contentHash,
+            PiiMaskingContext maskingContext,
             String maskedContent,
             List<RiskTagDetectionResult> ruleResults,
             List<RiskTagDetectionResult> maskedRuleResults,
@@ -268,7 +270,7 @@ public class RiskAnalysisService {
             Long complaintId
     ) {
         Complaint complaint =
-                complaintRepository.findById(complaintId)
+                complaintRepository.findDetailById(complaintId)
                         .orElseThrow(() ->
                                 new ComplaintNotFoundException(
                                         "민원 정보를 찾을 수 없습니다."
@@ -349,7 +351,8 @@ public class RiskAnalysisService {
         }
 
         // 개인정보 가드레일 실패는 외부 AI 장애와 다르게 fail-closed로 처리합니다.
-        String maskedContent = maskForAi(originalContent);
+        PiiMaskingContext maskingContext = PiiMaskingContext.from(complaint);
+        String maskedContent = maskForAi(originalContent, maskingContext);
 
         RuleExecutionResult ruleExecution = analyzeRules(
                 complaint,
@@ -360,7 +363,10 @@ public class RiskAnalysisService {
 
         // 외부 AI에 Rule 결과를 전달하기 전
         // evidence와 reason에 포함될 수 있는 개인정보를 마스킹합니다.
-        List<RiskTagDetectionResult> maskedRuleResults = maskRuleResultsForLlm(ruleResults);
+        List<RiskTagDetectionResult> maskedRuleResults = maskRuleResultsForLlm(
+                ruleResults,
+                maskingContext
+        );
 
         return new AnalysisRequest(
                 userId,
@@ -368,6 +374,7 @@ public class RiskAnalysisService {
                 message.getId(),
                 message.getContentVersion(),
                 ContentFingerprint.sha256(originalContent),
+                maskingContext,
                 maskedContent,
                 ruleResults,
                 maskedRuleResults,
@@ -385,7 +392,11 @@ public class RiskAnalysisService {
                     request.maskedRuleResults(),
                     request.repeatContext()
             );
-            PreparedAnalysis prepared = prepareAnalysis(request.ruleResults(), llmExecution);
+            PreparedAnalysis prepared = prepareAnalysis(
+                    request.ruleResults(),
+                    llmExecution,
+                    request.maskingContext()
+            );
             PersistedAnalysis persisted = transactionRunner.write(() -> persist(request, prepared));
             if (persisted.revisionAnalysisId() != null) {
                 revisionService.scheduleAfterCommit(
@@ -396,7 +407,8 @@ public class RiskAnalysisService {
                                 prepared.finalTags(),
                                 prepared.calculation().score(),
                                 prepared.calculation().level()
-                        )
+                        ),
+                        request.maskingContext()
                 );
             }
             return persisted.result();
@@ -470,7 +482,8 @@ public class RiskAnalysisService {
                 prepared.llmExecution().ruleOnly()
                         ? RiskAnalysisMode.RULE_ONLY
                         : RiskAnalysisMode.HYBRID,
-                prepared.calculation()
+                prepared.calculation(),
+                request.maskingContext()
         );
 
         boolean shouldGenerateRevision = !request.submitting() && !prepared.llmExecution().ruleOnly();
@@ -562,9 +575,14 @@ public class RiskAnalysisService {
 
     private PreparedAnalysis prepareAnalysis(
             List<RiskTagDetectionResult> ruleResults,
-            LlmExecutionResult llmExecution
+            LlmExecutionResult llmExecution,
+            PiiMaskingContext maskingContext
     ) {
-        List<FinalRiskTagResponse> finalTags = mergeAndMaskFinalTags(ruleResults, llmExecution);
+        List<FinalRiskTagResponse> finalTags = mergeAndMaskFinalTags(
+                ruleResults,
+                llmExecution,
+                maskingContext
+        );
         RiskCalculation calculation = calculateRisk(
                 finalTags,
                 llmExecution.result().safetyFlags()
@@ -574,7 +592,8 @@ public class RiskAnalysisService {
 
     private List<FinalRiskTagResponse> mergeAndMaskFinalTags(
             List<RiskTagDetectionResult> ruleResults,
-            LlmExecutionResult llmExecution
+            LlmExecutionResult llmExecution,
+            PiiMaskingContext maskingContext
     ) {
         // 룰 근거는 원문에서 추출될 수 있으므로 저장·수정안 생성 전에 다시 마스킹합니다.
         return (llmExecution.ruleOnly()
@@ -591,14 +610,14 @@ public class RiskAnalysisService {
                         tag.repeatCount(),
                         tag.evidenceSpans().stream()
                                 .map(span -> new EvidenceSpan(
-                                        maskForAi(span.text()),
+                                        maskForAi(span.text(), maskingContext),
                                         span.start(),
                                         span.end()
                                 ))
                                 .toList(),
                         tag.reason() == null || tag.reason().isBlank()
                                 ? tag.reason()
-                                : maskForAi(tag.reason())
+                                : maskForAi(tag.reason(), maskingContext)
                 ))
                 .toList();
     }
@@ -711,7 +730,8 @@ public class RiskAnalysisService {
     }
 
     private List<RiskTagDetectionResult> maskRuleResultsForLlm(
-            List<RiskTagDetectionResult> ruleResults
+            List<RiskTagDetectionResult> ruleResults,
+            PiiMaskingContext maskingContext
     ) {
         return ruleResults.stream()
                 .map(result ->
@@ -726,7 +746,8 @@ public class RiskAnalysisService {
                                         .map(span ->
                                                 new EvidenceSpan(
                                                         maskEvidence(
-                                                                span.text()
+                                                                span.text(),
+                                                                maskingContext
                                                         ),
                                                         null,
                                                         null
@@ -734,7 +755,8 @@ public class RiskAnalysisService {
                                         )
                                         .toList(),
                                 maskEvidence(
-                                        result.reason()
+                                        result.reason(),
+                                        maskingContext
                                 )
                         )
                 )
@@ -778,16 +800,16 @@ public class RiskAnalysisService {
         return List.copyOf(results);
     }
 
-    private String maskEvidence(String value) {
+    private String maskEvidence(String value, PiiMaskingContext maskingContext) {
         return value == null
                 || value.isBlank()
                 ? value
-                : maskForAi(value);
+                : maskForAi(value, maskingContext);
     }
 
-    private String maskForAi(String value) {
+    private String maskForAi(String value, PiiMaskingContext maskingContext) {
         try {
-            String masked = piiMaskingService.mask(value);
+            String masked = piiMaskingService.mask(value, maskingContext);
             if (masked == null) {
                 throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
             }
@@ -894,7 +916,8 @@ public class RiskAnalysisService {
             LlmRiskAnalysisResult llm,
             List<RiskTagDetectionResult> ruleResults,
             RiskAnalysisMode analysisMode,
-            RiskCalculation calculation
+            RiskCalculation calculation,
+            PiiMaskingContext maskingContext
     ) {
         RiskAnalysis analysis;
         try {
@@ -949,12 +972,14 @@ public class RiskAnalysisService {
                                     rule == null
                                             ? null
                                             : maskEvidence(
-                                                    rule.evidence()
+                                                    rule.evidence(),
+                                                    maskingContext
                                             ),
                                     llmTag == null
                                             ? null
                                             : maskEvidence(
-                                                    llmTag.evidence()
+                                                    llmTag.evidence(),
+                                                    maskingContext
                                             )
                             );
 
@@ -962,12 +987,14 @@ public class RiskAnalysisService {
                                     rule == null
                                             ? List.of()
                                             : maskSpans(
-                                                    rule.evidenceSpans()
+                                                    rule.evidenceSpans(),
+                                                    maskingContext
                                             ),
                                     llmTag == null
                                             ? List.of()
                                             : maskSpans(
-                                                    llmTag.evidenceSpans()
+                                                    llmTag.evidenceSpans(),
+                                                    maskingContext
                                             )
                             );
 
@@ -985,13 +1012,15 @@ public class RiskAnalysisService {
     }
 
     private List<EvidenceSpan> maskSpans(
-            List<EvidenceSpan> spans
+            List<EvidenceSpan> spans,
+            PiiMaskingContext maskingContext
     ) {
         return spans.stream()
                 .map(span ->
                         new EvidenceSpan(
                                 maskEvidence(
-                                        span.text()
+                                        span.text(),
+                                        maskingContext
                                 ),
                                 span.start(),
                                 span.end()

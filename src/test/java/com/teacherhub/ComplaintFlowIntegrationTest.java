@@ -43,6 +43,7 @@ import com.teacherhub.user.repository.UserRepository;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -111,6 +112,26 @@ public class ComplaintFlowIntegrationTest {
                 com.teacherhub.risk.enums.RiskTagCode.PRIVACY, 15
         ));
         assertThat(scores.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(86);
+    }
+
+    @Test
+    void masksComplaintIdentityContextBeforeRiskLlmCall() {
+        String original = "3학년 2반 홍길동 학생과 김선생 선생님, "
+                + "학번 20260001, 교번 T-2026-001에게 직접 찾아가겠습니다.";
+        Long complaintId = parentComplaintService.createDraft(
+                parentUser.getId(),
+                createRequest(original)
+        ).getComplaintId();
+
+        riskAnalysisService.analyze(parentUser.getId(), complaintId);
+
+        ArgumentCaptor<String> maskedContent = ArgumentCaptor.forClass(String.class);
+        verify(llmRiskAnalyzer).analyze(maskedContent.capture(), anyList(), any());
+        assertThat(maskedContent.getValue())
+                .contains("[학생정보]", "[교사명]", "[학번]", "[교직원번호]")
+                .doesNotContain("홍길동", "김선생", "20260001", "T-2026-001");
+        assertThat(complaintRepository.findById(complaintId).orElseThrow().getMaskedContent())
+                .isEqualTo(maskedContent.getValue());
     }
 
     @Test

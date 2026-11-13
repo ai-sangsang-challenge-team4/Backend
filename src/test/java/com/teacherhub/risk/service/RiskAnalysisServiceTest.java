@@ -128,7 +128,7 @@ class RiskAnalysisServiceTest {
                 .thenReturn(
                         Optional.of(complaint)
                 );
-        when(repository.findById(42L))
+        when(repository.findDetailById(42L))
                 .thenReturn(Optional.of(complaint));
 
         when(repeatContexts.create(any(), any()))
@@ -166,20 +166,20 @@ class RiskAnalysisServiceTest {
             ReflectionTestUtils.setField(analysis, "id", 99L);
             return analysis;
         });
-        when(masking.mask(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(masking.mask(anyString(), any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
     void validatesRevisionBeforeSavingMergedRiskIncludingRuleOnlyTags() {
         Complaint complaint = draft();
 
-        when(masking.mask(anyString()))
+        when(masking.mask(anyString(), any()))
                 .thenAnswer(
                         invocation ->
                                 invocation.getArgument(0)
                 );
 
-        when(masking.mask(complaint.getContent()))
+        when(masking.mask(eq(complaint.getContent()), any()))
                 .thenReturn("masked");
 
         var ruleResults = List.of(
@@ -256,7 +256,8 @@ class RiskAnalysisServiceTest {
 
         verify(masking)
                 .mask(
-                        "original private content"
+                        eq("original private content"),
+                        any()
                 );
 
         verify(rules)
@@ -278,7 +279,12 @@ class RiskAnalysisServiceTest {
 
         verify(analyses).save(any());
         verify(detections).saveAll(any());
-        verify(revisionService).scheduleAfterCommit(eq(99L), eq("masked"), evaluation.capture());
+        verify(revisionService).scheduleAfterCommit(
+                eq(99L),
+                eq("masked"),
+                evaluation.capture(),
+                any()
+        );
 
         verifyNoMoreInteractions(
                 rules,
@@ -349,7 +355,7 @@ class RiskAnalysisServiceTest {
     void passesRuleDetectionResultsToLlmAfterRuleAnalysis() {
         Complaint complaint = draft();
 
-        when(masking.mask(anyString()))
+        when(masking.mask(anyString(), any()))
                 .thenAnswer(
                         invocation ->
                                 invocation.getArgument(0)
@@ -500,7 +506,8 @@ class RiskAnalysisServiceTest {
         );
 
         when(masking.mask(
-                complaint.getContent()
+                eq(complaint.getContent()),
+                any()
         )).thenReturn(
                 "masked"
         );
@@ -541,7 +548,7 @@ class RiskAnalysisServiceTest {
     void reportsInvalidAiResponseSeparatelyWhileSubmissionContinues() {
         Complaint complaint = draft();
         stubRuleOnlyPersistence();
-        when(masking.mask(complaint.getContent())).thenReturn("masked");
+        when(masking.mask(eq(complaint.getContent()), any())).thenReturn("masked");
         when(rules.detect(complaint.getContent())).thenReturn(List.of());
         when(llm.analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class)))
                 .thenThrow(new AiResponseInvalidException("invalid response"));
@@ -561,7 +568,7 @@ class RiskAnalysisServiceTest {
     void retriesMalformedEvidenceCoordinatesThenUsesRuleOnlyFallback() {
         Complaint complaint = draft();
         stubRuleOnlyPersistence();
-        when(masking.mask(complaint.getContent())).thenReturn("masked");
+        when(masking.mask(eq(complaint.getContent()), any())).thenReturn("masked");
         when(rules.detect(complaint.getContent())).thenReturn(List.of());
         com.teacherhub.risk.dto.detection.EvidenceSpan invalidSpan =
                 mock(com.teacherhub.risk.dto.detection.EvidenceSpan.class);
@@ -592,7 +599,7 @@ class RiskAnalysisServiceTest {
     void completesHybridAnalysisWhenSchemaRetrySucceeds() {
         Complaint complaint = draft();
         stubRuleOnlyPersistence();
-        when(masking.mask(complaint.getContent())).thenReturn("masked");
+        when(masking.mask(eq(complaint.getContent()), any())).thenReturn("masked");
         when(rules.detect(complaint.getContent())).thenReturn(List.of());
         when(llm.analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class)))
                 .thenThrow(new AiResponseInvalidException("invalid response"))
@@ -615,7 +622,7 @@ class RiskAnalysisServiceTest {
     void returnsRuleOnlySummaryAfterSchemaRetryAlsoFails() {
         Complaint complaint = draft();
         stubRuleOnlyPersistence();
-        when(masking.mask(complaint.getContent())).thenReturn("masked");
+        when(masking.mask(eq(complaint.getContent()), any())).thenReturn("masked");
         when(rules.detect(complaint.getContent())).thenReturn(List.of());
         when(llm.analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class)))
                 .thenThrow(new AiResponseInvalidException("invalid response"));
@@ -663,7 +670,7 @@ class RiskAnalysisServiceTest {
     void rejectsSubmissionWhenDeterministicRuleGuardrailFails() {
         Complaint complaint = draft();
 
-        when(masking.mask(complaint.getContent())).thenReturn("masked");
+        when(masking.mask(eq(complaint.getContent()), any())).thenReturn("masked");
         when(rules.detect(complaint.getContent()))
                 .thenThrow(new IllegalStateException("rule configuration failure"));
 
@@ -687,7 +694,8 @@ class RiskAnalysisServiceTest {
         Complaint complaint = draft();
 
         when(masking.mask(
-                complaint.getContent()
+                eq(complaint.getContent()),
+                any()
         )).thenThrow(
                 new IllegalStateException(
                         "masking failure"
@@ -768,7 +776,7 @@ class RiskAnalysisServiceTest {
                 .isInstanceOf(ContentVersionConflictException.class);
 
         InOrder order = inOrder(repository, llm);
-        order.verify(repository).findById(42L);
+        order.verify(repository).findDetailById(42L);
         order.verify(llm).analyze(anyString(), anyList(), any(RepeatAnalysisContext.class));
         order.verify(repository).findForUpdate(42L);
         verify(analyses, never()).save(any());

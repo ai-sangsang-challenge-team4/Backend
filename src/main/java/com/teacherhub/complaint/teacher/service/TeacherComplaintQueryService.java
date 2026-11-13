@@ -29,6 +29,7 @@ import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
@@ -98,6 +99,7 @@ public class TeacherComplaintQueryService {
         Map<Long, RiskLevel> latestRiskByMessage = latestRiskByMessage(complaintId);
         Map<Long, BufferedSummary> bufferedSummaries = createBufferedSummaries(
                 complaintId,
+                PiiMaskingContext.from(complaint),
                 messages,
                 latestRiskByMessage
         );
@@ -121,6 +123,7 @@ public class TeacherComplaintQueryService {
 
     private Map<Long, BufferedSummary> createBufferedSummaries(
             Long complaintId,
+            PiiMaskingContext maskingContext,
             List<ComplaintMessage> messages,
             Map<Long, RiskLevel> latestRiskByMessage
     ) {
@@ -130,13 +133,16 @@ public class TeacherComplaintQueryService {
                 .filter(message -> latestRiskByMessage.get(message.getId()) != null)
                 .forEach(message -> {
                     try {
-                        String maskedContent = piiMaskingService.mask(message.getContent());
+                        String maskedContent = piiMaskingService.mask(
+                                message.getContent(),
+                                maskingContext
+                        );
                         if (maskedContent == null) {
                             throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
                         }
                         String summary = supportContentProvider.createBufferedSummary(maskedContent);
                         if (summary != null && !summary.isBlank() && summary.length() <= 1_500) {
-                            String safeSummary = piiMaskingService.mask(summary);
+                            String safeSummary = piiMaskingService.mask(summary, maskingContext);
                             if (safeSummary != null && !safeSummary.isBlank()) {
                                 summaries.put(message.getId(), BufferedSummary.generated(safeSummary));
                                 return;

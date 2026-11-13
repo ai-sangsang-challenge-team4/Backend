@@ -36,7 +36,10 @@ public class ComplaintMaskingService {
             throw new EmptyComplaintContentException( "마스킹할 민원 내용이 없습니다.");
         }
 
-        String masked = masking.mask(complaint.getContent());
+        String masked = masking.mask(
+                complaint.getContent(),
+                PiiMaskingContext.from(complaint)
+        );
         complaint.updateMaskedContent(masked);
 
         return new MaskingResponse(complaintId, complaint.getContentVersion(), masked);

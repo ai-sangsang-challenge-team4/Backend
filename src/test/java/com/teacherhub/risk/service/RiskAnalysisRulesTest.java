@@ -83,7 +83,7 @@ class RiskAnalysisRulesTest {
                 );
         ReflectionTestUtils.setField(complaint, "id", 42L);
         when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
-        when(complaints.findById(42L)).thenReturn(Optional.of(complaint));
+        when(complaints.findDetailById(42L)).thenReturn(Optional.of(complaint));
 
         when(analyses.save(any()))
                 .thenAnswer(invocation -> {
@@ -150,7 +150,12 @@ class RiskAnalysisRulesTest {
                         RiskEvaluation.class
                 );
 
-        verify(revisionService).scheduleAfterCommit(eq(99L), anyString(), captured.capture());
+        verify(revisionService).scheduleAfterCommit(
+                eq(99L),
+                anyString(),
+                captured.capture(),
+                any()
+        );
 
         return captured.getValue();
     }
@@ -623,7 +628,7 @@ class RiskAnalysisRulesTest {
         assertThat(captured.getValue().getAnalysisMode()).isEqualTo(RiskAnalysisMode.HYBRID);
         assertThat(captured.getValue().getAiRevision()).isNull();
         assertThat(captured.getValue().getRevisionStatus()).isEqualTo(RevisionStatus.PENDING);
-        verify(revisionService).scheduleAfterCommit(eq(99L), anyString(), any());
+        verify(revisionService).scheduleAfterCommit(eq(99L), anyString(), any(), any());
         verify(events, never()).save(argThat(event ->
                 event.getEventType() == MessageEventType.AI_ANALYSIS_RULE_FALLBACK));
     }
@@ -661,7 +666,7 @@ class RiskAnalysisRulesTest {
                         "연락처 [전화번호]"
                 );
 
-        verify(revisionService).scheduleAfterCommit(99L, "민원 내용", result);
+        verify(revisionService).scheduleAfterCommit(eq(99L), eq("민원 내용"), eq(result), any());
     }
 
     @Test

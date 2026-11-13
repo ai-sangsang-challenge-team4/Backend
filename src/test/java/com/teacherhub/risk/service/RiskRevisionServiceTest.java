@@ -6,6 +6,7 @@ import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.FinalRevision;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.masking.PiiMaskingContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -19,6 +20,7 @@ class RiskRevisionServiceTest {
     private final RiskRevisionPersistenceService persistence = mock(RiskRevisionPersistenceService.class);
     private final RiskRevisionService service = new RiskRevisionService(generator, persistence, Runnable::run);
     private final RiskEvaluation evaluation = new RiskEvaluation(42L, List.of(), 0, RiskLevel.LOW);
+    private final PiiMaskingContext maskingContext = PiiMaskingContext.empty();
 
     @Test
     void storesRevisionWithoutChangingCompletedRiskAnalysis() {
@@ -28,9 +30,9 @@ class RiskRevisionServiceTest {
         );
         when(generator.generate("masked", evaluation)).thenReturn(revision);
 
-        service.schedule(10L, "masked", evaluation);
+        service.schedule(10L, "masked", evaluation, maskingContext);
 
-        verify(persistence).complete(10L, revision);
+        verify(persistence).complete(10L, revision, maskingContext);
         verify(persistence, never()).markUnavailable(anyLong());
     }
 
@@ -39,9 +41,9 @@ class RiskRevisionServiceTest {
         when(generator.generate("masked", evaluation))
                 .thenThrow(new AiServiceUnavailableException("timeout"));
 
-        service.schedule(10L, "masked", evaluation);
+        service.schedule(10L, "masked", evaluation, maskingContext);
 
         verify(persistence).markUnavailable(10L);
-        verify(persistence, never()).complete(anyLong(), any());
+        verify(persistence, never()).complete(anyLong(), any(), any());
     }
 }
