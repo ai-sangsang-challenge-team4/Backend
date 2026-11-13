@@ -13,6 +13,7 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.risk.service.RiskAnalysisService;
+import com.teacherhub.risk.service.RiskAnalysisTransactionRunner;
 import com.teacherhub.school.entity.SchoolClass;
 import com.teacherhub.school.entity.StudentClass;
 import com.teacherhub.school.repository.StudentClassRepository;
@@ -30,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 import com.teacherhub.complaint.exception.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.util.Comparator;
 import java.util.List;
@@ -50,6 +52,7 @@ public class ParentComplaintService {
     private final StudentClassRepository studentClassRepository;
     private final TeacherRepository teacherRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
+    private final RiskAnalysisTransactionRunner transactionRunner;
 
 
     // 민원 초안 작성
@@ -154,44 +157,36 @@ public class ParentComplaintService {
 
 
     //4. 민원 최종 제출
-    @Transactional
+    @Transactional(propagation = Propagation.SUPPORTS)
     public ComplaintSubmissionResponse submitComplaint(
             Long userId,
             Long complaintId
     ) {
-
-        Complaint complaint = complaintRepository.findForUpdate(complaintId)
-                .orElseThrow(() ->
-                        new ComplaintNotFoundException("민원을 찾을 수 없습니다."
-                        )
-                );
-
-
-        // 본인의 민원인지 확인
-        User user = findUser(userId);
-        complaintAccessPolicy.validateParentOwner(user, complaint);
-
-
-        // 이미 제출한 민원인지 검사
-        if (complaint.getStatus() != ComplaintStatus.DRAFT) {
-            throw new ComplaintNotDraftException("이미 제출된 민원입니다.");
-        }
-
-
-        // 전송 요청의 최종 내용을 분석한 후에만 교사를 지정하고 제출을 확정
         var analysisResult = riskAnalysisService.analyzeForSubmissionResult(userId, complaintId);
-
-        // 최종 제출
-        complaint.submit();
-
-        eventRepository.save(ComplaintEvent.statusChanged(
-                complaint,
-                complaint.getParent().getUser(),
-                ComplaintStatus.DRAFT,
-                ComplaintStatus.OPEN
-        ));
-        eventRepository.save(ComplaintEvent.messageSent(complaint.initialMessage()));
-        return ComplaintSubmissionResponse.from(complaint, analysisResult);
+        return transactionRunner.write(() -> {
+            Complaint complaint = complaintRepository.findForUpdate(complaintId)
+                    .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
+            User user = findUser(userId);
+            complaintAccessPolicy.validateParentOwner(user, complaint);
+            if (complaint.getStatus() != ComplaintStatus.DRAFT) {
+                throw new ComplaintNotDraftException("이미 제출된 민원입니다.");
+            }
+            if (complaint.getContentVersion() != analysisResult.analyzedContentVersion()) {
+                throw new ContentVersionConflictException(
+                        analysisResult.analyzedContentVersion(),
+                        complaint.getContentVersion()
+                );
+            }
+            complaint.submit();
+            eventRepository.save(ComplaintEvent.statusChanged(
+                    complaint,
+                    complaint.getParent().getUser(),
+                    ComplaintStatus.DRAFT,
+                    ComplaintStatus.OPEN
+            ));
+            eventRepository.save(ComplaintEvent.messageSent(complaint.initialMessage()));
+            return ComplaintSubmissionResponse.from(complaint, analysisResult);
+        });
     }
 
     private User findUser(Long userId) {

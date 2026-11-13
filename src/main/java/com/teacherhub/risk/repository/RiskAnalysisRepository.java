@@ -4,11 +4,19 @@ import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface RiskAnalysisRepository extends JpaRepository<RiskAnalysis, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from RiskAnalysis r where r.id = :id")
+    Optional<RiskAnalysis> findForUpdate(@Param("id") Long id);
+
     long countByComplaintIdAndCompletedTrue(Long complaintId);
 
     Optional<RiskAnalysis> findFirstByComplaintIdAndContentVersionAndCompletedTrueOrderByIdDesc(

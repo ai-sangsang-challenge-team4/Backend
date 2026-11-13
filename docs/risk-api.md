@@ -9,8 +9,8 @@
 | 메서드 | 경로 | 동작 | 성공 |
 |---|---|---|---|
 | POST | `/complaints/{complaintId}/mask` | 원문의 규칙 기반 개인정보 마스킹 결과 저장·반환 | 200 |
-| POST | `/complaints/{complaintId}/risk-analysis` | 마스킹 → 룰·LLM 탐지 → 병합·점수 계산 → 수정안 검증 → 저장 | 200 |
-| POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 학부모 추가 문의 메시지의 위험 분석·수정안 생성 | 200 |
+| POST | `/complaints/{complaintId}/risk-analysis` | 마스킹 → 룰·LLM 탐지 → 병합·점수 저장 후 응답, 수정안은 비동기 생성 | 200 |
+| POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 학부모 추가 문의 메시지의 위험 분석 후 비동기 수정안 생성 | 200 |
 | GET | `/risk-analyses/{analysisId}` | 저장된 분석의 점수·등급 조회 | 200 |
 | GET | `/risk-analyses/{analysisId}/findings` | 최종 감지 태그·근거·태그별 수정 제안·최종 수정본 조회 | 200 |
 | GET | `/risk-analyses/{analysisId}/detector-results` | 전체 태그의 Rule·LLM 상태·Severity·반복 횟수·안전 신호 조회 | 200 |
@@ -46,12 +46,14 @@
 Spring Boot와 FastAPI는 같은 EC2에서 실행하며, FastAPI는 외부에 공개하지 않고
 `127.0.0.1:8000`에 바인딩한다. 백엔드 기본 주소는 `http://localhost:8000`이고 운영 환경에서
 `AI_SERVER_URL`로 재정의할 수 있다. 연결 제한 시간과 요청 제한 시간은 각각
-`AI_SERVER_CONNECT_TIMEOUT_MS`, `AI_SERVER_REQUEST_TIMEOUT_MS`로 설정한다.
+`AI_SERVER_CONNECT_TIMEOUT_MS`, `AI_SERVER_REQUEST_TIMEOUT_MS`로 설정한다. 위험 분석과 수정안은
+각각 `AI_RISK_ANALYSIS_TIMEOUT_MS`(기본 60초), `AI_REVISION_TIMEOUT_MS`(기본 30초)로
+기능별 요청 제한 시간을 재정의한다.
 
 | 백엔드 경계 | FastAPI 경로 | 입력 개인정보 정책 | 장애 정책 |
 |---|---|---|---|
 | `PythonLlmRiskAnalyzer` | `POST /api/v1/ai/analyze` | 마스킹 본문·마스킹 Rule 근거만 전달 | Rule-only 잠정 분석 |
-| `PythonComplaintRevisionGenerator` | `POST /api/v1/ai/revision` | 마스킹 본문·마스킹 최종 태그만 전달 | 수정안 없이 Rule-only 잠정 분석 |
+| `PythonComplaintRevisionGenerator` | `POST /api/v1/ai/revision` | 마스킹 본문·마스킹 최종 태그만 전달 | HYBRID 유지, `revisionStatus=UNAVAILABLE` |
 | `PythonTeacherSupportContentProvider` | `POST /api/v1/ai/summary` | 마스킹된 학부모 메시지만 전달 | 요약 `UNAVAILABLE`, 원문 자동 노출 금지 |
 | `PythonTeacherSupportContentProvider` | `POST /api/v1/ai/response-draft` | 전체 대화를 메시지별 마스킹 후 전달 | 초안 미제공, 502/503 응답 |
 
@@ -93,9 +95,15 @@ POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 AP
   "aiAnalysisStatus": "COMPLETED",
   "analysisMode": "HYBRID",
   "manualReviewRequired": false,
-  "analysisMessage": "AI 위험 분석이 완료되었습니다."
+  "analysisMessage": "AI 위험 분석이 완료되었습니다.",
+  "revisionStatus": "PENDING"
 }
 ```
+
+`revisionStatus`는 `PENDING`, `COMPLETED`, `UNAVAILABLE`, `NOT_REQUESTED` 중 하나다.
+일반 하이브리드 분석은 위험 분석 저장 직후 `PENDING`으로 응답하고 전용 실행기에서 수정안을
+생성한다. Rule-only 분석과 제출 중 최종 재분석은 수정안을 요청하지 않으므로
+`NOT_REQUESTED`다.
 
 일반 위험 분석과 추가 문의 위험 분석 모두 `aiAnalysisStatus`를 반환한다. 새 하이브리드 분석은
 `COMPLETED`, 기존 하이브리드 결과는 `REUSED`, 기존 Rule-only 결과는 `REUSED_RULE_ONLY`,
@@ -136,16 +144,17 @@ EMERGENCY로 승격해 기존 관리자 재검토와 답변 차단 경로에 연
 POST는 원문을 마스킹한 뒤 원문 Rule 탐지를 실행하고, Rule의 evidence와 reason을 다시
 마스킹해 마스킹 본문과 함께 LLM에 전달한다. 결정론적 Rule PRESENT와 LLM PRESENT는 합집합으로
 보존하고 태그별 점수는 두 출처의 최댓값만 사용한다. LLM이 누락한 태그는 Rule 상태로 fallback한다.
-이후 점수 계산과
-수정안 생성·저장을 수행한다.
+이후 점수 계산과 위험 분석을 먼저 저장·응답하고, 일반 AI 검토의 수정안 생성은 별도 작업으로
+실행한다. `GET /risk-analyses/{analysisId}/findings`는 `revisionStatus`를 항상 반환하며
+`PENDING`이면 수정안 생성 중, `UNAVAILABLE`이면 위험 분석은 유효하지만 수정안만 사용할 수
+없음을 뜻한다.
 LLM 출력이 스키마 검증에 실패하면 한 번 재생성한다. 재생성도 실패하거나 외부 AI가
 연결·시간초과·429·5xx로 불가하면 Rule 결과만으로 점수와 등급을 계산·저장하고 HTTP 200으로
 `analysisMode=RULE_ONLY`, `manualReviewRequired=true`를 반환한다. 이때 LLM 상태는 `UNKNOWN`,
 confidence는 `null`이고 수정안은 생성하지 않는다.
-위험 분석 LLM은 성공했더라도 수정안 생성 AI가 연결·응답 검증에 실패하면 아직 저장하지 않은
-하이브리드 결과를 폐기하고 Rule-only 점수·등급만 한 번 저장한다. 잘못된 수정안을 저장하지 않으며
-같은 수동 검토 안내와 `AI_ANALYSIS_RULE_FALLBACK` 감사 이벤트를 사용한다. 요청 직렬화·설정 같은
-내부 연동 오류는 Rule-only로 전환하지 않고 fail-closed로 처리한다.
+위험 분석 LLM 성공 후 수정안 생성 AI가 연결·응답 검증에 실패해도 저장된 하이브리드 위험
+판정은 유지한다. 잘못된 수정안은 저장하지 않고 `revisionStatus=UNAVAILABLE`로 전환한다.
+`AI_ANALYSIS_RULE_FALLBACK` 감사 이벤트는 위험 분석 LLM 자체가 실패한 경우에만 기록한다.
 응답에는 요약만 포함하며, 근거와 태그별 수정 제안 및 전체 수정본은
 `GET /risk-analyses/{analysisId}/findings`로 조회한다.
 Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회한다.
@@ -209,9 +218,13 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
   최종 분석을 시도한다. 외부 LLM 실패는 Rule-only 점수·등급과 `RULE_ONLY_AI_UNAVAILABLE` 또는
   `RULE_ONLY_INVALID_RESPONSE`를 반환하면서 제출한다. 분석 횟수 제한은 `SKIPPED_LIMIT`를 반환한다.
 - 최초 민원 제출 성공 시 200이며 상태 및 이력은 DRAFT → OPEN, waitingFor는 TEACHER다.
-- 분석·수정·제출은 동일 민원 행의 비관적 쓰기 잠금으로 동시 실행을 직렬화한다. 현재 동기 처리이므로 AI 호출 동안 잠금이 유지된다.
+- 위험 분석은 짧은 읽기 트랜잭션에서 권한·상태·내용 버전과 Rule 입력을 준비하고, 트랜잭션
+  없이 외부 `/analyze`를 호출한 뒤 짧은 쓰기 트랜잭션에서 민원 잠금과 내용 버전을 재검증해
+  저장한다. 외부 AI 대기 중에는 민원 잠금과 DB 트랜잭션을 유지하지 않는다.
+- 제출도 위험 분석과 제출 확정을 분리하고, 제출 확정 시 분석한 `contentVersion`을 다시
+  확인한다. 분석 중 내용이 바뀌면 409 충돌로 처리한다.
 
-DB에는 risk_analyses의 content_hash/completed/revision_reason/ai_revision 컬럼과 risk_analysis_expressions 테이블이 추가된다. 원문은 complaint_messages.content에만 보관하고, risk_analyses에는 동일 내용 분석을 재사용하기 위한 SHA-256 지문만 저장한다. 기존 분석에는 전체 재사용 응답이 없으므로 completed 기본값은 false이며 재사용·완료 횟수에서 제외된다. 기존 데이터를 유지하는 배포에서는 이 정책을 고려해 스키마를 반영해야 한다.
+DB에는 risk_analyses의 content_hash/completed/revision_reason/ai_revision/revision_status 컬럼과 risk_analysis_expressions 테이블이 추가된다. `revision_status` 추가는 Flyway `V1__add_risk_revision_status.sql`로 관리하며 기존 `ai_revision`이 있는 행은 `COMPLETED`, 나머지는 `NOT_REQUESTED`로 이관한다. 원문은 complaint_messages.content에만 보관하고, risk_analyses에는 동일 내용 분석을 재사용하기 위한 SHA-256 지문만 저장한다. 기존 분석에는 전체 재사용 응답이 없으므로 completed 기본값은 false이며 재사용·완료 횟수에서 제외된다.
 
 ## 오류
 
@@ -286,7 +299,7 @@ LLM이 `REPEAT` 상태를 반환하면 현재 입력의 반복 횟수와 과거 
 
 ## 분리된 조회 응답
 
-`RiskAnalysisSummaryResponse`는 analysisId, complaintId, riskScore, riskLevel만 반환한다.
+`RiskSummaryResponse`는 analysisId, complaintId, riskScore, riskLevel과 분석·수정안 상태만 반환한다.
 내부 수정안 생성 입력은 `ComplaintRevisionGenerator.RiskEvaluation`으로 분리했다. POST 응답도 이 요약 DTO다.
 수정안 생성 결과는 내부 ComplaintRevisionGenerator.RevisionResult로 받는다.
 전체 수정본과 태그별 제안은 내부 수정 결과 타입으로 생성해 DB에 저장한 뒤 `ComplaintRiskReviewResponse`로 변환하여 반환한다.
@@ -295,7 +308,7 @@ ComplaintRevisionResult.java는 삭제했으며 생성 결과에서 complaintId�
 `GET /risk-analyses/{analysisId}/findings`:
 ```json
 {
-  "analysisId": 10,
+  "revisionStatus": "COMPLETED",
   "findings": [{
     "code": "THREAT",
     "evidences": ["문제 표현"],
@@ -310,7 +323,7 @@ ComplaintRevisionResult.java는 삭제했으며 생성 결과에서 complaintId�
 ```
 
 findings는 finalDetected=true인 태그만 반환한다. 감지가 없으면 빈 배열이다.
-수정 제안은 분석 POST에서 생성·저장하며 GET에서 AI를 호출하지 않는다.
+수정 제안은 분석 POST 응답 후 비동기로 생성·저장하며 GET에서 AI를 호출하지 않는다.
 최종 제출 재분석은 기존 정책대로 수정안을 생성하지 않아 revisionSuggestions는 빈 배열,
 finalRevision은 null이다. 최초 분석과 제출 분석은 서로 다른 분석 ID로 조회한다.
 Rule 탐지기는 실제 CSV 사전을 사용한다. LLM 문맥 판단과 수정안 생성 품질은 외부 AI 연동과
@@ -337,11 +350,13 @@ Rule의 severity/repeatCount는 null이다. 위치를 확정할 수 없는
   complaint_risk_llm_evidence_spans: 최종·Rule·LLM 근거의 text/start/end를 저장한다.
   기존 evidence는 분석 당시 병합 근거로 유지한다. 기존 confidence는 LLM 신뢰도다.
 - risk_analyses의 revision_reason/ai_revision은 전체 수정본으로 유지한다.
+- risk_analyses의 revision_status는 수정안 생성 상태를 `PENDING`, `COMPLETED`,
+  `UNAVAILABLE`, `NOT_REQUESTED`로 저장한다.
 - risk_analyses의 credible_threat, student_safety_concern, privacy_exposure에 tri-state 안전 신호를
   저장한다. `V20261112_01__add_llm_severity_and_safety_flags.sql`은 이 컬럼과 범위 제약을 추가한다.
 
 개발·테스트 환경은 H2와 `ddl-auto=create-drop`을 유지하며 Flyway는 비활성화되어 있다.
-운영용 증분 변경은 `V20261112_01__add_llm_severity_and_safety_flags.sql`로 제공한다.
+수정안 상태 증분 변경은 `V20261113_01__add_risk_revision_status.sql`로 제공한다.
 다만 저장소에 전체 초기 스키마 migration이 아직 없으므로 운영 적용 전 기존 DB를 Flyway
 baseline으로 등록해야 한다. 신규 컬럼은 nullable이며 기존 분석은 백필하지 않고 구형 응답으로
 해석한다. 롤백 시 애플리케이션을 이전 버전으로 되돌린 뒤 신규 컬럼과 제약을 제거할 수 있지만,
@@ -444,7 +459,7 @@ FastAPI에는 현재 교사용 감정 완충 요약만 있고 일반 민원 요�
 | GET | `/complaints/{complaintId}/messages` | 학부모용 전송 메시지 목록과 현재 차례 조회 |
 | PUT | `/complaints/{complaintId}/message-draft` | 학부모 추가 문의 초안 생성 또는 버전 조건부 수정 |
 | GET | `/complaints/{complaintId}/message-draft` | 학부모 추가 문의 임시저장 조회 |
-| POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 추가 문의 AI 위험 분석·수정 제안 생성 |
+| POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 추가 문의 AI 위험 분석 후 비동기 수정안 생성 |
 | POST | `/complaints/{complaintId}/messages/{messageId}/send` | 버전 조건 확인 후 추가 문의 전송 및 교사 차례로 변경 |
 | POST | `/teacher/complaints/{complaintId}/close` | 교사가 답변 후 상담 완료 처리 |
 
@@ -460,7 +475,8 @@ FastAPI에는 현재 교사용 감정 완충 요약만 있고 일반 민원 요�
 
 추가 문의 최초 저장은 `{"content":"..."}`처럼 버전을 생략할 수 있다. 기존 초안 수정은
 `{"content":"...","expectedContentVersion":2}`, 전송은 `{"expectedContentVersion":2}`를
-보낸다. 서버는 민원 행 쓰기 잠금 안에서 현재 버전 검사와 저장·전송을 연속 처리한다.
+보낸다. 서버는 AI 대기 전과 제출 확정 시 현재 버전을 각각 확인하고, 제출 확정의 짧은 쓰기
+트랜잭션에서 민원 행 잠금과 저장·전송을 연속 처리한다.
 버전이 누락되거나 다르면 쓰기·전송 없이 409 `CONTENT_VERSION_CONFLICT`를 반환한다.
 
 AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/response/ai-draft`는

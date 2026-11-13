@@ -20,11 +20,13 @@ import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.risk.service.RiskAnalysisService;
+import com.teacherhub.risk.service.RiskAnalysisTransactionRunner;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +39,7 @@ public class ParentMessageService {
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
     private final RiskAnalysisService riskAnalysisService;
+    private final RiskAnalysisTransactionRunner transactionRunner;
 
     @Transactional
     public ParentMessageResponse saveDraft(
@@ -77,38 +80,60 @@ public class ParentMessageService {
                 )));
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.SUPPORTS)
     public ParentMessageResponse submit(
             Long userId,
             Long complaintId,
             Long messageId,
             Long expectedContentVersion
     ) {
-        User user = findUser(userId);
-        Complaint complaint = findParentTurnForUpdate(user, complaintId);
-        ComplaintMessage message = findOwnedDraft(userId, complaintId, messageId);
-        verifyContentVersion(expectedContentVersion, message.getContentVersion());
-
+        transactionRunner.read(() -> {
+            User user = findUser(userId);
+            Complaint complaint = findParentComplaint(user, complaintId);
+            boolean canSubmit = complaint.getStatus() == ComplaintStatus.CLOSED
+                    || (complaint.getStatus() == ComplaintStatus.OPEN
+                    && complaint.getWaitingFor() == WaitingFor.PARENT);
+            if (!canSubmit) {
+                throw new MessageNotEditableException(
+                        "학부모가 추가 문의를 작성할 수 있는 상태가 아닙니다."
+                );
+            }
+            ComplaintMessage message = findOwnedDraft(userId, complaintId, messageId);
+            verifyContentVersion(expectedContentVersion, message.getContentVersion());
+            return null;
+        });
         var analysisResult = riskAnalysisService.analyzeMessageForSubmissionResult(
                 userId,
                 complaintId,
                 messageId
         );
-        markLatestTeacherMessageRead(complaintId, user);
-        message.send();
-        ComplaintStatus previousStatus = complaint.parentMessageSent();
+        return transactionRunner.write(() -> {
+            User user = findUser(userId);
+            Complaint complaint = findParentTurnForUpdate(user, complaintId);
+            ComplaintMessage message = findOwnedDraft(userId, complaintId, messageId);
+            verifyContentVersion(expectedContentVersion, message.getContentVersion());
+            if (message.getContentVersion() != analysisResult.analyzedContentVersion()) {
+                throw new ContentVersionConflictException(
+                        analysisResult.analyzedContentVersion(),
+                        message.getContentVersion()
+                );
+            }
+            markLatestTeacherMessageRead(complaintId, user);
+            message.send();
+            ComplaintStatus previousStatus = complaint.parentMessageSent();
 
-        ComplaintMessage saved = messageRepository.saveAndFlush(message);
-        eventRepository.save(ComplaintEvent.messageSent(saved));
-        if (previousStatus == ComplaintStatus.CLOSED) {
-            eventRepository.save(ComplaintEvent.statusChanged(
-                    complaint,
-                    user,
-                    ComplaintStatus.CLOSED,
-                    ComplaintStatus.OPEN
-            ));
-        }
-        return ParentMessageResponse.submitted(saved, analysisResult);
+            ComplaintMessage saved = messageRepository.saveAndFlush(message);
+            eventRepository.save(ComplaintEvent.messageSent(saved));
+            if (previousStatus == ComplaintStatus.CLOSED) {
+                eventRepository.save(ComplaintEvent.statusChanged(
+                        complaint,
+                        user,
+                        ComplaintStatus.CLOSED,
+                        ComplaintStatus.OPEN
+                ));
+            }
+            return ParentMessageResponse.submitted(saved, analysisResult);
+        });
     }
 
     @Transactional

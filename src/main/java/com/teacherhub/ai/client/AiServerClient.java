@@ -11,6 +11,7 @@ import com.teacherhub.ai.exception.AiRequestPreparationException;
 import com.teacherhub.ai.exception.AiResponseInvalidException;
 import com.teacherhub.ai.exception.AiServiceUnavailableException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -29,23 +30,35 @@ public class AiServerClient {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final URI baseUri;
-    private final Duration requestTimeout;
+    private final Duration defaultRequestTimeout;
+    private final Duration riskAnalysisTimeout;
+    private final Duration revisionTimeout;
 
+    @Autowired
     public AiServerClient(
             @Value("${ai.server.url:http://localhost:8000}") String aiServerUrl,
             @Value("${ai.server.connect-timeout-ms:2000}") long connectTimeoutMs,
-            @Value("${ai.server.request-timeout-ms:60000}") long requestTimeoutMs
+            @Value("${ai.server.request-timeout-ms:60000}") long requestTimeoutMs,
+            @Value("${ai.server.risk-analysis-timeout-ms:60000}") long riskAnalysisTimeoutMs,
+            @Value("${ai.server.revision-timeout-ms:30000}") long revisionTimeoutMs
     ) {
-        if (connectTimeoutMs < 1 || requestTimeoutMs < 1) {
+        if (connectTimeoutMs < 1 || requestTimeoutMs < 1
+                || riskAnalysisTimeoutMs < 1 || revisionTimeoutMs < 1) {
             throw new IllegalArgumentException("AI 서버 제한 시간은 1ms 이상이어야 합니다.");
         }
         this.baseUri = normalizeBaseUri(aiServerUrl);
-        this.requestTimeout = Duration.ofMillis(requestTimeoutMs);
+        this.defaultRequestTimeout = Duration.ofMillis(requestTimeoutMs);
+        this.riskAnalysisTimeout = Duration.ofMillis(riskAnalysisTimeoutMs);
+        this.revisionTimeout = Duration.ofMillis(revisionTimeoutMs);
         this.httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofMillis(connectTimeoutMs))
                 .build();
         this.objectMapper = strictObjectMapper();
+    }
+
+    public AiServerClient(String aiServerUrl, long connectTimeoutMs, long requestTimeoutMs) {
+        this(aiServerUrl, connectTimeoutMs, requestTimeoutMs, requestTimeoutMs, requestTimeoutMs);
     }
 
     public <T> T post(
@@ -104,7 +117,7 @@ public class AiServerClient {
                     .uri(resolve(path))
                     .header("Content-Type", "application/json; charset=UTF-8")
                     .header("Accept", "application/json")
-                    .timeout(requestTimeout)
+                    .timeout(timeoutFor(path))
                     .POST(HttpRequest.BodyPublishers.ofString(
                             requestJson,
                             StandardCharsets.UTF_8
@@ -116,6 +129,16 @@ public class AiServerClient {
                     exception
             );
         }
+    }
+
+    private Duration timeoutFor(String path) {
+        if ("/api/v1/ai/analyze".equals(path)) {
+            return riskAnalysisTimeout;
+        }
+        if ("/api/v1/ai/revision".equals(path)) {
+            return revisionTimeout;
+        }
+        return defaultRequestTimeout;
     }
 
     private URI resolve(String path) {

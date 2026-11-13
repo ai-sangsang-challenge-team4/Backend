@@ -28,11 +28,14 @@ AI 저장소의 `.env`와 API 키는 백엔드 저장소에 복사하거나 커�
 AI_SERVER_URL=http://localhost:8000
 AI_SERVER_CONNECT_TIMEOUT_MS=2000
 AI_SERVER_REQUEST_TIMEOUT_MS=60000
+AI_RISK_ANALYSIS_TIMEOUT_MS=60000
+AI_REVISION_TIMEOUT_MS=30000
 ```
 
 같은 EC2 배치를 유지하는 한 `localhost`가 올바르다. 서비스를 다른 인스턴스로 분리할 때만
 사설 DNS 또는 사설 IP로 `AI_SERVER_URL`을 변경하고, 보안 그룹과 전송 암호화를 함께 검토한다.
-실제 위험 분석 호출은 약 18초가 걸릴 수 있으므로 요청 제한 시간 기본값은 60초다.
+위험 분석 제한 시간 기본값은 60초이고 수정안은 30초다. 제한 시간 조정은 속도 개선이 아니며,
+수정안 호출은 위험 분석 POST 응답 경로와 분리되어 있다.
 
 ## 직접 확인 순서
 
@@ -64,17 +67,19 @@ AI_SERVER_URL=http://localhost:8000 ./gradlew liveAiTest
 1. FastAPI `/api/v1/ai/analyze` 호출과 Spring Boot HTTP 200
 2. `analysisMode=HYBRID`, `aiAnalysisStatus=COMPLETED`
 3. 분석·태그·Severity·안전 신호의 DB 저장과 조회
-4. 수정안 `/api/v1/ai/revision` 결과 저장
+4. 위험 분석 응답 후 `revisionStatus=PENDING`, 이후 수정안 `/api/v1/ai/revision` 결과 저장과 `COMPLETED` 전환
 5. 교사 대화 완충 요약 `/api/v1/ai/summary`
 6. Low·Medium 교사 답변 초안 `/api/v1/ai/response-draft`
 
-AI 서비스가 중단된 상태에서는 위험 분석이 Rule-only로 전환되고, 완충 요약은
+위험 분석 AI가 중단되면 Rule-only로 전환한다. 위험 분석은 성공하고 수정안 AI만 실패하면
+HYBRID 결과를 유지하고 `revisionStatus=UNAVAILABLE`로 전환한다. 완충 요약은
 `summaryStatus=UNAVAILABLE`, 답변 초안은 503이 되는지 확인한다. 이 세 동작이 롤백 기준과
 장애 알림의 기준이다.
 
 ## 배포 후 관측과 롤백
 
-- 확인 지표: AI 호출 성공률, Rule-only 전환율, 429·5xx·timeout, p95 지연, EC2 가용 메모리
+- 확인 지표: capability·attempt별 AI 호출 성공률과 durationMs, Rule-only 전환율,
+  수정안 UNAVAILABLE 비율, 429·5xx·timeout, p95 지연, EC2 가용 메모리
 - 비용 지표: Claude, Gemini, Cloudflare Workers AI 호출량
 - 데이터 지표: ChromaDB 백업 성공과 최근 복구 시험 시각
 - 롤백 조건: Spring Boot 오류율 급증, 지속적인 AI timeout, 메모리 부족 재시작, 잘못된 스키마 응답

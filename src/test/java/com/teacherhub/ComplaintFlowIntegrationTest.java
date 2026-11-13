@@ -508,13 +508,13 @@ public class ComplaintFlowIntegrationTest {
         entityManager.clear();
 
         var findings = riskAnalysisQueryService.findFindings(parentUser.getId(), analysisId);
+        assertThat(findings.revisionStatus())
+                .isEqualTo(com.teacherhub.risk.enums.RevisionStatus.PENDING);
         assertThat(findings.findings()).hasSize(2).allSatisfy(finding -> {
             assertThat(finding.evidences()).isNotEmpty();
-            assertThat(finding.revisionSuggestions()).hasSize(1);
-            assertThat(finding.revisionSuggestions().get(0).suggestedExpression()).isNotBlank();
+            assertThat(finding.revisionSuggestions()).isEmpty();
         });
-        assertThat(findings.finalRevision().content()).isEqualTo(
-                riskAnalysisRepository.findById(analysisId).orElseThrow().getAiRevision());
+        assertThat(findings.finalRevision()).isNull();
         assertThat(riskAnalysisQueryService.findFindings(parentUser.getId(), analysisId)).isEqualTo(findings);
         var detail = riskAnalysisQueryService.findDetectorResults(parentUser.getId(), analysisId);
         assertThat(detail.results()).hasSize(com.teacherhub.risk.enums.RiskTagCode.values().length);
@@ -1121,8 +1121,9 @@ public class ComplaintFlowIntegrationTest {
         assertThat(reviewResponse.riskLevel())
                 .isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
         var findings = riskAnalysisQueryService.findFindings(parentUser.getId(), reviewResponse.analysisId());
-        assertThat(findings.finalRevision().reason()).isNotBlank();
-        assertThat(findings.finalRevision().content()).isNotBlank();
+        assertThat(findings.revisionStatus())
+                .isEqualTo(com.teacherhub.risk.enums.RevisionStatus.PENDING);
+        assertThat(findings.finalRevision()).isNull();
         assertThat(draft.getContent()).isEqualTo(createRequest.content());
         assertThat(riskAnalysisQueryService.findDetectorResults(parentUser.getId(), reviewResponse.analysisId()).results())
                 .hasSize(com.teacherhub.risk.enums.RiskTagCode.values().length);

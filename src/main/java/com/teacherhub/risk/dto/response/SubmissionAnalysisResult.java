@@ -4,6 +4,7 @@ import com.teacherhub.risk.enums.SubmissionAnalysisStatus;
 
 public record SubmissionAnalysisResult(
         SubmissionAnalysisStatus status,
-        RiskSummaryResponse summary
+        RiskSummaryResponse summary,
+        long analyzedContentVersion
 ) {
 }

@@ -51,6 +51,7 @@ class RiskAnalysisControllerTest {
                 .andExpect(jsonPath("$.riskScore").value(5))
                 .andExpect(jsonPath("$.riskLevel").value("HIGH"))
                 .andExpect(jsonPath("$.aiAnalysisStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.revisionStatus").value("PENDING"))
                 .andExpect(jsonPath("$.riskAnalysis").doesNotExist())
                 .andExpect(jsonPath("$.originalContent").doesNotExist())
                 .andExpect(jsonPath("$.riskyExpressions").doesNotExist())

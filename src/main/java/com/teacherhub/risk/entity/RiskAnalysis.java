@@ -4,6 +4,7 @@ import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskAnalysisMode;
+import com.teacherhub.risk.enums.RevisionStatus;
 import com.teacherhub.risk.dto.llm.SafetyFlags;
 import com.teacherhub.risk.util.ContentFingerprint;
 import jakarta.persistence.*;
@@ -68,6 +69,10 @@ public class RiskAnalysis {
     @Column(nullable = false, columnDefinition = "boolean default false")
     private boolean completed;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private RevisionStatus revisionStatus = RevisionStatus.NOT_REQUESTED;
+
     // 모든 태그별 수정 제안을 종합한 전체 민원 수정본입니다.
     @Column(columnDefinition = "TEXT")
     private String revisionReason;
@@ -93,6 +98,33 @@ public class RiskAnalysis {
             this.tagRevisionSuggestions.add(suggestion);
         });
         this.completed = true;
+        this.revisionStatus = aiRevision == null
+                ? RevisionStatus.NOT_REQUESTED
+                : RevisionStatus.COMPLETED;
+    }
+
+    public void completeAnalysis(RevisionStatus revisionStatus) {
+        if (revisionStatus != RevisionStatus.PENDING
+                && revisionStatus != RevisionStatus.NOT_REQUESTED) {
+            throw new IllegalArgumentException("분석 완료 시 허용되지 않는 수정안 상태입니다.");
+        }
+        this.completed = true;
+        this.revisionStatus = revisionStatus;
+    }
+
+    public void completeRevision(String revisionReason, String aiRevision,
+                                 List<RiskTagRevisionSuggestion> suggestions) {
+        if (revisionStatus != RevisionStatus.PENDING) {
+            return;
+        }
+        Objects.requireNonNull(aiRevision, "최종 수정안이 필요합니다.");
+        complete(revisionReason, aiRevision, suggestions);
+    }
+
+    public void markRevisionUnavailable() {
+        if (revisionStatus == RevisionStatus.PENDING) {
+            this.revisionStatus = RevisionStatus.UNAVAILABLE;
+        }
     }
 
     public RiskAnalysis(Complaint complaint, int riskScore, RiskLevel riskLevel,

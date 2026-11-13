@@ -62,8 +62,8 @@ public class RiskAnalysisController {
     }
 
     @PostMapping("/complaints/{complaintId}/risk-analysis")
-    @Operation(summary = "최종 위험 분석 및 수정안 생성",
-            description = "마스킹, 룰 탐지와 FastAPI LLM 분석, 병합, 점수 계산·저장 후 수정안을 생성·저장하고 위험 점수·등급만 반환합니다. 근거와 수정 제안은 findings에서 조회합니다.",
+    @Operation(summary = "최종 위험 분석 및 수정안 생성 요청",
+            description = "마스킹, 룰 탐지와 FastAPI LLM 분석, 병합, 점수 계산·저장 후 즉시 위험 점수·등급을 반환합니다. 수정안은 비동기로 생성되며 상태와 결과는 findings에서 조회합니다.",
             responses = {
                     @ApiResponse(responseCode = "200", description = "위험 분석 성공", useReturnTypeSchema = true),
                     @ApiResponse(responseCode = "400", description = "분석할 내용이 없음",
@@ -80,7 +80,7 @@ public class RiskAnalysisController {
     }
 
     @PostMapping("/complaints/{complaintId}/messages/{messageId}/risk-analysis")
-    @Operation(summary = "학부모 추가 문의 위험 분석 및 수정안 생성", responses = {
+    @Operation(summary = "학부모 추가 문의 위험 분석 및 수정안 생성 요청", responses = {
             @ApiResponse(responseCode = "200", description = "추가 문의 위험 분석 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "400", description = "분석할 내용이 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
@@ -98,7 +98,7 @@ public class RiskAnalysisController {
     }
 
     @GetMapping("/risk-analyses/{analysisId}/findings")
-    @Operation(summary = "감지된 위험 태그의 근거 및 수정 제안 조회", responses = {
+    @Operation(summary = "감지된 위험 태그의 근거 및 수정안 상태 조회", responses = {
             @ApiResponse(responseCode = "200", description = "위험 근거 및 수정 제안 조회 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "완료된 위험 분석 결과를 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))

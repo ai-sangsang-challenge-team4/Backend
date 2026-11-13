@@ -26,7 +26,7 @@ erDiagram
   context_required, context_subtype, normalization_rule, dataset_version, enabled.
   CSV v1.1의 72개 후보 신호를 저장하며 애플리케이션에서 캐시해 사용한다.
 - `risk_analyses`: complaint_id, message_id, risk_score, risk_level, model_name, temperature,
-  analysis_mode, credible_threat, student_safety_concern, privacy_exposure, analyzed_at.
+  analysis_mode, revision_status, credible_threat, student_safety_concern, privacy_exposure, analyzed_at.
   message_id와 content_version으로 분석 대상 메시지 버전을 구분한다.
   `analysis_mode`은 정상 Rule+LLM 분석인 `HYBRID`와 외부 AI 실패 후 잠정 분석인 `RULE_ONLY`를
   구분한다. Severity와 안전 신호 증분 컬럼은 Flyway migration으로 관리한다.
@@ -45,12 +45,15 @@ erDiagram
 
 RiskAnalysisService: 본인/DRAFT 검증 → 원문 마스킹 → CSV Rule 후보 탐지 → Rule 근거 마스킹
 → 마스킹 본문과 Rule 후보를 LLM에 전달 → Claude 우선 태그 병합 → 점수 계산 및 결과 저장
-→ 검토 응답. 일반 Rule 후보는 BOUNDARY, HINT_ONLY는 UNKNOWN으로 전달하며 키워드만으로
+→ 검토 응답 → 비동기 수정안 생성. 외부 LLM 호출 전후에는 짧은 트랜잭션만 사용하고,
+AI 대기 중에는 민원 잠금을 유지하지 않는다. 일반 Rule 후보는 BOUNDARY, HINT_ONLY는 UNKNOWN으로 전달하며 키워드만으로
 PRESENT를 확정하지 않는다. 결정론적 Rule PRESENT와 LLM PRESENT는 합집합으로 보존하고,
 태그별 점수는 두 출처 중 최댓값만 사용한다. 누락한 태그는 Rule 상태로 fallback한다.
 수정본은 자동 적용하지 않는다.
 LLM 스키마 오류는 한 번 재생성하고, 재생성 실패 또는 외부 AI 장애 시 전체 Rule 결과만으로
 점수·등급을 계산해 `RULE_ONLY`로 저장한다. 이 경우 AI 수정안은 생성하지 않는다.
+위험 분석 성공 후 수정안 생성만 실패하면 HYBRID 판정은 유지하고 revision_status를
+`UNAVAILABLE`로 저장한다.
 
 시스템 분석은 Rule 점수와 `default_score × severity`인 LLM 점수 중 태그별 최댓값을 합산한다.
 같은 태그가 두 탐지기에서 발견되어도 중복 계산하지 않고 최대 100점으로 제한한다.

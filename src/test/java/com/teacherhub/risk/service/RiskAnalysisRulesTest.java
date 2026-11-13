@@ -28,6 +28,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.*;
 
@@ -50,6 +51,7 @@ class RiskAnalysisRulesTest {
     private final ComplaintRevisionGenerator revisions = mock(ComplaintRevisionGenerator.class);
     private final RiskEvaluator evaluator = new RiskEvaluator(new RiskScorePolicy());
     private final RepeatAnalysisContextFactory repeatContexts = mock(RepeatAnalysisContextFactory.class);
+    private final RiskRevisionService revisionService = mock(RiskRevisionService.class);
 
     private final RiskAnalysisService service = new RiskAnalysisService(
             complaints,
@@ -61,9 +63,10 @@ class RiskAnalysisRulesTest {
             definitions,
             analyses,
             results,
-            revisions,
-             evaluator,
-             repeatContexts
+            evaluator,
+            repeatContexts,
+            new RiskAnalysisTransactionRunner(),
+            revisionService
     );
 
     @BeforeEach
@@ -71,18 +74,23 @@ class RiskAnalysisRulesTest {
         User user = mock(User.class);
         when(user.getId()).thenReturn(1L);
 
-        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(
-                new Complaint(
+        Complaint complaint = new Complaint(
                         new Parent(user),
                         null,
                         mock(com.teacherhub.user.entity.Teacher.class),
                         "민원 제목",
                         "민원 내용"
-                )
-        ));
+                );
+        ReflectionTestUtils.setField(complaint, "id", 42L);
+        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
+        when(complaints.findById(42L)).thenReturn(Optional.of(complaint));
 
         when(analyses.save(any()))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation -> {
+                    var analysis = invocation.getArgument(0, com.teacherhub.risk.entity.RiskAnalysis.class);
+                    ReflectionTestUtils.setField(analysis, "id", 99L);
+                    return analysis;
+                });
 
         when(repeatContexts.create(any(), any())).thenReturn(new RepeatAnalysisContext(
                 true, 7, 3, 1, false,
@@ -133,7 +141,7 @@ class RiskAnalysisRulesTest {
                         )
                 );
 
-        clearInvocations(revisions);
+        clearInvocations(revisionService);
 
         service.analyze(1L, 42L);
 
@@ -142,11 +150,7 @@ class RiskAnalysisRulesTest {
                         RiskEvaluation.class
                 );
 
-        verify(revisions)
-                .generate(
-                        anyString(),
-                        captured.capture()
-                );
+        verify(revisionService).scheduleAfterCommit(eq(99L), anyString(), captured.capture());
 
         return captured.getValue();
     }
@@ -575,7 +579,7 @@ class RiskAnalysisRulesTest {
     }
 
     @Test
-    void externalRevisionFailureFallsBackToCompletedRuleOnlyAnalysis() {
+    void revisionGenerationIsSeparatedFromCompletedHybridAnalysis() {
         when(rules.detect(anyString())).thenReturn(List.of(new RiskTagDetectionResult(
                 THREAT,
                 RiskTagState.PRESENT,
@@ -599,10 +603,10 @@ class RiskAnalysisRulesTest {
 
         var response = service.analyze(1L, 42L);
 
-        assertThat(response.analysisMode()).isEqualTo(RiskAnalysisMode.RULE_ONLY);
+        assertThat(response.analysisMode()).isEqualTo(RiskAnalysisMode.HYBRID);
         assertThat(response.aiAnalysisStatus())
-                .isEqualTo(SubmissionAnalysisStatus.RULE_ONLY_AI_UNAVAILABLE);
-        assertThat(response.manualReviewRequired()).isTrue();
+                .isEqualTo(SubmissionAnalysisStatus.COMPLETED);
+        assertThat(response.manualReviewRequired()).isFalse();
         assertThat(response.riskScore()).isEqualTo(3);
 
         var captured =
@@ -616,23 +620,24 @@ class RiskAnalysisRulesTest {
                 );
 
         assertThat(captured.getValue().isCompleted()).isTrue();
-        assertThat(captured.getValue().getAnalysisMode()).isEqualTo(RiskAnalysisMode.RULE_ONLY);
+        assertThat(captured.getValue().getAnalysisMode()).isEqualTo(RiskAnalysisMode.HYBRID);
         assertThat(captured.getValue().getAiRevision()).isNull();
-        verify(events).save(argThat(event ->
-                event.getEventType() == MessageEventType.AI_ANALYSIS_RULE_FALLBACK
-                        && "RULE_ONLY_AI_UNAVAILABLE".equals(event.getReason())));
+        assertThat(captured.getValue().getRevisionStatus()).isEqualTo(RevisionStatus.PENDING);
+        verify(revisionService).scheduleAfterCommit(eq(99L), anyString(), any());
+        verify(events, never()).save(argThat(event ->
+                event.getEventType() == MessageEventType.AI_ANALYSIS_RULE_FALLBACK));
     }
 
     @Test
-    void internalRevisionRequestFailureRemainsFailClosedBeforeSaving() {
+    void revisionRequestIsNotExecutedOnRequestThread() {
         when(revisions.generate(anyString(), any()))
                 .thenThrow(new AiRequestPreparationException("invalid configuration"));
 
-        assertThatThrownBy(() -> analyze(List.of(), List.of()))
-                .isInstanceOf(AiRequestPreparationException.class);
+        analyze(List.of(), List.of());
 
-        verify(analyses, never()).save(any());
-        verify(results, never()).saveAll(any());
+        verify(analyses).save(any());
+        verify(results).saveAll(any());
+        verifyNoInteractions(revisions);
     }
 
     @Test
@@ -656,11 +661,7 @@ class RiskAnalysisRulesTest {
                         "연락처 [전화번호]"
                 );
 
-        verify(revisions)
-                .generate(
-                        "민원 내용",
-                        result
-                );
+        verify(revisionService).scheduleAfterCommit(99L, "민원 내용", result);
     }
 
     @Test
