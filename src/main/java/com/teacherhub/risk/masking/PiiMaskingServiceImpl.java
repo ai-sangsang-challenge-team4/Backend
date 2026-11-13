@@ -12,7 +12,7 @@ public class PiiMaskingServiceImpl implements PiiMaskingService {
     private static final Pattern PHONE = Pattern.compile("(?<![0-9])(?:\\+82[-.\\s]?(?:10|2|50[1-8]?|[3-6][1-5]|70)|0(?:1[016789]|2|50[1-8]?|[3-6][1-5]|70))[-.\\s]?[0-9]{3,4}[-.\\s]?[0-9]{4}(?![0-9])");
     private static final Pattern CLASS_STUDENT = Pattern.compile(
             "(?<![0-9가-힣])(?:[0-9]{1,2}\\s*학년\\s*)?[0-9]{1,2}\\s*반\\s*[가-힣]{2,10}\\s*학생"
-                    + "(?=$|\\s|[,.!?]|과|와|은|는|이|가|을|를|의|에게|께|에게서)"
+                    + "(?=$|\\s|[\\p{P}\\p{S}]|과|와|은|는|이|가|을|를|의|도|만|에게|께|에게서|부터|까지|처럼|보다|으로|로)"
     );
 
     @Override
@@ -32,8 +32,8 @@ public class PiiMaskingServiceImpl implements PiiMaskingService {
         masked = EMAIL.matcher(masked).replaceAll("[이메일]");
         masked = PHONE.matcher(masked).replaceAll("[전화번호]");
         masked = CLASS_STUDENT.matcher(masked).replaceAll("[학생정보]");
-        masked = replaceAll(masked, safeContext.studentIdentifiers(), "[학번]");
-        masked = replaceAll(masked, safeContext.teacherIdentifiers(), "[교직원번호]");
+        masked = replaceWholeTokens(masked, safeContext.studentIdentifiers(), "[학번]");
+        masked = replaceWholeTokens(masked, safeContext.teacherIdentifiers(), "[교직원번호]");
         masked = replaceAll(masked, safeContext.studentNames(), "[학생명]");
         masked = replaceAll(masked, safeContext.teacherNames(), "[교사명]");
 
@@ -49,15 +49,49 @@ public class PiiMaskingServiceImpl implements PiiMaskingService {
         return masked;
     }
 
+    private String replaceWholeTokens(String content, List<String> values, String replacement) {
+        String masked = content;
+        for (String value : values) {
+            masked = replaceWholeToken(masked, value, replacement);
+        }
+        return masked;
+    }
+
+    private String replaceWholeToken(String content, String value, String replacement) {
+        StringBuilder result = new StringBuilder(content.length());
+        int cursor = 0;
+        int match;
+        while ((match = content.indexOf(value, cursor)) >= 0) {
+            int end = match + value.length();
+            boolean startsAtBoundary = match == 0 || !isIdentifierCharacter(content.charAt(match - 1));
+            boolean endsAtBoundary = end == content.length() || !isIdentifierCharacter(content.charAt(end));
+            if (startsAtBoundary && endsAtBoundary) {
+                result.append(content, cursor, match).append(replacement);
+                cursor = end;
+            } else {
+                result.append(content, cursor, match + 1);
+                cursor = match + 1;
+            }
+        }
+        return result.append(content, cursor, content.length()).toString();
+    }
+
+    private boolean isIdentifierCharacter(char value) {
+        return value >= '0' && value <= '9'
+                || value >= 'A' && value <= 'Z'
+                || value >= 'a' && value <= 'z';
+    }
+
     private void ensureNoSupportedPiiRemains(String masked, PiiMaskingContext context) {
+        String withoutPlaceholders = withoutPlaceholders(masked);
         if (RESIDENT_ID.matcher(masked).find()
                 || EMAIL.matcher(masked).find()
                 || PHONE.matcher(masked).find()
                 || CLASS_STUDENT.matcher(masked).find()
-                || containsAny(withoutPlaceholders(masked), context.studentNames())
-                || containsAny(withoutPlaceholders(masked), context.teacherNames())
-                || containsAny(withoutPlaceholders(masked), context.studentIdentifiers())
-                || containsAny(withoutPlaceholders(masked), context.teacherIdentifiers())) {
+                || containsAny(withoutPlaceholders, context.studentNames())
+                || containsAny(withoutPlaceholders, context.teacherNames())
+                || containsWholeToken(withoutPlaceholders, context.studentIdentifiers())
+                || containsWholeToken(withoutPlaceholders, context.teacherIdentifiers())) {
             throw new IllegalStateException("지원되는 개인정보 형식이 마스킹 후에도 남아 있습니다.");
         }
     }
@@ -76,5 +110,9 @@ public class PiiMaskingServiceImpl implements PiiMaskingService {
 
     private boolean containsAny(String content, List<String> values) {
         return values.stream().anyMatch(content::contains);
+    }
+
+    private boolean containsWholeToken(String content, List<String> values) {
+        return values.stream().anyMatch(value -> !replaceWholeToken(content, value, "").equals(content));
     }
 }

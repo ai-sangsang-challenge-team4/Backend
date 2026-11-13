@@ -420,6 +420,7 @@ public class RiskAnalysisService {
     private PersistedAnalysis persist(AnalysisRequest request, PreparedAnalysis prepared) {
         Complaint complaint = complaintRepository.findForUpdate(request.complaintId())
                 .orElseThrow(() -> new ComplaintNotFoundException("민원 정보를 찾을 수 없습니다."));
+        transactionRunner.refresh(complaint);
         validateOwner(request.userId(), complaint);
 
         ComplaintMessage message;

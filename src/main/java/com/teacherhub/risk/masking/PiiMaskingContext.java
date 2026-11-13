@@ -15,8 +15,8 @@ public record PiiMaskingContext(
     public PiiMaskingContext {
         studentNames = normalize(studentNames, 2);
         teacherNames = normalize(teacherNames, 2);
-        studentIdentifiers = normalize(studentIdentifiers, 3);
-        teacherIdentifiers = normalize(teacherIdentifiers, 3);
+        studentIdentifiers = normalize(studentIdentifiers, 1);
+        teacherIdentifiers = normalize(teacherIdentifiers, 1);
     }
 
     public static PiiMaskingContext empty() {

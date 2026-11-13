@@ -166,6 +166,7 @@ public class ParentComplaintService {
         return transactionRunner.write(() -> {
             Complaint complaint = complaintRepository.findForUpdate(complaintId)
                     .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
+            transactionRunner.refresh(complaint);
             User user = findUser(userId);
             complaintAccessPolicy.validateParentOwner(user, complaint);
             if (complaint.getStatus() != ComplaintStatus.DRAFT) {

@@ -48,7 +48,7 @@ public class ParentMessageService {
             ParentMessageRequest request
     ) {
         User user = findUser(userId);
-        Complaint complaint = findParentTurnForUpdate(user, complaintId);
+        Complaint complaint = findParentTurnForUpdate(user, complaintId, false);
         ComplaintMessage draft = findSavedDraft(complaintId, userId)
                 .orElseGet(() -> new ComplaintMessage(
                         complaint,
@@ -109,7 +109,7 @@ public class ParentMessageService {
         );
         return transactionRunner.write(() -> {
             User user = findUser(userId);
-            Complaint complaint = findParentTurnForUpdate(user, complaintId);
+            Complaint complaint = findParentTurnForUpdate(user, complaintId, true);
             ComplaintMessage message = findOwnedDraft(userId, complaintId, messageId);
             verifyContentVersion(expectedContentVersion, message.getContentVersion());
             if (message.getContentVersion() != analysisResult.analyzedContentVersion()) {
@@ -179,9 +179,12 @@ public class ParentMessageService {
                 .ifPresent(message -> eventRepository.save(ComplaintEvent.messageRead(message, actor)));
     }
 
-    private Complaint findParentTurnForUpdate(User user, Long complaintId) {
+    private Complaint findParentTurnForUpdate(User user, Long complaintId, boolean refresh) {
         Complaint complaint = complaintRepository.findForUpdate(complaintId)
                 .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
+        if (refresh) {
+            transactionRunner.refresh(complaint);
+        }
         complaintAccessPolicy.validateParentOwner(user, complaint);
         boolean canContinueOpenComplaint = complaint.getStatus() == ComplaintStatus.OPEN
                 && complaint.getWaitingFor() == WaitingFor.PARENT;

@@ -30,12 +30,18 @@ AI_SERVER_CONNECT_TIMEOUT_MS=2000
 AI_SERVER_REQUEST_TIMEOUT_MS=60000
 AI_RISK_ANALYSIS_TIMEOUT_MS=60000
 AI_REVISION_TIMEOUT_MS=30000
+RISK_REVISION_RECOVERY_STALE_MINUTES=60
+RISK_REVISION_RECOVERY_INITIAL_DELAY_MS=60000
+RISK_REVISION_RECOVERY_INTERVAL_MS=300000
 ```
 
 같은 EC2 배치를 유지하는 한 `localhost`가 올바르다. 서비스를 다른 인스턴스로 분리할 때만
 사설 DNS 또는 사설 IP로 `AI_SERVER_URL`을 변경하고, 보안 그룹과 전송 암호화를 함께 검토한다.
 위험 분석 제한 시간 기본값은 60초이고 수정안은 30초다. 제한 시간 조정은 속도 개선이 아니며,
 수정안 호출은 위험 분석 POST 응답 경로와 분리되어 있다.
+프로세스 종료 등으로 유실된 수정안 작업은 정상 queue 대기보다 긴 60분이 지난 뒤
+`PENDING`에서 `UNAVAILABLE`로 전환한다. queue 크기나 timeout을 늘릴 때는 이 기준도 함께
+검토한다.
 
 ## 직접 확인 순서
 
@@ -82,7 +88,8 @@ HYBRID 결과를 유지하고 `revisionStatus=UNAVAILABLE`로 전환한다. 완�
 ## 배포 후 관측과 롤백
 
 - 확인 지표: capability·attempt별 AI 호출 성공률과 durationMs, Rule-only 전환율,
-  수정안 UNAVAILABLE 비율, 개인정보 마스킹 실패율, 429·5xx·timeout, p95 지연, EC2 가용 메모리
+  수정안 UNAVAILABLE 비율과 stale 복구 건수, 개인정보 마스킹 실패율, 429·5xx·timeout,
+  p95 지연, EC2 가용 메모리
 - 비용 지표: Claude, Gemini, Cloudflare Workers AI 호출량
 - 데이터 지표: ChromaDB 백업 성공과 최근 복구 시험 시각
 - 롤백 조건: Spring Boot 오류율 급증, 개인정보 마스킹 실패 또는 과도한 오탐 급증, 지속적인 AI timeout,

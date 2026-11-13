@@ -29,7 +29,7 @@ erDiagram
   analysis_mode, revision_status, credible_threat, student_safety_concern, privacy_exposure, analyzed_at.
   message_id와 content_version으로 분석 대상 메시지 버전을 구분한다.
   `analysis_mode`은 정상 Rule+LLM 분석인 `HYBRID`와 외부 AI 실패 후 잠정 분석인 `RULE_ONLY`를
-  구분한다. Severity와 안전 신호 증분 컬럼은 Flyway migration으로 관리한다.
+  구분한다. 현재는 H2 create-drop이 엔티티 정의에 따라 컬럼을 생성한다.
 - `risk_reviews`: risk_analysis_id, reviewed_by, previous_score, previous_level,
   reviewed_score, reviewed_level, direction, reason, reviewed_at. 시스템 분석은 변경하지
   않고 교사의 위험도 검토를 시간순으로 누적한다.
@@ -98,12 +98,8 @@ RiskTagResponse(태그 기준 정보). 규칙 탐지기는 List<RiskTagDetection
 
 ## 스키마 적용
 
-현재 개발 환경은 H2 메모리 DB와 ddl-auto=create-drop으로 엔티티에 따라 생성한다.
-영구 DB에는 자동 적용하지 않았다. 기존 complaint 테이블이 있는 환경은 배포 전에
-complaints 상태/차례 컬럼, complaint_messages 테이블, risk_analyses.message_id 생성을 위한
-별도 마이그레이션이 필요하다. complaint_events 테이블을 생성하고 기존
-complaint_status_history, complaint_original_view_logs뿐 아니라 완료된 risk_analyses,
-risk_reviews, 전송된 complaint_messages도 이벤트 행으로 백필해야 기존 히스토리가
-유지된다. 기존 complaints 본문과 responses 데이터는 메시지 행으로 이관해야 한다.
+현재 개발 환경은 H2 메모리 DB와 ddl-auto=create-drop으로 엔티티에 따라 생성하며 영구 DB는
+아직 사용하지 않는다. 영구 DB 도입 시 현재 엔티티 전체를 기준으로 초기 마이그레이션을 만들고,
+운영 데이터가 생긴 이후의 증분 변경부터 백필·롤백 정책을 함께 관리한다.
 기존 ai_drafts는 필요하면 `AI_DRAFT_GENERATED` 이벤트로 변환한 후 테이블과
 complaint_messages.ai_draft_id 외래 키를 제거한다. created_at은 민원 DRAFT 생성 시간이다.

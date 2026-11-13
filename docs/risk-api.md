@@ -104,6 +104,9 @@ POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 AP
 일반 하이브리드 분석은 위험 분석 저장 직후 `PENDING`으로 응답하고 전용 실행기에서 수정안을
 생성한다. Rule-only 분석과 제출 중 최종 재분석은 수정안을 요청하지 않으므로
 `NOT_REQUESTED`다.
+프로세스 종료나 작업 유실로 `PENDING`이 장시간 유지되는 경우 복구 작업이 기본 60분이 지난
+항목만 `UNAVAILABLE`로 전환한다. 정상 큐 대기와 AI timeout보다 충분히 긴 기준이며 운영 환경에서
+복구 기준과 실행 주기를 설정할 수 있다.
 
 일반 위험 분석과 추가 문의 위험 분석 모두 `aiAnalysisStatus`를 반환한다. 새 하이브리드 분석은
 `COMPLETED`, 기존 하이브리드 결과는 `REUSED`, 기존 Rule-only 결과는 `REUSED_RULE_ONLY`,
@@ -225,7 +228,7 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 - 제출도 위험 분석과 제출 확정을 분리하고, 제출 확정 시 분석한 `contentVersion`을 다시
   확인한다. 분석 중 내용이 바뀌면 409 충돌로 처리한다.
 
-DB에는 risk_analyses의 content_hash/completed/revision_reason/ai_revision/revision_status 컬럼과 risk_analysis_expressions 테이블이 추가된다. `revision_status` 추가는 Flyway `V1__add_risk_revision_status.sql`로 관리하며 기존 `ai_revision`이 있는 행은 `COMPLETED`, 나머지는 `NOT_REQUESTED`로 이관한다. 원문은 complaint_messages.content에만 보관하고, risk_analyses에는 동일 내용 분석을 재사용하기 위한 SHA-256 지문만 저장한다. 기존 분석에는 전체 재사용 응답이 없으므로 completed 기본값은 false이며 재사용·완료 횟수에서 제외된다.
+현재 H2 스키마에는 risk_analyses의 content_hash/completed/revision_reason/ai_revision/revision_status 컬럼과 risk_analysis_expressions 테이블이 포함된다. 원문은 complaint_messages.content에만 보관하고, risk_analyses에는 동일 내용 분석을 재사용하기 위한 SHA-256 지문만 저장한다. 현재 영구 DB와 기존 운영 데이터가 없으므로 별도 증분 마이그레이션이나 백필은 제공하지 않는다.
 
 ## 오류
 
@@ -355,14 +358,12 @@ Rule의 severity/repeatCount는 null이다. 위치를 확정할 수 없는
 - risk_analyses의 revision_status는 수정안 생성 상태를 `PENDING`, `COMPLETED`,
   `UNAVAILABLE`, `NOT_REQUESTED`로 저장한다.
 - risk_analyses의 credible_threat, student_safety_concern, privacy_exposure에 tri-state 안전 신호를
-  저장한다. `V20261112_01__add_llm_severity_and_safety_flags.sql`은 이 컬럼과 범위 제약을 추가한다.
+  저장한다.
 
-개발·테스트 환경은 H2와 `ddl-auto=create-drop`을 유지하며 Flyway는 비활성화되어 있다.
-수정안 상태 증분 변경은 `V20261113_01__add_risk_revision_status.sql`로 제공한다.
-다만 저장소에 전체 초기 스키마 migration이 아직 없으므로 운영 적용 전 기존 DB를 Flyway
-baseline으로 등록해야 한다. 신규 컬럼은 nullable이며 기존 분석은 백필하지 않고 구형 응답으로
-해석한다. 롤백 시 애플리케이션을 이전 버전으로 되돌린 뒤 신규 컬럼과 제약을 제거할 수 있지만,
-그 기간에 저장된 Severity와 안전 신호 감사 정보는 소실되므로 먼저 별도 보관해야 한다.
+현재 개발·테스트 환경은 H2와 `ddl-auto=create-drop`을 사용하며 Flyway는 비활성화되어 있다.
+영구 DB를 도입할 때 현재 엔티티 전체를 기준으로 초기 스키마 마이그레이션을 만들고,
+기존 데이터가 생긴 이후라면 `revision_status NOT NULL` 기본값과 기존 수정안 백필 정책을
+별도 배포 계획으로 확정해야 한다.
 
 ### 배포 확인과 롤백 조건
 

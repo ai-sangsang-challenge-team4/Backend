@@ -41,8 +41,26 @@ class PiiMaskingServiceTest {
 
     @Test
     void masksClassStudentPatternsWithoutCompilingPerNameRegex() {
-        assertThat(service.mask("3학년 2반 김민수학생과 0반 박서준 학생을 확인해 주세요."))
-                .isEqualTo("[학생정보]과 [학생정보]을 확인해 주세요.");
+        assertThat(service.mask(
+                "3학년 2반 김민수학생과 0반 박서준 학생을 확인하고, "
+                        + "1반 이서준 학생도 4반 최유리 학생(피해자)과 확인해 주세요."
+        )).isEqualTo(
+                "[학생정보]과 [학생정보]을 확인하고, "
+                        + "[학생정보]도 [학생정보](피해자)과 확인해 주세요."
+        );
+    }
+
+    @Test
+    void masksShortIdentifiersOnlyAsWholeTokens() {
+        PiiMaskingContext context = new PiiMaskingContext(
+                List.of(),
+                List.of(),
+                List.of("7"),
+                List.of("12")
+        );
+
+        assertThat(service.mask("학번7과 학번 7, 2017, 교번 12와 A12", context))
+                .isEqualTo("학번[학번]과 학번 [학번], 2017, 교번 [교직원번호]와 A12");
     }
 
     @Test
