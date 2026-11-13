@@ -183,7 +183,7 @@ public class TeacherComplaintController {
 
 
     // AI 초안 생성
-    @Operation(summary = "교사 AI 답변 초안 생성", description = "Low·Medium에서 현재 대화 이력을 기반으로 답변 초안을 생성합니다. High는 제한형 공식 템플릿만 제공하고, Emergency 또는 safetyLock 상태에서는 답변 생성을 차단합니다. 현재 제공자는 Mock 구현입니다.", responses = {
+    @Operation(summary = "교사 AI 답변 초안 생성", description = "Low·Medium에서 FastAPI가 현재 대화 이력을 기반으로 답변 초안을 생성합니다. High는 제한형 공식 템플릿만 제공하고, Emergency 또는 safetyLock 상태에서는 답변 생성을 차단합니다.", responses = {
             @ApiResponse(responseCode = "201", description = "AI 답변 초안 생성 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),

@@ -1,6 +1,7 @@
 package com.teacherhub.risk.analyzer;
 
 import com.sun.net.httpserver.HttpServer;
+import com.teacherhub.ai.client.AiServerClient;
 import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.enums.RiskTagCode;
@@ -44,11 +45,7 @@ class PythonLlmRiskAnalyzerTest {
         });
         server.start();
 
-        var analyzer = new PythonLlmRiskAnalyzer(
-                "http://127.0.0.1:" + server.getAddress().getPort(),
-                1_000,
-                2_000
-        );
+        var analyzer = analyzer();
         var repeatContext = new RepeatAnalysisContext(
                 true, 7, 3, 3, true,
                 "OPEN_WAITING_FOR_TEACHER", 2, 1, 3, 3, 30, false, List.of()
@@ -109,11 +106,7 @@ class PythonLlmRiskAnalyzerTest {
             exchange.close();
         });
         server.start();
-        var analyzer = new PythonLlmRiskAnalyzer(
-                "http://127.0.0.1:" + server.getAddress().getPort(),
-                1_000,
-                2_000
-        );
+        var analyzer = analyzer();
 
         assertThatThrownBy(() -> analyzer.analyze(
                 "마스킹된 민원",
@@ -145,5 +138,13 @@ class PythonLlmRiskAnalyzerTest {
                  "safetyFlags":{"credibleThreat":false,"studentSafetyConcern":null,
                                 "privacyExposure":false}}
                 """.formatted(tags);
+    }
+
+    private PythonLlmRiskAnalyzer analyzer() {
+        return new PythonLlmRiskAnalyzer(new AiServerClient(
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                1_000,
+                2_000
+        ));
     }
 }

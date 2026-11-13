@@ -10,6 +10,7 @@ import com.teacherhub.complaint.query.dto.ComplaintListSort;
 import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseRequest;
+import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.dto.response.RiskSummaryResponse;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.repository.ComplaintRepository;
@@ -53,6 +54,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 
 @SpringBootTest
@@ -63,6 +66,9 @@ public class ComplaintFlowIntegrationTest {
 
     @MockitoBean
     private ComplaintRevisionGenerator complaintRevisionGenerator;
+
+    @MockitoBean
+    private TeacherSupportContentProvider teacherSupportContentProvider;
 
     @Autowired
     private com.teacherhub.risk.repository.RiskTagRepository riskTagDefinitionRepository;
@@ -105,6 +111,22 @@ public class ComplaintFlowIntegrationTest {
                 com.teacherhub.risk.enums.RiskTagCode.PRIVACY, 15
         ));
         assertThat(scores.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(86);
+    }
+
+    @Test
+    void doesNotGenerateBufferedSummaryDuringComplaintListLookup() {
+        Long complaintId = parentComplaintService.createDraft(
+                parentUser.getId(),
+                createRequest("연락처는 010-1234-5678입니다.")
+        ).getComplaintId();
+
+        var item = complaintQueryService.findComplaints(parentUser.getId()).stream()
+                .filter(candidate -> candidate.complaintId().equals(complaintId))
+                .findFirst()
+                .orElseThrow();
+
+        verifyNoInteractions(teacherSupportContentProvider);
+        assertThat(item.aiSummary()).isNull();
     }
 
     @Test
@@ -963,6 +985,14 @@ public class ComplaintFlowIntegrationTest {
                 )
         );
 
+        when(teacherSupportContentProvider.createBufferedSummary(anyString()))
+                .thenReturn("[MOCK] 학부모가 전달한 민원의 완충 요약을 확인해 주세요.");
+        when(teacherSupportContentProvider.createResponseDraft(anyString()))
+                .thenReturn(new TeacherSupportContentProvider.GeneratedResponseDraft(
+                        "안녕하세요, 학부모님. 확인 후 안내드리겠습니다.",
+                        "mock-teacher-response-v1"
+                ));
+
         // 학부모 계정
         parentUser = new User(
                 "parent@test.com",
@@ -1232,7 +1262,7 @@ public class ComplaintFlowIntegrationTest {
         assertThat(teacherListItem.counterpartRole()).isEqualTo(UserRole.PARENT);
         assertThat(teacherListItem.grade()).isEqualTo(3);
         assertThat(teacherListItem.classNo()).isEqualTo(2);
-        assertThat(teacherListItem.aiSummary()).isNotBlank();
+        assertThat(teacherListItem.aiSummary()).isNull();
         assertThat(teacherListItem.latestReceivedAt()).isCloseTo(
                 teacherDetail.submittedAt(),
                 org.assertj.core.api.Assertions.within(1, java.time.temporal.ChronoUnit.SECONDS)

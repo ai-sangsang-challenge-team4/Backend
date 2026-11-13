@@ -63,7 +63,7 @@ public class RiskAnalysisController {
 
     @PostMapping("/complaints/{complaintId}/risk-analysis")
     @Operation(summary = "최종 위험 분석 및 수정안 생성",
-            description = "마스킹, 룰·LLM 탐지, 병합, 점수 계산·저장 후 수정안을 생성·저장하고 위험 점수·등급만 반환합니다. 근거와 수정 제안은 findings에서 조회합니다. 현재 탐지기와 수정안 생성기는 Mock입니다.",
+            description = "마스킹, 룰 탐지와 FastAPI LLM 분석, 병합, 점수 계산·저장 후 수정안을 생성·저장하고 위험 점수·등급만 반환합니다. 근거와 수정 제안은 findings에서 조회합니다.",
             responses = {
                     @ApiResponse(responseCode = "200", description = "위험 분석 성공", useReturnTypeSchema = true),
                     @ApiResponse(responseCode = "400", description = "분석할 내용이 없음",

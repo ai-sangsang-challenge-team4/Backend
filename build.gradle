@@ -55,5 +55,20 @@ dependencies {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'live-ai'
+    }
+}
+
+tasks.register('liveAiTest', Test) {
+    group = 'verification'
+    description = 'Runs opt-in tests against the deployed FastAPI server.'
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf('Calls an external AI service') { true }
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'live-ai'
+    }
+    shouldRunAfter tasks.named('test')
 }

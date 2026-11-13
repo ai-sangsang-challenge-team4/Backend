@@ -14,7 +14,6 @@ import com.teacherhub.complaint.query.dto.ComplaintPageResponse;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.query.repository.ComplaintSearchQueryRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
-import com.teacherhub.complaint.teacher.provider.ComplaintSummaryProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
@@ -42,7 +41,6 @@ public class ComplaintQueryService {
     private final StudentClassRepository studentClassRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
-    private final ComplaintSummaryProvider complaintSummaryProvider;
 
 
     // 민원 목록 조회
@@ -143,13 +141,7 @@ public class ComplaintQueryService {
                 analysis,
                 latestReview(analysis),
                 schoolClass,
-                complaintSummaryProvider.createSummary(
-                        latestParentMessage
-                                .map(message -> message.getMaskedContent() == null
-                                        ? message.getContent()
-                                        : message.getMaskedContent())
-                                .orElse(complaint.getContent())
-                ),
+                null,
                 latestReceivedAt,
                 viewerRole
         );

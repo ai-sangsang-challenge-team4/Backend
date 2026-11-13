@@ -41,6 +41,28 @@
 
 룰 탐지기·LLM 분석기·수정안 생성기 인터페이스 및 `risk.masking`의 마스킹 구현은 별도로 유지한다.
 
+## 외부 AI 서버 연동
+
+Spring Boot와 FastAPI는 같은 EC2에서 실행하며, FastAPI는 외부에 공개하지 않고
+`127.0.0.1:8000`에 바인딩한다. 백엔드 기본 주소는 `http://localhost:8000`이고 운영 환경에서
+`AI_SERVER_URL`로 재정의할 수 있다. 연결 제한 시간과 요청 제한 시간은 각각
+`AI_SERVER_CONNECT_TIMEOUT_MS`, `AI_SERVER_REQUEST_TIMEOUT_MS`로 설정한다.
+
+| 백엔드 경계 | FastAPI 경로 | 입력 개인정보 정책 | 장애 정책 |
+|---|---|---|---|
+| `PythonLlmRiskAnalyzer` | `POST /api/v1/ai/analyze` | 마스킹 본문·마스킹 Rule 근거만 전달 | Rule-only 잠정 분석 |
+| `PythonComplaintRevisionGenerator` | `POST /api/v1/ai/revision` | 마스킹 본문·마스킹 최종 태그만 전달 | 수정안 없이 Rule-only 잠정 분석 |
+| `PythonTeacherSupportContentProvider` | `POST /api/v1/ai/summary` | 마스킹된 학부모 메시지만 전달 | 요약 `UNAVAILABLE`, 원문 자동 노출 금지 |
+| `PythonTeacherSupportContentProvider` | `POST /api/v1/ai/response-draft` | 전체 대화를 메시지별 마스킹 후 전달 | 초안 미제공, 502/503 응답 |
+
+공통 클라이언트는 timeout과 HTTP 상태를 일관되게 변환하고, 응답의 알 수 없는 필드와 숫자·불리언
+문자열 coercion을 거부한다. 요청·응답 본문은 오류 메시지나 로그에 기록하지 않는다. FastAPI의
+4xx는 백엔드 연동 구성 오류로 취급하고 429·5xx·연결 실패·timeout은 외부 AI 장애로 취급한다.
+
+초기 Mock 검증용이던 백엔드 `POST /api/v1/ai/analyze`는 제품 민원 흐름과 중복되어 제거했다.
+클라이언트는 `POST /complaints/{complaintId}/risk-analysis` 또는 메시지별 위험 분석 API를
+사용하며, `/api/v1/ai/*`는 Spring Boot가 FastAPI에 호출하는 내부 경로다.
+
 ```json
 {
   "complaintId": 42,
@@ -86,8 +108,9 @@ POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 AP
 `UNFAIR_REQUEST 8`, `PRIVACY 15`다. 등급은
 0~20 LOW, 21~40 MEDIUM, 41~60 HIGH, 61~100 EMERGENCY다.
 
-신규 LLM 응답은 전체 8개 태그에 `severity`와 `repeatCount`를 반환한다. Severity는
-`PRESENT=1~3`, `ABSENT=0`, `BOUNDARY/UNKNOWN=null`만 허용한다. LLM 점수는 서버의
+신규 LLM 응답은 전체 8개 태그에 `severity`와 `repeatCount` 필드를 반환한다. 두 값은
+`PRESENT=severity 1~3/repeatCount 0~10,000`, `ABSENT=0/0`,
+`BOUNDARY/UNKNOWN=null/null`만 허용한다. LLM 점수는 서버의
 `RiskScorePolicy`가 `defaultScore × severity`로 계산하고, confidence는 점수에 사용하지 않는다.
 같은 태그의 최종 점수는 `max(Rule 점수, LLM 점수)`이므로 중복 합산하지 않는다. 신규 필드가
 모두 없는 구형 응답은 기존 고정 점수(1배)로 처리하지만, 신규 필드를 일부만 보내거나 상태와
@@ -392,6 +415,10 @@ Postman에서는 생성 후 DRAFT, send 성공 후 OPEN을 조회하고,
 | `sort` | `LATEST` | `LATEST`(최근 활동순), `OLDEST`(오래된순) |
 
 페이지 크기는 10개로 고정하며 클라이언트가 `size`를 변경할 수 없다. 교사 목록과 검색에서는 제출되지 않은 민원과 DRAFT 메시지를 제외한다. `riskLevel`은 최신 완료 분석에 최신 교사 검토가 있으면 그 등급을 기준으로 필터링한다.
+목록의 `aiSummary`는 전체 민원의 핵심 내용과 현재 요청을 표시하는 일반 요약용 필드다.
+FastAPI에는 현재 교사용 감정 완충 요약만 있고 일반 민원 요약 계약은 없으므로 이번 연동에서는
+`null`을 반환한다. 목록 조회는 완충 요약 API를 호출하지 않는다. 일반 요약 API와 생성·저장
+시점이 합의되면 메시지별 완충 요약과 별도 경계 및 저장 구조로 연동한다.
 
 ```json
 {
