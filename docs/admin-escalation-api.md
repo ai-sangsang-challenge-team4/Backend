@@ -208,19 +208,34 @@ Emergency 재검토 거부 요청:
 | 409 | `ESCALATION_VERSION_CONFLICT` | 서버에서 실제 동시 수정 충돌 감지 |
 | 409 | `EMERGENCY_REVIEW_DUPLICATE` | 처리 중이거나 안전 잠금이 유지 중인 재검토 요청 존재 |
 
-## 개발 프로필 테스트 데이터
+## 개발·발표용 테스트 데이터
 
-`dev` 프로필로 실행하면 아래 계정과 관리자 공유 테스트용 민원이 생성된다.
+`dev` 또는 `demo-seed` 프로필로 실행하면 아래 계정과 관리자 공유 테스트용 민원이 생성된다.
+`demo-seed`는 MySQL을 사용하는 `prod` 프로필과 함께 활성화할 수 있으며, 이미 세 계정이 모두
+존재하면 다시 생성하지 않는다. 일부 계정만 존재하면 불완전한 관계 데이터를 만들지 않도록
+서버 시작을 중단한다.
 
 | 역할 | 계정 | 비밀번호 |
 |---|---|---|
-| 교사 | `teacher@test.com` | `Test1234!` |
-| 관리자 | `admin@test.com` | `Test1234!` |
+| 학부모 | `parent@test.com` | `DEMO_SEED_PASSWORD` 또는 기본값 `Test1234!` |
+| 교사 | `teacher@test.com` | `DEMO_SEED_PASSWORD` 또는 기본값 `Test1234!` |
+| 관리자 | `admin@test.com` | `DEMO_SEED_PASSWORD` 또는 기본값 `Test1234!` |
 
-테스트 민원은 `OPEN`, 교사 응답 대기 상태이며 완료된 위험 분석 결과가
+테스트 민원은 현재 `DRAFT`, 응답 주체 미지정 상태이며 완료된 위험 분석 결과가
 `riskScore=70`, `riskLevel=EMERGENCY`로 저장된다. `THREAT` 위험 요소에는 직접적인
 신체 위해와 구체적인 보복 계획이 감지된 것으로 저장한다. 이는 긴급 판정 규칙을 실행한
 결과가 아니라 관리자 공유 흐름을 확인하기 위한 고정 개발 데이터다.
 
 서버 시작 로그의 `emergencyComplaintId`를 공유 API의 `{complaintId}`로 사용한다.
 `adminId`는 함께 출력되지만 공유 요청에서 생략해도 자동으로 개발용 관리자가 배정된다.
+
+발표용 RDS에 한 번 생성할 때는 `/etc/teacherhub/teacherhub.env`에 다음 값을 추가하고 배포한다.
+
+```properties
+SPRING_PROFILES_ACTIVE=prod,demo-seed
+DEMO_SEED_PASSWORD=발표용계정비밀번호
+```
+
+로그에서 `Dev data ready`를 확인한 뒤 `SPRING_PROFILES_ACTIVE=prod`로 되돌리고 서비스를
+재시작한다. 프로필을 비활성화해도 RDS에 생성된 데이터는 유지된다. 실제 사용자용 운영 DB에는
+`demo-seed`를 활성화하지 않는다.

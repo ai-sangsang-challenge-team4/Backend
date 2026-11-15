@@ -28,6 +28,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,11 +37,15 @@ import java.util.List;
 
 @Slf4j
 @Component
-@Profile("dev")
+@Profile({"dev", "demo-seed"})
 @Order(2)
 @RequiredArgsConstructor
 // 테스트용 데이터
 public class DevDataInitializer implements ApplicationRunner {
+    private static final String PARENT_EMAIL = "parent@test.com";
+    private static final String TEACHER_EMAIL = "teacher@test.com";
+    private static final String ADMIN_EMAIL = "admin@test.com";
+    private static final String DEFAULT_DEMO_PASSWORD = "Test1234!";
 
     private final UserRepository userRepository;
     private final ParentRepository parentRepository;
@@ -56,27 +61,33 @@ public class DevDataInitializer implements ApplicationRunner {
     private final RiskTagRepository riskTagRepository;
     private final ComplaintRiskTagRepository complaintRiskTagRepository;
     private final PasswordEncoder passwordEncoder;
+    private final Environment environment;
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        String encodedPassword = passwordEncoder.encode("Test1234!");
+        if (isAlreadySeeded()) {
+            return;
+        }
+
+        String demoPassword = environment.getProperty("DEMO_SEED_PASSWORD", DEFAULT_DEMO_PASSWORD);
+        String encodedPassword = passwordEncoder.encode(demoPassword);
         User parentUser = userRepository.save(new User(
-                "parent@test.com", encodedPassword, "Demo Parent", UserRole.PARENT));
+                PARENT_EMAIL, encodedPassword, "Demo Parent", UserRole.PARENT));
 
         Parent parent = parentRepository.save(new Parent(parentUser));
 
         School school = schoolRepository.save(new School("SCHOOL-001", "상상초등학교"));
 
         User teacherUser = userRepository.save(new User(
-                "teacher@test.com", encodedPassword, "Demo Teacher", UserRole.TEACHER));
+                TEACHER_EMAIL, encodedPassword, "Demo Teacher", UserRole.TEACHER));
         Teacher teacher = teacherRepository.save(new Teacher(teacherUser, "DEV-2026-001", school));
         Teacher unregisteredTeacher = teacherRepository.save(
                 new Teacher(school, "가입용 교사", "DEV-2026-002")
         );
 
         User adminUser = userRepository.save(new User(
-                "admin@test.com", encodedPassword, "Demo Admin", UserRole.ADMIN));
+                ADMIN_EMAIL, encodedPassword, "Demo Admin", UserRole.ADMIN));
 
         Student student = studentRepository.save(new Student("Demo Student", "DEV-20260001"));
         parentStudentRepository.save(new ParentStudent(parent, student));
@@ -156,6 +167,27 @@ public class DevDataInitializer implements ApplicationRunner {
                 "Dev data ready: teacherEmail=teacher@test.com, adminEmail=admin@test.com, "
                         + "adminId={}, emergencyComplaintId={}, studentId={}, classId={}",
                 adminUser.getId(), emergencyComplaint.getId(), student.getId(), schoolClass.getId()
+        );
+    }
+
+    private boolean isAlreadySeeded() {
+        boolean parentExists = userRepository.existsByEmail(PARENT_EMAIL);
+        boolean teacherExists = userRepository.existsByEmail(TEACHER_EMAIL);
+        boolean adminExists = userRepository.existsByEmail(ADMIN_EMAIL);
+        int existingAccountCount = (parentExists ? 1 : 0)
+                + (teacherExists ? 1 : 0)
+                + (adminExists ? 1 : 0);
+
+        if (existingAccountCount == 0) {
+            return false;
+        }
+        if (existingAccountCount == 3) {
+            log.info("Demo data already exists; skipping seed creation");
+            return true;
+        }
+        throw new IllegalStateException(
+                "일부 데모 계정만 존재하여 데이터를 안전하게 생성할 수 없습니다. "
+                        + "parent@test.com, teacher@test.com, admin@test.com 상태를 확인하세요."
         );
     }
 }
