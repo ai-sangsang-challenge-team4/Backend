@@ -26,21 +26,26 @@ class FlywayInitialSchemaTest {
     private JdbcTemplate jdbcTemplate;
 
     @Test
-    void appliesInitialSchemaAndValidatesAllEntityMappings() {
+    void appliesAllMigrationsAndValidatesAllEntityMappings() {
         Integer appliedMigrationCount = jdbcTemplate.queryForObject(
-                "select count(*) from flyway_schema_history where version = '1' and success = true",
+                "select count(*) from flyway_schema_history "
+                        + "where version in ('1', '2') and success = true",
                 Integer.class
         );
 
-        assertThat(appliedMigrationCount).isEqualTo(1);
+        assertThat(appliedMigrationCount).isEqualTo(2);
     }
 
     @Test
     void idempotencyKeyUsesCaseSensitiveMySqlCollation() throws IOException {
-        String migration = new ClassPathResource("db/migration/V1__init_schema.sql")
+        String migration = new ClassPathResource(
+                "db/migration/V2__make_idempotency_key_case_sensitive.sql"
+        )
                 .getContentAsString(StandardCharsets.UTF_8);
 
         assertThat(migration)
-                .containsPattern("idempotency_key\\s+VARCHAR\\(100\\)\\s+COLLATE\\s+utf8mb4_bin");
+                .contains("MODIFY COLUMN idempotency_key VARCHAR(100)")
+                .contains("CHARACTER SET utf8mb4")
+                .contains("COLLATE utf8mb4_bin");
     }
 }
