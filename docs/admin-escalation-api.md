@@ -217,9 +217,13 @@ Emergency 재검토 거부 요청:
 
 | 역할 | 계정 | 비밀번호 |
 |---|---|---|
-| 학부모 | `parent@test.com` | `DEMO_SEED_PASSWORD` 또는 기본값 `Test1234!` |
-| 교사 | `teacher@test.com` | `DEMO_SEED_PASSWORD` 또는 기본값 `Test1234!` |
-| 관리자 | `admin@test.com` | `DEMO_SEED_PASSWORD` 또는 기본값 `Test1234!` |
+| 학부모 | `parent@test.com` | `DEMO_SEED_PASSWORD` |
+| 교사 | `teacher@test.com` | `DEMO_SEED_PASSWORD` |
+| 관리자 | `admin@test.com` | `DEMO_SEED_PASSWORD` |
+
+로컬 `dev` 프로필은 환경변수가 없으면 `Test1234!`를 기본값으로 사용한다. 배포용
+`demo-seed` 프로필은 `DEMO_SEED_PASSWORD`가 없거나 공백이면 데이터를 쓰기 전에 서버
+시작을 중단하며, 로컬 기본 비밀번호를 사용하지 않는다.
 
 테스트 민원은 현재 `DRAFT`, 응답 주체 미지정 상태이며 완료된 위험 분석 결과가
 `riskScore=70`, `riskLevel=EMERGENCY`로 저장된다. `THREAT` 위험 요소에는 직접적인

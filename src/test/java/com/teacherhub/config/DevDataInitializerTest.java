@@ -5,6 +5,7 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskTagRepository;
+import com.teacherhub.school.entity.School;
 import com.teacherhub.school.repository.SchoolClassRepository;
 import com.teacherhub.school.repository.SchoolRepository;
 import com.teacherhub.school.repository.StudentClassRepository;
@@ -15,6 +16,9 @@ import com.teacherhub.user.repository.TeacherRepository;
 import com.teacherhub.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -22,6 +26,8 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -78,6 +84,7 @@ class DevDataInitializerTest {
 
     @Test
     void skipsCreationWhenAllDemoAccountsAlreadyExist() {
+        when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         when(userRepository.existsByEmail("parent@test.com")).thenReturn(true);
         when(userRepository.existsByEmail("teacher@test.com")).thenReturn(true);
         when(userRepository.existsByEmail("admin@test.com")).thenReturn(true);
@@ -90,6 +97,7 @@ class DevDataInitializerTest {
 
     @Test
     void rejectsPartialDemoAccountsBeforeWritingData() {
+        when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         when(userRepository.existsByEmail("parent@test.com")).thenReturn(true);
         when(userRepository.existsByEmail("teacher@test.com")).thenReturn(false);
         when(userRepository.existsByEmail("admin@test.com")).thenReturn(false);
@@ -100,5 +108,31 @@ class DevDataInitializerTest {
 
         verify(userRepository, never()).save(any());
         verify(passwordEncoder, never()).encode(any());
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = " ")
+    void requiresExplicitPasswordWhenDemoSeedProfileIsActive(String password) {
+        when(environment.getActiveProfiles()).thenReturn(new String[]{"prod", "demo-seed"});
+        when(environment.getProperty("DEMO_SEED_PASSWORD")).thenReturn(password);
+
+        assertThatThrownBy(() -> initializer.run(arguments))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("DEMO_SEED_PASSWORD");
+
+        verify(userRepository, never()).save(any());
+        verify(schoolRepository, never()).save(any());
+    }
+
+    @Test
+    void reusesExistingDemoSchool() {
+        School existingSchool = new School("SCHOOL-001", "기존 학교");
+        when(schoolRepository.findByCode("SCHOOL-001")).thenReturn(Optional.of(existingSchool));
+
+        School school = initializer.findOrCreateDemoSchool();
+
+        assertThat(school).isSameAs(existingSchool);
+        verify(schoolRepository, never()).save(any());
     }
 }

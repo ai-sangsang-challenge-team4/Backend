@@ -32,6 +32,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -45,6 +46,7 @@ public class DevDataInitializer implements ApplicationRunner {
     private static final String PARENT_EMAIL = "parent@test.com";
     private static final String TEACHER_EMAIL = "teacher@test.com";
     private static final String ADMIN_EMAIL = "admin@test.com";
+    private static final String DEMO_SCHOOL_CODE = "SCHOOL-001";
     private static final String DEFAULT_DEMO_PASSWORD = "Test1234!";
 
     private final UserRepository userRepository;
@@ -66,18 +68,18 @@ public class DevDataInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
+        String demoPassword = resolveDemoPassword();
         if (isAlreadySeeded()) {
             return;
         }
 
-        String demoPassword = environment.getProperty("DEMO_SEED_PASSWORD", DEFAULT_DEMO_PASSWORD);
         String encodedPassword = passwordEncoder.encode(demoPassword);
         User parentUser = userRepository.save(new User(
                 PARENT_EMAIL, encodedPassword, "Demo Parent", UserRole.PARENT));
 
         Parent parent = parentRepository.save(new Parent(parentUser));
 
-        School school = schoolRepository.save(new School("SCHOOL-001", "상상초등학교"));
+        School school = findOrCreateDemoSchool();
 
         User teacherUser = userRepository.save(new User(
                 TEACHER_EMAIL, encodedPassword, "Demo Teacher", UserRole.TEACHER));
@@ -189,5 +191,25 @@ public class DevDataInitializer implements ApplicationRunner {
                 "일부 데모 계정만 존재하여 데이터를 안전하게 생성할 수 없습니다. "
                         + "parent@test.com, teacher@test.com, admin@test.com 상태를 확인하세요."
         );
+    }
+
+    private String resolveDemoPassword() {
+        String configuredPassword = environment.getProperty("DEMO_SEED_PASSWORD");
+        if (StringUtils.hasText(configuredPassword)) {
+            return configuredPassword;
+        }
+
+        boolean demoSeedActive = List.of(environment.getActiveProfiles()).contains("demo-seed");
+        if (demoSeedActive) {
+            throw new IllegalStateException(
+                    "demo-seed 프로필에서는 DEMO_SEED_PASSWORD를 반드시 설정해야 합니다."
+            );
+        }
+        return DEFAULT_DEMO_PASSWORD;
+    }
+
+    School findOrCreateDemoSchool() {
+        return schoolRepository.findByCode(DEMO_SCHOOL_CODE)
+                .orElseGet(() -> schoolRepository.save(new School(DEMO_SCHOOL_CODE, "상상초등학교")));
     }
 }
