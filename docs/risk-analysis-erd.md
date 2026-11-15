@@ -98,8 +98,11 @@ RiskTagResponse(태그 기준 정보). 규칙 탐지기는 List<RiskTagDetection
 
 ## 스키마 적용
 
-현재 개발 환경은 H2 메모리 DB와 ddl-auto=create-drop으로 엔티티에 따라 생성하며 영구 DB는
-아직 사용하지 않는다. 영구 DB 도입 시 현재 엔티티 전체를 기준으로 초기 마이그레이션을 만들고,
-운영 데이터가 생긴 이후의 증분 변경부터 백필·롤백 정책을 함께 관리한다.
+개발 환경은 H2 메모리 DB와 `ddl-auto=create-drop`을 유지한다. 운영 환경은 MySQL 8.4와
+`src/main/resources/db/migration/V1__init_schema.sql`을 사용하며 `prod` 프로필에서
+Flyway 적용 후 Hibernate `ddl-auto=validate`로 Entity 매핑을 검증한다. V1은 현재 23개 Entity와
+`school_class_teachers`, 3개 위험 근거 span 테이블, `complaint_escalation_scopes`를 포함한
+28개 테이블 전체를 빈 DB에 생성한다. 운영 데이터가 생긴 이후의 변경은 기존 V1을 수정하지 않고
+새 버전 migration으로 추가하며 백필·하위 호환·롤백 정책을 함께 관리한다.
 기존 ai_drafts는 필요하면 `AI_DRAFT_GENERATED` 이벤트로 변환한 후 테이블과
 complaint_messages.ai_draft_id 외래 키를 제거한다. created_at은 민원 DRAFT 생성 시간이다.

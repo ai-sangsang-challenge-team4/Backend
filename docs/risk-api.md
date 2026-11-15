@@ -228,7 +228,11 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
 - 제출도 위험 분석과 제출 확정을 분리하고, 제출 확정 시 분석한 `contentVersion`을 다시
   확인한다. 분석 중 내용이 바뀌면 409 충돌로 처리한다.
 
-현재 H2 스키마에는 risk_analyses의 content_hash/completed/revision_reason/ai_revision/revision_status 컬럼과 risk_analysis_expressions 테이블이 포함된다. 원문은 complaint_messages.content에만 보관하고, risk_analyses에는 동일 내용 분석을 재사용하기 위한 SHA-256 지문만 저장한다. 현재 영구 DB와 기존 운영 데이터가 없으므로 별도 증분 마이그레이션이나 백필은 제공하지 않는다.
+개발·테스트 H2 스키마와 운영 MySQL 초기 스키마 `V1__init_schema.sql`에는
+risk_analyses의 content_hash/completed/revision_reason/ai_revision/revision_status 컬럼이 포함된다.
+원문은 complaint_messages.content에만 보관하고, risk_analyses에는 동일 내용 분석을 재사용하기
+위한 SHA-256 지문만 저장한다. 현재 영구 DB와 기존 운영 데이터가 없으므로 V1은 빈 DB에만
+적용하며 별도 백필은 수행하지 않는다.
 
 ## 오류
 
@@ -360,10 +364,13 @@ Rule의 severity/repeatCount는 null이다. 위치를 확정할 수 없는
 - risk_analyses의 credible_threat, student_safety_concern, privacy_exposure에 tri-state 안전 신호를
   저장한다.
 
-현재 개발·테스트 환경은 H2와 `ddl-auto=create-drop`을 사용하며 Flyway는 비활성화되어 있다.
-영구 DB를 도입할 때 현재 엔티티 전체를 기준으로 초기 스키마 마이그레이션을 만들고,
-기존 데이터가 생긴 이후라면 `revision_status NOT NULL` 기본값과 기존 수정안 백필 정책을
-별도 배포 계획으로 확정해야 한다.
+개발·테스트 기본 환경은 H2와 `ddl-auto=create-drop`을 사용하며 Flyway는 비활성화한다.
+운영 `prod` 프로필은 MySQL 8.4와 `V1__init_schema.sql`을 사용하고
+`ddl-auto=validate`, `spring.flyway.enabled=true`, `baseline-on-migrate=false`로 실행한다.
+V1은 현재 23개 Entity와 5개 조인·컬렉션 테이블을 포함한 전체 초기 스키마다.
+영구 데이터가 생긴 뒤의 변경은 새 버전 migration으로만 적용하고, 백필·하위 호환·롤백
+정책을 같은 배포 계획에서 확정한다. Flyway 이력이 없는 기존 DB에는 V1을 직접 적용하거나
+`baseline-on-migrate`를 임의로 켜지 않는다.
 
 ### 배포 확인과 롤백 조건
 
@@ -490,7 +497,9 @@ AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/
 
 최종 제출 `POST /teacher/complaints/{complaintId}/responses`에는 최대 100자의
 `Idempotency-Key` 헤더가 필수다. 동일 교사가 같은 키와 동일 내용으로 재요청하면 최초 전송
-결과를 반환하며 메시지와 `MESSAGE_SENT` 이벤트를 중복 생성하지 않는다.
+결과를 반환하며 메시지와 `MESSAGE_SENT` 이벤트를 중복 생성하지 않는다. 키는 trim 이후의
+대소문자를 보존하는 불투명 값이며 `request-A`와 `request-a`는 서로 다른 키다. MySQL 운영
+스키마도 `idempotency_key`에 `utf8mb4_bin` collation을 적용해 같은 비교 계약을 유지한다.
 
 Low·Medium에서만 생성형 AI 초안을 허용한다. High는 생성형 AI 초안을 차단하고 검증된 제한형
 공식 템플릿을 채택한 내용만 임시저장·전송할 수 있다. Emergency 또는 safetyLock 상태에서는
