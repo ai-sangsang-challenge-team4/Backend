@@ -499,8 +499,7 @@ AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/
 `Idempotency-Key` 헤더가 필수다. 동일 교사가 같은 키와 동일 내용으로 재요청하면 최초 전송
 결과를 반환하며 메시지와 `MESSAGE_SENT` 이벤트를 중복 생성하지 않는다. 키는 trim 이후의
 대소문자를 보존하는 불투명 값이며 `request-A`와 `request-a`는 서로 다른 키다. MySQL 운영
-스키마는 `V2__make_idempotency_key_case_sensitive.sql`에서 `idempotency_key`에
-`utf8mb4_bin` collation을 적용해 같은 비교 계약을 유지한다.
+스키마도 `idempotency_key`에 `utf8mb4_bin` collation을 적용해 같은 비교 계약을 유지한다.
 
 Low·Medium에서만 생성형 AI 초안을 허용한다. High는 생성형 AI 초안을 차단하고 검증된 제한형
 공식 템플릿을 채택한 내용만 임시저장·전송할 수 있다. Emergency 또는 safetyLock 상태에서는
