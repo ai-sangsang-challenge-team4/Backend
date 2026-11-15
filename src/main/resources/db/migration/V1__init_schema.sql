@@ -141,7 +141,7 @@ CREATE TABLE complaint_messages (
     content_version BIGINT NOT NULL,
     sent_at DATETIME(6),
     read_at DATETIME(6),
-    idempotency_key VARCHAR(100) COLLATE utf8mb4_bin,
+    idempotency_key VARCHAR(100),
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     CONSTRAINT pk_complaint_messages PRIMARY KEY (id),
