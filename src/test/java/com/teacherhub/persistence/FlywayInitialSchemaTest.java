@@ -3,7 +3,11 @@ package com.teacherhub.persistence;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,5 +33,14 @@ class FlywayInitialSchemaTest {
         );
 
         assertThat(appliedMigrationCount).isEqualTo(1);
+    }
+
+    @Test
+    void idempotencyKeyUsesCaseSensitiveMySqlCollation() throws IOException {
+        String migration = new ClassPathResource("db/migration/V1__init_schema.sql")
+                .getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(migration)
+                .containsPattern("idempotency_key\\s+VARCHAR\\(100\\)\\s+COLLATE\\s+utf8mb4_bin");
     }
 }
