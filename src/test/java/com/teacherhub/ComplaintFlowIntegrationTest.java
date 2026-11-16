@@ -102,16 +102,16 @@ public class ComplaintFlowIntegrationTest {
                 ));
 
         assertThat(scores).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(
-                com.teacherhub.risk.enums.RiskTagCode.PROFANITY, 6,
-                com.teacherhub.risk.enums.RiskTagCode.INSULT, 10,
-                com.teacherhub.risk.enums.RiskTagCode.THREAT, 25,
+                com.teacherhub.risk.enums.RiskTagCode.PROFANITY, 4,
+                com.teacherhub.risk.enums.RiskTagCode.INSULT, 6,
+                com.teacherhub.risk.enums.RiskTagCode.THREAT, 22,
                 com.teacherhub.risk.enums.RiskTagCode.LEGAL, 4,
-                com.teacherhub.risk.enums.RiskTagCode.EXPOSURE, 12,
+                com.teacherhub.risk.enums.RiskTagCode.EXPOSURE, 6,
                 com.teacherhub.risk.enums.RiskTagCode.REPEAT, 6,
-                com.teacherhub.risk.enums.RiskTagCode.UNFAIR_REQUEST, 8,
-                com.teacherhub.risk.enums.RiskTagCode.PRIVACY, 15
+                com.teacherhub.risk.enums.RiskTagCode.UNFAIR_REQUEST, 6,
+                com.teacherhub.risk.enums.RiskTagCode.PRIVACY, 6
         ));
-        assertThat(scores.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(86);
+        assertThat(scores.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(60);
     }
 
     @Test
@@ -407,7 +407,7 @@ public class ComplaintFlowIntegrationTest {
         var systemAnalysis = riskAnalysisService.analyze(parentUser.getId(), complaintId);
         parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
 
-        assertThat(systemAnalysis.riskScore()).isEqualTo(33);
+        assertThat(systemAnalysis.riskScore()).isEqualTo(28);
         assertThat(systemAnalysis.riskLevel())
                 .isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
 
@@ -461,7 +461,7 @@ public class ComplaintFlowIntegrationTest {
         assertThat(raised.reason()).isEqualTo("새로운 위험 정황이 확인되어 상향합니다.");
 
         var currentRisk = teacherComplaintQueryService.findRisk(teacherUser.getId(), complaintId);
-        assertThat(currentRisk.riskScore()).isEqualTo(33);
+        assertThat(currentRisk.riskScore()).isEqualTo(28);
         assertThat(currentRisk.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
         assertThat(currentRisk.reviewScale()).isEqualTo(4);
         assertThat(currentRisk.reviewScore()).isEqualTo(40);
@@ -1138,7 +1138,7 @@ public class ComplaintFlowIntegrationTest {
                 .isNotNull();
 
         assertThat(reviewResponse.complaintId()).isEqualTo(complaintId);
-        assertThat(reviewResponse.riskScore()).isEqualTo(33);
+        assertThat(reviewResponse.riskScore()).isEqualTo(28);
         assertThat(reviewResponse.riskLevel())
                 .isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
         var findings = riskAnalysisQueryService.findFindings(parentUser.getId(), reviewResponse.analysisId());
@@ -1159,7 +1159,7 @@ public class ComplaintFlowIntegrationTest {
         var savedAnalyses = riskAnalysisRepository.findByComplaintIdOrderByIdAsc(complaintId);
         assertThat(savedAnalyses).hasSize(1);
         var firstAnalysis = savedAnalyses.get(0);
-        assertThat(firstAnalysis.getRiskScore()).isEqualTo(33);
+        assertThat(firstAnalysis.getRiskScore()).isEqualTo(28);
         assertThat(firstAnalysis.getModelName()).isEqualTo("mock-llm");
         assertThat(firstAnalysis.getTemperature()).isEqualTo(0.0);
         assertThat(firstAnalysis.getContentVersion()).isEqualTo(1);

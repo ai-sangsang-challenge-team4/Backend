@@ -8,6 +8,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,11 +30,36 @@ class FlywayInitialSchemaTest {
     @Test
     void appliesInitialSchemaAndValidatesAllEntityMappings() {
         Integer appliedMigrationCount = jdbcTemplate.queryForObject(
-                "select count(*) from flyway_schema_history where version = '1' and success = true",
+                "select count(*) from flyway_schema_history where version in ('1', '2') and success = true",
                 Integer.class
         );
 
-        assertThat(appliedMigrationCount).isEqualTo(1);
+        assertThat(appliedMigrationCount).isEqualTo(2);
+
+        Map<String, Integer> configuredScores = jdbcTemplate.query(
+                "select code, default_score from risk_tags",
+                resultSet -> {
+                    Map<String, Integer> scores = new HashMap<>();
+                    while (resultSet.next()) {
+                        scores.put(
+                                resultSet.getString("code"),
+                                resultSet.getInt("default_score")
+                        );
+                    }
+                    return scores;
+                }
+        );
+
+        assertThat(configuredScores).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "PROFANITY", 4,
+                "INSULT", 6,
+                "THREAT", 22,
+                "LEGAL", 4,
+                "EXPOSURE", 6,
+                "REPEAT", 6,
+                "UNFAIR_REQUEST", 6,
+                "PRIVACY", 6
+        ));
     }
 
     @Test

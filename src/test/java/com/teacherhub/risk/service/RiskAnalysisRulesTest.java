@@ -3,6 +3,7 @@ package com.teacherhub.risk.service;
 import com.teacherhub.ai.exception.AiRequestPreparationException;
 import com.teacherhub.ai.exception.AiServiceUnavailableException;
 import com.teacherhub.risk.exception.RiskAnalysisProcessingException;
+import com.teacherhub.risk.dto.detection.EvidenceSpan;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
@@ -360,11 +361,10 @@ class RiskAnalysisRulesTest {
             "0,LOW",
             "20,LOW",
             "21,MEDIUM",
-            "40,MEDIUM",
-            "41,HIGH",
-            "60,HIGH",
-            "61,EMERGENCY",
-            "70,EMERGENCY",
+            "51,MEDIUM",
+            "52,HIGH",
+            "79,HIGH",
+            "80,EMERGENCY",
             "100,EMERGENCY"
     })
     void classifiesBoundaryScores(
@@ -420,8 +420,8 @@ class RiskAnalysisRulesTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"1,6", "2,12", "3,18"})
-    void appliesBackendSeverityMultiplier(int severity, int expectedScore) {
+    @CsvSource({"1,4", "2,21", "3,44"})
+    void appliesSingleComplaintSeverityBonus(int severity, int expectedScore) {
         var result = new FinalRiskTagResponse(
                 PROFANITY,
                 RiskTagState.PRESENT,
@@ -436,12 +436,12 @@ class RiskAnalysisRulesTest {
 
         assertThat(evaluator.calculate(
                 List.of(result),
-                Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 6))
+                Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 4))
         )).isEqualTo(expectedScore);
     }
 
     @Test
-    void usesMaximumRuleOrLlmScoreWithoutDuplicateAddition() {
+    void usesTagBaseOnceWhenRuleAndLlmBothDetectIt() {
         var result = new FinalRiskTagResponse(
                 PROFANITY,
                 RiskTagState.PRESENT,
@@ -456,8 +456,41 @@ class RiskAnalysisRulesTest {
 
         assertThat(evaluator.calculate(
                 List.of(result),
-                Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 6))
-        )).isEqualTo(12);
+                Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 4))
+        )).isEqualTo(21);
+    }
+
+    @Test
+    void appliesOnlyHighestSeverityBonusAcrossPresentTags() {
+        var profanity = new FinalRiskTagResponse(
+                PROFANITY, RiskTagState.PRESENT, RiskTagState.ABSENT, RiskTagState.PRESENT,
+                0.9, 2, 5, List.of(EvidenceSpan.unlocated("욕설")), null
+        );
+        var insult = new FinalRiskTagResponse(
+                INSULT, RiskTagState.PRESENT, RiskTagState.ABSENT, RiskTagState.PRESENT,
+                0.9, 3, 2, List.of(EvidenceSpan.unlocated("모욕")), null
+        );
+
+        assertThat(evaluator.calculate(
+                List.of(profanity, insult),
+                Map.of(
+                        PROFANITY, new RiskTag(PROFANITY, "욕설", 4),
+                        INSULT, new RiskTag(INSULT, "인격 모욕", 6)
+                )
+        )).isEqualTo(50);
+    }
+
+    @Test
+    void ruleOnlyPresentTagUsesBaseScoreWithoutSeverityBonus() {
+        var result = new FinalRiskTagResponse(
+                REPEAT, RiskTagState.PRESENT, RiskTagState.PRESENT, RiskTagState.UNKNOWN,
+                null, null, null, List.of(EvidenceSpan.unlocated("반복 이력")), null
+        );
+
+        assertThat(evaluator.calculate(
+                List.of(result),
+                Map.of(REPEAT, new RiskTag(REPEAT, "반복 민원", 6))
+        )).isEqualTo(6);
     }
 
     @Test
@@ -470,11 +503,11 @@ class RiskAnalysisRulesTest {
                 PROFANITY, RiskTagState.PRESENT, RiskTagState.ABSENT, RiskTagState.PRESENT,
                 0.99, 2, 2, List.of(), null
         );
-        var configured = Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 6));
+        var configured = Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 4));
 
         assertThat(evaluator.calculate(List.of(lowConfidence), configured))
                 .isEqualTo(evaluator.calculate(List.of(highConfidence), configured))
-                .isEqualTo(12);
+                .isEqualTo(21);
     }
 
     @Test
@@ -535,6 +568,26 @@ class RiskAnalysisRulesTest {
         assertThat(response.riskLevel()).isEqualTo(RiskLevel.EMERGENCY);
         verify(analyses).save(argThat(analysis ->
                 Boolean.TRUE.equals(analysis.safetyFlags().credibleThreat())));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "true,false,false",
+            "false,true,false",
+            "false,false,true"
+    })
+    void everySafetyFlagOverridesCalculatedScoreToOneHundred(
+            boolean credibleThreat,
+            boolean studentSafetyConcern,
+            boolean privacyExposure
+    ) {
+        var flags = new SafetyFlags(
+                credibleThreat,
+                studentSafetyConcern,
+                privacyExposure
+        );
+
+        assertThat(evaluator.applySafetyFlags(12, flags)).isEqualTo(100);
     }
 
     @Test
