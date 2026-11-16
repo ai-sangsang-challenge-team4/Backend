@@ -19,7 +19,7 @@ public record TeacherRiskResponse(
         Long complaintId,
         @Schema(description = "완료된 위험 분석 ID. 분석이 없으면 null", nullable = true)
         Long riskAnalysisId,
-        @Schema(description = "시스템 위험 점수(0~100). Severity가 반영된 태그 점수 합계이며 분석이 없으면 null", minimum = "0", maximum = "100", nullable = true)
+        @Schema(description = "시스템 위험 점수(0~100). 중복 없는 PRESENT 태그 기본점수 합계에 최고 Severity 보정을 한 번 적용하며, Safety Flag가 하나라도 true이면 100점으로 Override됩니다. 분석이 없으면 null", minimum = "0", maximum = "100", nullable = true)
         Integer riskScore,
         @Schema(description = "시스템 위험 등급. 분석이 없으면 null", nullable = true)
         RiskLevel riskLevel,

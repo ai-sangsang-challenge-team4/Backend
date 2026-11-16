@@ -1,0 +1,22 @@
+UPDATE risk_tags
+SET default_score = CASE code
+    WHEN 'PROFANITY' THEN 4
+    WHEN 'INSULT' THEN 6
+    WHEN 'THREAT' THEN 22
+    WHEN 'LEGAL' THEN 4
+    WHEN 'EXPOSURE' THEN 6
+    WHEN 'REPEAT' THEN 6
+    WHEN 'UNFAIR_REQUEST' THEN 6
+    WHEN 'PRIVACY' THEN 6
+    ELSE default_score
+END
+WHERE code IN (
+    'PROFANITY',
+    'INSULT',
+    'THREAT',
+    'LEGAL',
+    'EXPOSURE',
+    'REPEAT',
+    'UNFAIR_REQUEST',
+    'PRIVACY'
+);

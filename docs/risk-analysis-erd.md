@@ -45,21 +45,22 @@ erDiagram
 
 RiskAnalysisService: 본인/DRAFT 검증 → 학생·교사 관계자 마스킹 컨텍스트 생성 → 원문 마스킹
 → CSV Rule 후보 탐지 → 같은 컨텍스트로 Rule 근거 마스킹
-→ 마스킹 본문과 Rule 후보를 LLM에 전달 → AI 출력 근거 재마스킹 → Claude 우선 태그 병합 → 점수 계산 및 결과 저장
+→ 마스킹 본문과 Rule 후보를 LLM에 전달 → AI 출력 근거 재마스킹 → Rule·LLM 합집합 태그 병합 → 점수 계산 및 결과 저장
 → 검토 응답 → 비동기 수정안 생성. 외부 LLM 호출 전후에는 짧은 트랜잭션만 사용하고,
 AI 대기 중에는 민원 잠금을 유지하지 않는다. 일반 Rule 후보는 BOUNDARY, HINT_ONLY는 UNKNOWN으로 전달하며 키워드만으로
 PRESENT를 확정하지 않는다. 결정론적 Rule PRESENT와 LLM PRESENT는 합집합으로 보존하고,
-태그별 점수는 두 출처 중 최댓값만 사용한다. 누락한 태그는 Rule 상태로 fallback한다.
+최종 PRESENT 태그의 기본점수는 출처 수와 무관하게 한 번만 사용한다. 누락한 태그는 Rule 상태로 fallback한다.
 수정안 출력도 분석 요청과 같은 관계자 컨텍스트로 다시 마스킹하며, 수정본은 자동 적용하지 않는다.
 LLM 스키마 오류는 한 번 재생성하고, 재생성 실패 또는 외부 AI 장애 시 전체 Rule 결과만으로
 점수·등급을 계산해 `RULE_ONLY`로 저장한다. 이 경우 AI 수정안은 생성하지 않는다.
 위험 분석 성공 후 수정안 생성만 실패하면 HYBRID 판정은 유지하고 revision_status를
 `UNAVAILABLE`로 저장한다.
 
-시스템 분석은 Rule 점수와 `default_score × severity`인 LLM 점수 중 태그별 최댓값을 합산한다.
-같은 태그가 두 탐지기에서 발견되어도 중복 계산하지 않고 최대 100점으로 제한한다.
-confidence는 점수에 사용하지 않는다. 시스템 점수는 0~20점 LOW, 21~40점 MEDIUM,
-41~60점 HIGH, 61~100점 EMERGENCY다. 세 안전 신호 중 하나라도 true이면 100점
+시스템 분석은 최종 `PRESENT`인 중복 없는 태그의 `default_score`를 한 번씩 합산한다.
+태그 기본점수 합계는 60점이며 LLM이 `PRESENT`로 판정한 태그 중 최고 Severity에 따라
+S1 0점, S2 17점, S3 40점의 문맥 보정을 한 번만 적용한다. confidence와 repeatCount는
+점수에 직접 사용하지 않는다. 시스템 점수는 0~20점 LOW, 21~51점 MEDIUM,
+52~79점 HIGH, 80~100점 EMERGENCY다. 세 안전 신호 중 하나라도 true이면 100점
 EMERGENCY로 승격한다.
 
 교사는 1~7 선택 척도를 사용하고 서버는 선택값에 10을 곱해 시스템과 같은 단위의

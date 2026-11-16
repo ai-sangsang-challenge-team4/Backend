@@ -141,7 +141,7 @@ public class RiskEvaluator {
     }
 
     // Rule은 결정론적 1차 탐지, LLM은 문맥 기반 2차 탐지입니다.
-    // PRESENT는 합집합으로 보존하고 점수는 출처별 결과 중 큰 값만 사용합니다.
+    // PRESENT는 합집합으로 보존하고 같은 태그의 기본점수는 한 번만 사용합니다.
     public List<FinalRiskTagResponse> merge(
             List<RiskTagDetectionResult> ruleResults,
             List<RiskTagDetectionResult> llmResults
@@ -436,40 +436,40 @@ public class RiskEvaluator {
             List<FinalRiskTagResponse> tags,
             Map<RiskTagCode, RiskTag> definitions
     ) {
-        int score = tags.stream()
+        Map<RiskTagCode, FinalRiskTagResponse> uniqueTags = tags.stream()
                 .collect(Collectors.toMap(
                         FinalRiskTagResponse::code,
                         Function.identity(),
                         (left, right) -> left
-                ))
-                .values()
-                .stream()
-                .mapToInt(tagResult -> {
-                    RiskTagCode code = tagResult.code();
-                    RiskTag tag =
-                            definitions.get(code);
+                ));
 
-                    if (tag == null
-                            || tag.getDefaultScore() == null
-                            || tag.getDefaultScore() < 0) {
+        uniqueTags.keySet().forEach(code -> validateDefinition(code, definitions.get(code)));
 
-                        throw new InternalSystemException(
-                                "위험 태그의 점수 설정을 확인해주세요: "
-                                        + code
-                        );
-                    }
-
-                    int ruleScore = tagResult.ruleState() == RiskTagState.PRESENT
-                            ? tag.getDefaultScore()
-                            : 0;
-                    int llmScore = tagResult.llmState() == RiskTagState.PRESENT
-                            ? scorePolicy.llmScore(tag.getDefaultScore(), tagResult.severity())
-                            : 0;
-                    return Math.max(ruleScore, llmScore);
-                })
+        int tagScore = uniqueTags.values().stream()
+                .filter(tagResult -> tagResult.state() == RiskTagState.PRESENT)
+                .mapToInt(tagResult -> definitions.get(tagResult.code()).getDefaultScore())
                 .reduce(0, Math::addExact);
 
-        return scorePolicy.cap(score);
+        int severityBonus = uniqueTags.values().stream()
+                .filter(tagResult -> tagResult.llmState() == RiskTagState.PRESENT)
+                .map(FinalRiskTagResponse::severity)
+                .mapToInt(scorePolicy::severityBonus)
+                .max()
+                .orElse(0);
+
+        return scorePolicy.cap(Math.addExact(tagScore, severityBonus));
+    }
+
+    private void validateDefinition(RiskTagCode code, RiskTag tag) {
+        if (tag == null
+                || tag.getDefaultScore() == null
+                || tag.getDefaultScore() < 0) {
+
+            throw new InternalSystemException(
+                    "위험 태그의 점수 설정을 확인해주세요: "
+                            + code
+            );
+        }
     }
 
     public int applySafetyFlags(
@@ -493,11 +493,11 @@ public class RiskEvaluator {
             return RiskLevel.LOW;
         }
 
-        if (score <= 40) {
+        if (score <= 51) {
             return RiskLevel.MEDIUM;
         }
 
-        if (score <= 60) {
+        if (score <= 79) {
             return RiskLevel.HIGH;
         }
 

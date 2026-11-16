@@ -31,7 +31,7 @@ post_json '/api/v1/ai/analyze' \
   "$result_dir/analyze.json"
 
 post_json '/api/v1/ai/revision' \
-  '{"complaint":"[이름] 선생님은 무능합니다.","tags":[{"code":"INSULT","state":"PRESENT","confidence":0.9,"evidence":"무능","reason":"모욕 표현"}],"riskScore":10,"riskLevel":"MEDIUM"}' \
+  '{"complaint":"[이름] 선생님은 무능합니다.","tags":[{"code":"INSULT","state":"PRESENT","confidence":0.9,"evidence":"무능","reason":"모욕 표현"}],"riskScore":23,"riskLevel":"MEDIUM"}' \
   "$result_dir/revision.json"
 
 post_json '/api/v1/ai/summary' \

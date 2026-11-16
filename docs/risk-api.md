@@ -113,26 +113,28 @@ POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 AP
 외부 AI 장애는 `RULE_ONLY_AI_UNAVAILABLE`, 무효 응답은 `RULE_ONLY_INVALID_RESPONSE`다.
 내부 가드레일 오류는 성공 응답 대신 단계별 HTTP 500 오류 코드를 반환하므로 이 필드가 없다.
 
-시스템 위험 점수는 태그별 Rule 점수와 LLM 점수 중 큰 값을 합산해 최대 100점으로 제한한 값이다.
-기본 태그 점수는
-`PROFANITY 6`, `INSULT 10`, `THREAT 25`, `LEGAL 4`, `EXPOSURE 12`, `REPEAT 6`,
-`UNFAIR_REQUEST 8`, `PRIVACY 15`다. 등급은
-0~20 LOW, 21~40 MEDIUM, 41~60 HIGH, 61~100 EMERGENCY다.
+시스템 위험 점수는 최종 상태가 `PRESENT`인 중복 없는 태그의 기본점수를 한 번씩 합산하고,
+LLM이 `PRESENT`로 판정한 태그 중 가장 높은 Severity의 문맥 보정점수를 한 번만 더해 최대
+100점으로 제한한 값이다. 기본 태그 점수는 `PROFANITY 4`, `INSULT 6`, `THREAT 22`,
+`LEGAL 4`, `EXPOSURE 6`, `REPEAT 6`, `UNFAIR_REQUEST 6`, `PRIVACY 6`이며 합계는
+60점이다. 등급은 0~20 LOW, 21~51 MEDIUM, 52~79 HIGH, 80~100 EMERGENCY다.
+`V2__rebalance_risk_tag_scores.sql`은 운영 DB의 태그 기본값을 이 값으로 갱신하지만, 이미 저장된
+위험 분석의 점수와 등급은 소급 재계산하지 않는다.
 
 신규 LLM 응답은 전체 8개 태그에 `severity`와 `repeatCount` 필드를 반환한다. 두 값은
 `PRESENT=severity 1~3/repeatCount 0~10,000`, `ABSENT=0/0`,
-`BOUNDARY/UNKNOWN=null/null`만 허용한다. LLM 점수는 서버의
-`RiskScorePolicy`가 `defaultScore × severity`로 계산하고, confidence는 점수에 사용하지 않는다.
-같은 태그의 최종 점수는 `max(Rule 점수, LLM 점수)`이므로 중복 합산하지 않는다. 신규 필드가
-모두 없는 구형 응답은 기존 고정 점수(1배)로 처리하지만, 신규 필드를 일부만 보내거나 상태와
-Severity가 일치하지 않으면 응답 전체를 무효로 처리한다.
+`BOUNDARY/UNKNOWN=null/null`만 허용한다. 서버의 `RiskScorePolicy`는 태그별 Severity를
+각각 합산하지 않고 전체 `PRESENT` 태그 중 가장 높은 Severity를 문맥 보정으로 한 번만 사용한다.
+confidence와 repeatCount는 점수에 직접 사용하지 않는다. 같은 태그가 Rule과 LLM 양쪽에서
+`PRESENT`여도 기본점수는 한 번만 반영한다. 신규 필드가 모두 없는 구형 응답은 태그 기본점수만
+반영하고, 신규 필드를 일부만 보내거나 상태와 Severity가 일치하지 않으면 응답 전체를 무효로 처리한다.
 
-| Severity | LLM 태그 점수 |
+| 최고 Severity | 민원 문맥 보정점수 |
 |---|---:|
-| 0 | 0 |
-| 1 | defaultScore |
-| 2 | defaultScore × 2 |
-| 3 | defaultScore × 3 |
+| 0 또는 없음 | 0 |
+| 1 | 0 |
+| 2 | 17 |
+| 3 | 40 |
 
 `repeatCount`는 현재 민원 원문에서 확인한 위험 표현 횟수이며 점수에 직접 곱하지 않는다.
 반복 횟수·강도·대상 특정 여부를 종합한 Severity를 통해 현재 문장 점수에 반영하고, 과거 민원
@@ -147,7 +149,8 @@ EMERGENCY로 승격해 기존 관리자 재검토와 답변 차단 경로에 연
 POST는 민원 관계자 컨텍스트로 원문을 마스킹한 뒤 원문 Rule 탐지를 실행하고, Rule의 evidence와 reason을 같은
 컨텍스트로 다시 마스킹해 마스킹 본문과 함께 LLM에 전달한다. LLM evidence와 reason도 저장 전에 같은 컨텍스트로
 마스킹한다. 결정론적 Rule PRESENT와 LLM PRESENT는 합집합으로
-보존하고 태그별 점수는 두 출처의 최댓값만 사용한다. LLM이 누락한 태그는 Rule 상태로 fallback한다.
+보존하고 최종 `PRESENT` 태그의 기본점수는 출처 수와 무관하게 한 번만 사용한다. LLM이 누락한
+태그는 Rule 상태로 fallback한다.
 이후 점수 계산과 위험 분석을 먼저 저장·응답하고, 일반 AI 검토의 수정안 생성은 별도 작업으로
 실행한다. `GET /risk-analyses/{analysisId}/findings`는 `revisionStatus`를 항상 반환하며
 `PENDING`이면 수정안 생성 중, `UNAVAILABLE`이면 위험 분석은 유효하지만 수정안만 사용할 수
@@ -182,6 +185,8 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
   실제 교사 검토가 없으면 두 필드와 `reviewLevel`은 null이다.
 - `/risk` 응답의 `currentRiskScore`는 교사 검토가 있으면 `reviewScore`, 없으면 시스템
   `riskScore`다. 시스템 점수는 0~100이고 기존 교사 선택 척도의 환산 점수는 10~70이다.
+- 교사 검토 척도의 등급은 시스템 점수의 52점·80점 경계를 다시 적용하지 않고, 아래의 독립된
+  1~7 척도 구간으로 판정한다.
 - 최초 검토값은 시스템 등급을 LOW 2점, MEDIUM 4점, HIGH 6점, EMERGENCY 7점으로 변환한다.
 - 현재 점수보다 낮추면 reason이 필수다.
 - 현재 점수보다 높이거나 동일하게 확인하면 reason은 선택 사항이다.
