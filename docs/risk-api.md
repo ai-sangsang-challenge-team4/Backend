@@ -368,9 +368,12 @@ Rule의 severity/repeatCount는 null이다. 위치를 확정할 수 없는
   `UNAVAILABLE`, `NOT_REQUESTED`로 저장한다.
 - risk_analyses의 credible_threat, student_safety_concern, privacy_exposure에 tri-state 안전 신호를
   저장한다.
+- risk_analyses의 buffered_summary_status, buffered_summary, buffered_summary_started_at,
+  buffered_summary_claim_token에 완충 요약 생성 선점 상태와 재마스킹한 결과를 저장한다.
+  원문은 저장하지 않는다.
 
 개발·테스트 기본 환경은 H2와 `ddl-auto=create-drop`을 사용하며 Flyway는 비활성화한다.
-운영 `prod` 프로필은 MySQL 8.4와 `V1__init_schema.sql`을 사용하고
+운영 `prod` 프로필은 MySQL 8.4와 `db/migration`의 버전별 스키마를 사용하고
 `ddl-auto=validate`, `spring.flyway.enabled=true`, `baseline-on-migrate=false`로 실행한다.
 V1은 현재 23개 Entity와 5개 조인·컬렉션 테이블을 포함한 전체 초기 스키마다.
 영구 데이터가 생긴 뒤의 변경은 새 버전 migration으로만 적용하고, 백필·하위 호환·롤백
@@ -382,10 +385,14 @@ V1은 현재 23개 Entity와 5개 조인·컬렉션 테이블을 포함한 전�
 - 배포 후 신규/구형 응답별 성공률, `RULE_ONLY_INVALID_RESPONSE` 비율, 태그별 Severity 분포,
   safety flag별 true/null 비율, EMERGENCY 승격률, 교사·관리자 override 비율을 확인한다.
 - AI 요청에는 마스킹된 본문만 포함되는지 샘플이 아닌 자동 지표와 테스트로 확인한다.
+- 교사용 대화 조회의 완충 요약 AI 호출 수, 캐시 재사용률, 2분 이상 `GENERATING` 건수와
+  `UNAVAILABLE` 비율을 확인한다.
 - 스키마 무효 폴백이 기준선보다 급증하거나, 정당한 신고·법적 대응의 오탐이 증가하거나,
   THREAT/PRIVACY 중요 사례가 한 단계 이상 과소평가되면 이전 애플리케이션 버전으로 롤백한다.
 - 점수 정책 롤백 시 신규 nullable 컬럼은 즉시 삭제하지 않아도 구버전이 무시할 수 있다.
   컬럼 제거는 감사 데이터 보관 후 별도 배포로 수행한다.
+- 완충 요약 캐시 적용 후 조회 오류나 `GENERATING` 정체가 증가하면 애플리케이션을 이전 버전으로
+  롤백한다. V3·V4 컬럼은 구버전이 무시하므로 즉시 제거하지 않고 후속 migration에서 정리한다.
 
 ### 현재 검증 상태
 
@@ -522,6 +529,15 @@ AI 초안 생성, 임시저장, 최종 전송과 상담 완료를 모두 차단�
 반환하면 원문을 자동 노출하지 않고 안내 문구, `summarized=false`,
 `summaryStatus=UNAVAILABLE`을 반환한다. 원문은 별도 열람 API와 `ORIGINAL_VIEWED` 감사 이벤트를
 통해서만 제공한다.
+
+완충 요약은 완료된 위험 분석에 귀속해 최초 조회에서 한 번만 생성한다. 생성 성공 결과와 실패
+상태를 `risk_analyses`에 저장하며 이후 상세 조회는 외부 AI를 호출하지 않고 저장 상태를
+재사용한다. 동시에 여러 조회가 들어오면 한 요청만 생성을 선점하고 나머지는 생성이 끝날 때까지
+`summaryStatus=UNAVAILABLE`을 반환한다. 생성 프로세스가 비정상 종료된 `GENERATING` 상태는
+2분 뒤 다음 조회가 한 번 재시도할 수 있다. 저장되는 값은 같은 관계자 컨텍스트로 재마스킹한
+요약이며 민원 원문은 추가 저장하지 않는다. 각 생성 선점에는 고유 토큰을 저장하고 완료·실패
+기록도 같은 토큰일 때만 반영한다. 따라서 2분 뒤 재선점된 이후 늦게 끝난 이전 요청은 최신
+생성 상태나 결과를 덮어쓸 수 없다.
 
 `GET /teacher/complaints/{complaintId}/history`는 `ComplaintEventType`과 함께
 `complaint_events`에 저장된 통합 이력을 발생 시각 역순으로 반환한다. 메시지 최초 읽음은

@@ -12,10 +12,8 @@ import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
-import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.enums.RiskLevel;
-import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
@@ -51,13 +49,12 @@ class TeacherComplaintQueryServiceTest {
         UserRepository users = mock(UserRepository.class);
         ComplaintAccessPolicy accessPolicy = mock(ComplaintAccessPolicy.class);
         ComplaintHistoryService historyService = mock(ComplaintHistoryService.class);
-        TeacherSupportContentProvider supportContent = mock(TeacherSupportContentProvider.class);
         TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
-        PiiMaskingService masking = mock(PiiMaskingService.class);
+        BufferedSummaryService bufferedSummaryService = mock(BufferedSummaryService.class);
         TeacherComplaintQueryService service = new TeacherComplaintQueryService(
                 complaints, events, messages, analyses, reviews, emergencyReviews, riskTags,
-                studentClasses, users, accessPolicy, historyService, supportContent, supportPolicy,
-                masking);
+                studentClasses, users, accessPolicy, historyService, supportPolicy,
+                bufferedSummaryService);
 
         User teacher = mock(User.class);
         User parent = mock(User.class);
@@ -97,9 +94,9 @@ class TeacherComplaintQueryServiceTest {
         when(message.getContent()).thenReturn("원문 요청과 사실 정보");
         when(message.getSender()).thenReturn(parent);
         when(parent.getName()).thenReturn("학부모");
-        when(masking.mask(eq("원문 요청과 사실 정보"), any())).thenReturn("마스킹된 요청과 사실 정보");
-        when(supportContent.createBufferedSummary("마스킹된 요청과 사실 정보"))
-                .thenThrow(new IllegalStateException("summary unavailable"));
+        when(bufferedSummaryService.findOrGenerate(
+                eq(42L), eq(11L), eq(analysis), eq("원문 요청과 사실 정보"), any()
+        )).thenReturn(Optional.empty());
         when(supportPolicy.allowedActions(RiskLevel.LOW)).thenReturn(List.of());
 
         var response = service.findConversation(7L, 42L);
@@ -110,7 +107,9 @@ class TeacherComplaintQueryServiceTest {
             assertThat(item.summaryStatus())
                     .isEqualTo(com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse.SummaryStatus.UNAVAILABLE);
         });
-        verify(supportContent).createBufferedSummary("마스킹된 요청과 사실 정보");
+        verify(bufferedSummaryService).findOrGenerate(
+                eq(42L), eq(11L), eq(analysis), eq("원문 요청과 사실 정보"), any()
+        );
     }
 
     @Test
@@ -126,13 +125,12 @@ class TeacherComplaintQueryServiceTest {
         UserRepository users = mock(UserRepository.class);
         ComplaintAccessPolicy accessPolicy = mock(ComplaintAccessPolicy.class);
         ComplaintHistoryService historyService = mock(ComplaintHistoryService.class);
-        TeacherSupportContentProvider supportContent = mock(TeacherSupportContentProvider.class);
         TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
-        PiiMaskingService masking = mock(PiiMaskingService.class);
+        BufferedSummaryService bufferedSummaryService = mock(BufferedSummaryService.class);
         TeacherComplaintQueryService service = new TeacherComplaintQueryService(
                 complaints, events, messages, analyses, reviews, emergencyReviews, riskTags,
-                studentClasses, users, accessPolicy, historyService, supportContent, supportPolicy,
-                masking);
+                studentClasses, users, accessPolicy, historyService, supportPolicy,
+                bufferedSummaryService);
 
         User teacher = mock(User.class);
         Complaint complaint = mock(Complaint.class);
