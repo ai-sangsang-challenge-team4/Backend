@@ -20,22 +20,42 @@ class RiskAnalysisBufferedSummaryTest {
         ComplaintMessage message = message();
         RiskAnalysis analysis = new RiskAnalysis(message, 10, RiskLevel.LOW, "model", 0.0);
         LocalDateTime startedAt = LocalDateTime.of(2026, 11, 17, 10, 0);
+        String claimToken = "c4d27fc1-5be7-4a45-b982-7e86615fd83b";
 
-        analysis.startBufferedSummary(startedAt);
-        analysis.completeBufferedSummary("마스킹된 완충 요약");
+        analysis.startBufferedSummary(startedAt, claimToken);
+        analysis.completeBufferedSummary(claimToken, "마스킹된 완충 요약");
 
         assertThat(analysis.getBufferedSummaryStatus()).isEqualTo(BufferedSummaryStatus.COMPLETED);
         assertThat(analysis.getBufferedSummary()).isEqualTo("마스킹된 완충 요약");
         assertThat(analysis.getBufferedSummaryStartedAt()).isNull();
+        assertThat(analysis.getBufferedSummaryClaimToken()).isNull();
     }
 
     @Test
     void rejectsInvalidGeneratedSummary() {
         RiskAnalysis analysis = new RiskAnalysis(message(), 10, RiskLevel.LOW, "model", 0.0);
-        analysis.startBufferedSummary(LocalDateTime.now());
+        String claimToken = "c4d27fc1-5be7-4a45-b982-7e86615fd83b";
+        analysis.startBufferedSummary(LocalDateTime.now(), claimToken);
 
-        assertThatThrownBy(() -> analysis.completeBufferedSummary(" "))
+        assertThatThrownBy(() -> analysis.completeBufferedSummary(claimToken, " "))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectsCompletionAndFailureFromAnOlderClaim() {
+        RiskAnalysis analysis = new RiskAnalysis(message(), 10, RiskLevel.LOW, "model", 0.0);
+        String oldToken = "80d96ccf-013e-4416-b3f0-c4d4db27907b";
+        String currentToken = "ca085fe3-f415-47b0-a90d-aa07f0208106";
+        analysis.startBufferedSummary(LocalDateTime.now().minusMinutes(3), oldToken);
+        analysis.startBufferedSummary(LocalDateTime.now(), currentToken);
+
+        assertThat(analysis.completeBufferedSummary(oldToken, "오래된 요약")).isFalse();
+        assertThat(analysis.markBufferedSummaryUnavailable(oldToken)).isFalse();
+        assertThat(analysis.getBufferedSummaryStatus()).isEqualTo(BufferedSummaryStatus.GENERATING);
+        assertThat(analysis.getBufferedSummaryClaimToken()).isEqualTo(currentToken);
+
+        assertThat(analysis.completeBufferedSummary(currentToken, "최신 요약")).isTrue();
+        assertThat(analysis.getBufferedSummary()).isEqualTo("최신 요약");
     }
 
     private ComplaintMessage message() {

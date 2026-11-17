@@ -27,7 +27,8 @@ erDiagram
   CSV v1.1의 72개 후보 신호를 저장하며 애플리케이션에서 캐시해 사용한다.
 - `risk_analyses`: complaint_id, message_id, risk_score, risk_level, model_name, temperature,
   analysis_mode, revision_status, credible_threat, student_safety_concern, privacy_exposure,
-  buffered_summary_status, buffered_summary, buffered_summary_started_at, analyzed_at.
+  buffered_summary_status, buffered_summary, buffered_summary_started_at,
+  buffered_summary_claim_token, analyzed_at.
   message_id와 content_version으로 분석 대상 메시지 버전을 구분한다.
   `analysis_mode`은 정상 Rule+LLM 분석인 `HYBRID`와 외부 AI 실패 후 잠정 분석인 `RULE_ONLY`를
   구분한다. 현재는 H2 create-drop이 엔티티 정의에 따라 컬럼을 생성한다.
@@ -87,8 +88,9 @@ EMERGENCY에서는 개별 답변 생성을 차단한다.
 원문을 자동 노출하지 않고 `summaryStatus=UNAVAILABLE` 안내를 반환한다. 원문은 별도 열람 API와
 감사 이벤트를 통해 확인한다. 생성 결과와 실패 상태는 해당 위험 분석에 저장해 다음 조회에서
 재사용하며, `GENERATING` 선점 상태로 동시 AI 호출을 방지한다. 2분 이상 남은 `GENERATING`은
-중단된 작업으로 보고 다음 조회가 재시도한다. 교사 메시지는 원문을 그대로 표시하며 DRAFT
-메시지는 대화에서 제외한다.
+중단된 작업으로 보고 다음 조회가 새 선점 토큰으로 재시도한다. 완료·실패 기록은 현재 토큰과
+일치할 때만 반영해 이전 요청의 지연 응답이 최신 결과를 덮지 못하게 한다. 교사 메시지는 원문을
+그대로 표시하며 DRAFT 메시지는 대화에서 제외한다.
 
 히스토리 API는 더 이상 여러 도메인 테이블을 합쳐 정렬하지 않고 `complaint_events`를
 발생 시각 역순으로 한 번 조회한다. 읽음 이벤트를 포함하며 현재 도메인 상태와 대조해

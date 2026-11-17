@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @Slf4j
@@ -45,11 +46,13 @@ public class BufferedSummaryService {
         }
         boolean currentTransactionFallback =
                 claim.state() == BufferedSummaryPersistenceService.State.NOT_VISIBLE;
+        String claimToken = claim.claimToken();
         if (currentTransactionFallback) {
             CurrentTransactionClaim currentClaim = claimCurrentTransaction(analysis, maskingContext);
             if (!currentClaim.generate()) {
                 return currentClaim.result();
             }
+            claimToken = currentClaim.claimToken();
         }
 
         try {
@@ -63,16 +66,16 @@ public class BufferedSummaryService {
                 throw new IllegalStateException("완충 요약 결과가 올바르지 않습니다.");
             }
             if (currentTransactionFallback) {
-                analysis.completeBufferedSummary(safeSummary);
+                analysis.completeBufferedSummary(claimToken, safeSummary);
             } else {
-                persistenceService.complete(analysisId, safeSummary);
+                persistenceService.complete(analysisId, claimToken, safeSummary);
             }
             return Optional.of(safeSummary);
         } catch (RuntimeException exception) {
             if (currentTransactionFallback) {
-                analysis.markBufferedSummaryUnavailable();
+                analysis.markBufferedSummaryUnavailable(claimToken);
             } else {
-                markUnavailableSafely(analysisId);
+                markUnavailableSafely(analysisId, claimToken);
             }
             log.warn(
                     "Buffered summary generation failed; requiring explicit original view. "
@@ -99,23 +102,28 @@ public class BufferedSummaryService {
                 || analysis.getBufferedSummaryStatus() == BufferedSummaryStatus.UNAVAILABLE) {
             return CurrentTransactionClaim.reused(Optional.empty());
         }
-        analysis.startBufferedSummary(java.time.LocalDateTime.now());
-        return CurrentTransactionClaim.claimed();
+        String claimToken = UUID.randomUUID().toString();
+        analysis.startBufferedSummary(java.time.LocalDateTime.now(), claimToken);
+        return CurrentTransactionClaim.claimed(claimToken);
     }
 
-    private record CurrentTransactionClaim(boolean generate, Optional<String> result) {
-        private static CurrentTransactionClaim claimed() {
-            return new CurrentTransactionClaim(true, Optional.empty());
+    private record CurrentTransactionClaim(
+            boolean generate,
+            Optional<String> result,
+            String claimToken
+    ) {
+        private static CurrentTransactionClaim claimed(String claimToken) {
+            return new CurrentTransactionClaim(true, Optional.empty(), claimToken);
         }
 
         private static CurrentTransactionClaim reused(Optional<String> result) {
-            return new CurrentTransactionClaim(false, result);
+            return new CurrentTransactionClaim(false, result, null);
         }
     }
 
-    private void markUnavailableSafely(Long analysisId) {
+    private void markUnavailableSafely(Long analysisId, String claimToken) {
         try {
-            persistenceService.markUnavailable(analysisId);
+            persistenceService.markUnavailable(analysisId, claimToken);
         } catch (RuntimeException persistenceException) {
             log.error(
                     "Buffered summary failure state could not be stored. analysisId={}, failureType={}",

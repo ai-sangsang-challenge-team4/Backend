@@ -52,7 +52,7 @@ class BufferedSummaryServiceTest {
     @Test
     void generatesAndStoresMaskedSummaryOnlyAfterClaimingAnalysis() {
         when(persistenceService.claim(100L)).thenReturn(
-                BufferedSummaryPersistenceService.Claim.claimed()
+                BufferedSummaryPersistenceService.Claim.claimed("claim-token")
         );
         when(maskingService.mask("민원 원문", maskingContext)).thenReturn("마스킹된 원문");
         when(contentProvider.createBufferedSummary("마스킹된 원문")).thenReturn("생성된 요약");
@@ -63,7 +63,7 @@ class BufferedSummaryServiceTest {
         );
 
         assertThat(result).contains("안전한 생성 요약");
-        verify(persistenceService).complete(100L, "안전한 생성 요약");
+        verify(persistenceService).complete(100L, "claim-token", "안전한 생성 요약");
     }
 
     @Test
@@ -83,7 +83,7 @@ class BufferedSummaryServiceTest {
     @Test
     void storesUnavailableStateWhenGenerationFails() {
         when(persistenceService.claim(100L)).thenReturn(
-                BufferedSummaryPersistenceService.Claim.claimed()
+                BufferedSummaryPersistenceService.Claim.claimed("claim-token")
         );
         when(maskingService.mask("민원 원문", maskingContext)).thenReturn("마스킹된 원문");
         when(contentProvider.createBufferedSummary("마스킹된 원문"))
@@ -94,7 +94,7 @@ class BufferedSummaryServiceTest {
         );
 
         assertThat(result).isEmpty();
-        verify(persistenceService).markUnavailable(100L);
+        verify(persistenceService).markUnavailable(100L, "claim-token");
     }
 
     @Test

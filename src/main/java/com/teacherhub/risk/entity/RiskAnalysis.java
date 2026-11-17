@@ -79,6 +79,9 @@ public class RiskAnalysis {
 
     private LocalDateTime bufferedSummaryStartedAt;
 
+    @Column(length = 36)
+    private String bufferedSummaryClaimToken;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private RevisionStatus revisionStatus = RevisionStatus.NOT_REQUESTED;
@@ -137,18 +140,22 @@ public class RiskAnalysis {
         }
     }
 
-    public void startBufferedSummary(LocalDateTime startedAt) {
+    public void startBufferedSummary(LocalDateTime startedAt, String claimToken) {
         if (bufferedSummaryStatus != BufferedSummaryStatus.NOT_REQUESTED
                 && bufferedSummaryStatus != BufferedSummaryStatus.GENERATING) {
             return;
         }
+        if (claimToken == null || claimToken.isBlank() || claimToken.length() > 36) {
+            throw new IllegalArgumentException("완충 요약 선점 토큰이 올바르지 않습니다.");
+        }
         this.bufferedSummaryStatus = BufferedSummaryStatus.GENERATING;
         this.bufferedSummaryStartedAt = Objects.requireNonNull(startedAt, "완충 요약 시작 시각이 필요합니다.");
+        this.bufferedSummaryClaimToken = claimToken;
     }
 
-    public void completeBufferedSummary(String summary) {
-        if (bufferedSummaryStatus != BufferedSummaryStatus.GENERATING) {
-            return;
+    public boolean completeBufferedSummary(String claimToken, String summary) {
+        if (!ownsBufferedSummaryClaim(claimToken)) {
+            return false;
         }
         if (summary == null || summary.isBlank() || summary.length() > 1_500) {
             throw new IllegalArgumentException("완충 요약 형식이 올바르지 않습니다.");
@@ -156,15 +163,25 @@ public class RiskAnalysis {
         this.bufferedSummary = summary;
         this.bufferedSummaryStatus = BufferedSummaryStatus.COMPLETED;
         this.bufferedSummaryStartedAt = null;
+        this.bufferedSummaryClaimToken = null;
+        return true;
     }
 
-    public void markBufferedSummaryUnavailable() {
-        if (bufferedSummaryStatus != BufferedSummaryStatus.GENERATING) {
-            return;
+    public boolean markBufferedSummaryUnavailable(String claimToken) {
+        if (!ownsBufferedSummaryClaim(claimToken)) {
+            return false;
         }
         this.bufferedSummary = null;
         this.bufferedSummaryStatus = BufferedSummaryStatus.UNAVAILABLE;
         this.bufferedSummaryStartedAt = null;
+        this.bufferedSummaryClaimToken = null;
+        return true;
+    }
+
+    private boolean ownsBufferedSummaryClaim(String claimToken) {
+        return bufferedSummaryStatus == BufferedSummaryStatus.GENERATING
+                && claimToken != null
+                && claimToken.equals(bufferedSummaryClaimToken);
     }
 
     public RiskAnalysis(Complaint complaint, int riskScore, RiskLevel riskLevel,

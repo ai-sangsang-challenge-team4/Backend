@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Service
 public class BufferedSummaryPersistenceService {
@@ -42,18 +43,19 @@ public class BufferedSummaryPersistenceService {
             return Claim.unavailable();
         }
 
-        analysis.startBufferedSummary(now);
-        return Claim.claimed();
+        String claimToken = UUID.randomUUID().toString();
+        analysis.startBufferedSummary(now, claimToken);
+        return Claim.claimed(claimToken);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void complete(Long analysisId, String summary) {
-        findForUpdate(analysisId).completeBufferedSummary(summary);
+    public boolean complete(Long analysisId, String claimToken, String summary) {
+        return findForUpdate(analysisId).completeBufferedSummary(claimToken, summary);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void markUnavailable(Long analysisId) {
-        findForUpdate(analysisId).markBufferedSummaryUnavailable();
+    public boolean markUnavailable(Long analysisId, String claimToken) {
+        return findForUpdate(analysisId).markBufferedSummaryUnavailable(claimToken);
     }
 
     private RiskAnalysis findForUpdate(Long analysisId) {
@@ -61,21 +63,21 @@ public class BufferedSummaryPersistenceService {
                 .orElseThrow(() -> new IllegalStateException("위험 분석 결과가 사라졌습니다."));
     }
 
-    public record Claim(State state, String summary) {
-        public static Claim claimed() {
-            return new Claim(State.CLAIMED, null);
+    public record Claim(State state, String summary, String claimToken) {
+        public static Claim claimed(String claimToken) {
+            return new Claim(State.CLAIMED, null, claimToken);
         }
 
         public static Claim completed(String summary) {
-            return new Claim(State.COMPLETED, summary);
+            return new Claim(State.COMPLETED, summary, null);
         }
 
         public static Claim unavailable() {
-            return new Claim(State.UNAVAILABLE, null);
+            return new Claim(State.UNAVAILABLE, null, null);
         }
 
         public static Claim notVisible() {
-            return new Claim(State.NOT_VISIBLE, null);
+            return new Claim(State.NOT_VISIBLE, null, null);
         }
     }
 
