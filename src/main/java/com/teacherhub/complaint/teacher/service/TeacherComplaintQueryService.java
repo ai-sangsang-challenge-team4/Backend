@@ -24,11 +24,9 @@ import com.teacherhub.complaint.teacher.dto.query.TeacherOriginalViewResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
 import com.teacherhub.complaint.teacher.dto.AllowedAction;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
-import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
-import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
@@ -38,7 +36,6 @@ import com.teacherhub.school.repository.StudentClassRepository;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,7 +47,6 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 @Transactional(readOnly = true)
 public class TeacherComplaintQueryService {
 
@@ -65,9 +61,8 @@ public class TeacherComplaintQueryService {
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
     private final ComplaintHistoryService complaintHistoryService;
-    private final TeacherSupportContentProvider supportContentProvider;
     private final TeacherSupportPolicy supportPolicy;
-    private final PiiMaskingService piiMaskingService;
+    private final BufferedSummaryService bufferedSummaryService;
 
     public TeacherComplaintDetailResponse findDetail(Long userId, Long complaintId) {
         User user = findUser(userId);
@@ -96,12 +91,12 @@ public class TeacherComplaintQueryService {
         markLatestParentMessageRead(complaintId, user);
         List<ComplaintMessage> messages = messageRepository
                 .findByComplaintIdAndStatusNotOrderByIdAsc(complaintId, MessageStatus.DRAFT);
-        Map<Long, RiskLevel> latestRiskByMessage = latestRiskByMessage(complaintId);
+        Map<Long, RiskAnalysis> latestAnalysisByMessage = latestAnalysisByMessage(complaintId);
         Map<Long, BufferedSummary> bufferedSummaries = createBufferedSummaries(
                 complaintId,
                 PiiMaskingContext.from(complaint),
                 messages,
-                latestRiskByMessage
+                latestAnalysisByMessage
         );
 
         return TeacherConversationResponse.from(
@@ -125,40 +120,24 @@ public class TeacherComplaintQueryService {
             Long complaintId,
             PiiMaskingContext maskingContext,
             List<ComplaintMessage> messages,
-            Map<Long, RiskLevel> latestRiskByMessage
+            Map<Long, RiskAnalysis> latestAnalysisByMessage
     ) {
         Map<Long, BufferedSummary> summaries = new HashMap<>();
         messages.stream()
                 .filter(message -> message.getType() == MessageType.PARENT_INQUIRY)
-                .filter(message -> latestRiskByMessage.get(message.getId()) != null)
+                .filter(message -> latestAnalysisByMessage.get(message.getId()) != null)
                 .forEach(message -> {
-                    try {
-                        String maskedContent = piiMaskingService.mask(
-                                message.getContent(),
-                                maskingContext
-                        );
-                        if (maskedContent == null) {
-                            throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
-                        }
-                        String summary = supportContentProvider.createBufferedSummary(maskedContent);
-                        if (summary != null && !summary.isBlank() && summary.length() <= 1_500) {
-                            String safeSummary = piiMaskingService.mask(summary, maskingContext);
-                            if (safeSummary != null && !safeSummary.isBlank()) {
-                                summaries.put(message.getId(), BufferedSummary.generated(safeSummary));
-                                return;
-                            }
-                        }
-                        summaries.put(message.getId(), BufferedSummary.unavailable());
-                    } catch (RuntimeException exception) {
-                        log.warn(
-                                "Buffered summary generation failed; requiring explicit original view. "
-                                        + "complaintId={}, messageId={}, failureType={}",
-                                complaintId,
-                                message.getId(),
-                                exception.getClass().getSimpleName()
-                        );
-                        summaries.put(message.getId(), BufferedSummary.unavailable());
-                    }
+                    RiskAnalysis analysis = latestAnalysisByMessage.get(message.getId());
+                    BufferedSummary summary = bufferedSummaryService.findOrGenerate(
+                                    complaintId,
+                                    message.getId(),
+                                    analysis,
+                                    message.getContent(),
+                                    maskingContext
+                            )
+                            .map(BufferedSummary::generated)
+                            .orElseGet(BufferedSummary::unavailable);
+                    summaries.put(message.getId(), summary);
                 });
         return summaries;
     }
@@ -275,8 +254,8 @@ public class TeacherComplaintQueryService {
                 .orElse(false);
     }
 
-    private Map<Long, RiskLevel> latestRiskByMessage(Long complaintId) {
-        Map<Long, RiskLevel> result = new HashMap<>();
+    private Map<Long, RiskAnalysis> latestAnalysisByMessage(Long complaintId) {
+        Map<Long, RiskAnalysis> result = new HashMap<>();
         riskAnalysisRepository
                 .findByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdAsc(
                         complaintId,
@@ -284,7 +263,7 @@ public class TeacherComplaintQueryService {
                 ).stream()
                 .forEach(analysis -> result.put(
                         analysis.getMessage().getId(),
-                        analysis.getRiskLevel()
+                        analysis
                 ));
         return result;
     }

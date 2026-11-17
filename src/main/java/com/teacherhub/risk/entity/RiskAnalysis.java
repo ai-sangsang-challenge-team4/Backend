@@ -4,6 +4,7 @@ import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskAnalysisMode;
+import com.teacherhub.risk.enums.BufferedSummaryStatus;
 import com.teacherhub.risk.enums.RevisionStatus;
 import com.teacherhub.risk.dto.llm.SafetyFlags;
 import com.teacherhub.risk.util.ContentFingerprint;
@@ -71,6 +72,15 @@ public class RiskAnalysis {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
+    private BufferedSummaryStatus bufferedSummaryStatus = BufferedSummaryStatus.NOT_REQUESTED;
+
+    @Column(columnDefinition = "TEXT")
+    private String bufferedSummary;
+
+    private LocalDateTime bufferedSummaryStartedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
     private RevisionStatus revisionStatus = RevisionStatus.NOT_REQUESTED;
 
     // 모든 태그별 수정 제안을 종합한 전체 민원 수정본입니다.
@@ -125,6 +135,36 @@ public class RiskAnalysis {
         if (revisionStatus == RevisionStatus.PENDING) {
             this.revisionStatus = RevisionStatus.UNAVAILABLE;
         }
+    }
+
+    public void startBufferedSummary(LocalDateTime startedAt) {
+        if (bufferedSummaryStatus != BufferedSummaryStatus.NOT_REQUESTED
+                && bufferedSummaryStatus != BufferedSummaryStatus.GENERATING) {
+            return;
+        }
+        this.bufferedSummaryStatus = BufferedSummaryStatus.GENERATING;
+        this.bufferedSummaryStartedAt = Objects.requireNonNull(startedAt, "완충 요약 시작 시각이 필요합니다.");
+    }
+
+    public void completeBufferedSummary(String summary) {
+        if (bufferedSummaryStatus != BufferedSummaryStatus.GENERATING) {
+            return;
+        }
+        if (summary == null || summary.isBlank() || summary.length() > 1_500) {
+            throw new IllegalArgumentException("완충 요약 형식이 올바르지 않습니다.");
+        }
+        this.bufferedSummary = summary;
+        this.bufferedSummaryStatus = BufferedSummaryStatus.COMPLETED;
+        this.bufferedSummaryStartedAt = null;
+    }
+
+    public void markBufferedSummaryUnavailable() {
+        if (bufferedSummaryStatus != BufferedSummaryStatus.GENERATING) {
+            return;
+        }
+        this.bufferedSummary = null;
+        this.bufferedSummaryStatus = BufferedSummaryStatus.UNAVAILABLE;
+        this.bufferedSummaryStartedAt = null;
     }
 
     public RiskAnalysis(Complaint complaint, int riskScore, RiskLevel riskLevel,

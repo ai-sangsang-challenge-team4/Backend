@@ -57,6 +57,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.times;
 
 
 @SpringBootTest
@@ -321,6 +322,8 @@ public class ComplaintFlowIntegrationTest {
                 complaintId
         );
         teacherComplaintQueryService.findConversation(teacherUser.getId(), complaintId);
+
+        verify(teacherSupportContentProvider, times(1)).createBufferedSummary(anyString());
 
         assertThat(conversation.messages()).singleElement().satisfies(message -> {
             assertThat(message.content()).isEqualTo("[MOCK] 학부모가 전달한 민원의 완충 요약을 확인해 주세요.");
