@@ -22,6 +22,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -117,6 +118,65 @@ class ComplaintEscalationRepositoryTest {
         assertThat(emergencyResult).isEmpty();
     }
 
+    @Test
+    void usesIdAsTieBreakerWhenSharedAtIsEqualAcrossPages() {
+        User parentUser = persist(new User("parent-page@test.com", "password", "학부모", UserRole.PARENT));
+        User teacherUser = persist(new User("teacher-page@test.com", "password", "담임 교사", UserRole.TEACHER));
+        User admin = persist(new User("admin-page@test.com", "password", "박관리자", UserRole.ADMIN));
+        Parent parent = persist(new Parent(parentUser));
+        Teacher teacher = persist(new Teacher(teacherUser, "PAGE-T-1"));
+        Student firstStudent = persist(new Student("첫째 학생", "PAGE-S-1"));
+        Student secondStudent = persist(new Student("둘째 학생", "PAGE-S-2"));
+        Complaint firstComplaint = persist(new Complaint(
+                parent, firstStudent, teacher, "첫 번째 문의", "첫 번째 내용"
+        ));
+        Complaint secondComplaint = persist(new Complaint(
+                parent, secondStudent, teacher, "두 번째 문의", "두 번째 내용"
+        ));
+        entityManager.flush();
+
+        RiskAnalysis firstAnalysis = completedAnalysis(firstComplaint, 90, RiskLevel.EMERGENCY);
+        RiskAnalysis secondAnalysis = completedAnalysis(secondComplaint, 90, RiskLevel.EMERGENCY);
+        ComplaintEscalation firstEscalation = persist(new ComplaintEscalation(
+                firstComplaint,
+                firstAnalysis,
+                teacher,
+                admin,
+                Set.of(EscalationScope.MASKING_MESSAGES),
+                "첫 번째 공유"
+        ));
+        ComplaintEscalation secondEscalation = persist(new ComplaintEscalation(
+                secondComplaint,
+                secondAnalysis,
+                teacher,
+                admin,
+                Set.of(EscalationScope.MASKING_MESSAGES),
+                "두 번째 공유"
+        ));
+        entityManager.flush();
+
+        LocalDateTime tiedSharedAt = LocalDateTime.of(2026, 11, 17, 9, 30);
+        setSharedAt(firstEscalation.getId(), tiedSharedAt);
+        setSharedAt(secondEscalation.getId(), tiedSharedAt);
+        entityManager.clear();
+
+        Sort stableOrder = Sort.by(Sort.Direction.DESC, "sharedAt")
+                .and(Sort.by(Sort.Direction.DESC, "id"));
+        var firstPage = escalationRepository.searchSharedByTeacher(
+                teacherUser.getId(), null, null, null, PageRequest.of(0, 1, stableOrder)
+        );
+        var secondPage = escalationRepository.searchSharedByTeacher(
+                teacherUser.getId(), null, null, null, PageRequest.of(1, 1, stableOrder)
+        );
+
+        assertThat(firstPage.getContent())
+                .extracting(ComplaintEscalation::getId)
+                .containsExactly(secondEscalation.getId());
+        assertThat(secondPage.getContent())
+                .extracting(ComplaintEscalation::getId)
+                .containsExactly(firstEscalation.getId());
+    }
+
     private RiskAnalysis completedAnalysis(Complaint complaint, int score, RiskLevel level) {
         RiskAnalysis analysis = new RiskAnalysis(complaint, score, level, "test-model", 0.0);
         analysis.completeAnalysis(RevisionStatus.NOT_REQUESTED);
@@ -126,5 +186,16 @@ class ComplaintEscalationRepositoryTest {
     private <T> T persist(T entity) {
         entityManager.persist(entity);
         return entity;
+    }
+
+    private void setSharedAt(Long escalationId, LocalDateTime sharedAt) {
+        entityManager.createNativeQuery("""
+                        update complaint_escalations
+                        set shared_at = :sharedAt
+                        where id = :escalationId
+                        """)
+                .setParameter("sharedAt", sharedAt)
+                .setParameter("escalationId", escalationId)
+                .executeUpdate();
     }
 }

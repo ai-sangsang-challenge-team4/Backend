@@ -124,6 +124,7 @@ public class TeacherEscalationService {
                         query.resolvedPage(),
                         TeacherEscalationListQuery.PAGE_SIZE,
                         Sort.by(Sort.Direction.DESC, "sharedAt")
+                                .and(Sort.by(Sort.Direction.DESC, "id"))
                 )
         );
         var content = page.getContent().stream()

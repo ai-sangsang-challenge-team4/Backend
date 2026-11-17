@@ -184,6 +184,7 @@ class TeacherEscalationServiceTest {
                 0,
                 TeacherEscalationListQuery.PAGE_SIZE,
                 Sort.by(Sort.Direction.DESC, "sharedAt")
+                        .and(Sort.by(Sort.Direction.DESC, "id"))
         );
         var query = new TeacherEscalationListQuery(
                 0,
