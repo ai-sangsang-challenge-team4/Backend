@@ -3,12 +3,14 @@ package com.teacherhub.complaint.escalation.service;
 import com.teacherhub.complaint.access.ComplaintAccessPolicy;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintEvent;
+import com.teacherhub.escalation.dto.TeacherEscalationListQuery;
 import com.teacherhub.escalation.dto.ShareEscalationRequest;
 import com.teacherhub.escalation.entity.ComplaintEscalation;
 import com.teacherhub.escalation.enums.EscalationStatus;
 import com.teacherhub.escalation.enums.EscalationScope;
 import com.teacherhub.escalation.exception.AdminNotFoundException;
 import com.teacherhub.escalation.exception.EscalationReasonRequiredException;
+import com.teacherhub.escalation.exception.EscalationAccessDeniedException;
 import com.teacherhub.escalation.repository.ComplaintEscalationRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
@@ -19,12 +21,17 @@ import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.user.entity.Teacher;
+import com.teacherhub.user.entity.Student;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.enums.UserRole;
 import com.teacherhub.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -77,6 +84,7 @@ class TeacherEscalationServiceTest {
 
         when(teacherUser.getId()).thenReturn(10L);
         when(teacherUser.getName()).thenReturn("담임 교사");
+        when(teacherUser.getRole()).thenReturn(UserRole.TEACHER);
         when(admin.getId()).thenReturn(20L);
         when(admin.getName()).thenReturn("관리자");
         when(admin.getRole()).thenReturn(UserRole.ADMIN);
@@ -166,5 +174,74 @@ class TeacherEscalationServiceTest {
 
         assertThatThrownBy(() -> service.share(10L, 42L, requestWithUnknownAdmin))
                 .isInstanceOf(AdminNotFoundException.class);
+    }
+
+    @Test
+    void findsOnlyAuthenticatedTeachersSharedEscalationsAsPage() {
+        ComplaintEscalation escalation = mock(ComplaintEscalation.class);
+        Student student = mock(Student.class);
+        var pageable = PageRequest.of(
+                0,
+                TeacherEscalationListQuery.PAGE_SIZE,
+                Sort.by(Sort.Direction.DESC, "sharedAt")
+                        .and(Sort.by(Sort.Direction.DESC, "id"))
+        );
+        var query = new TeacherEscalationListQuery(
+                0,
+                "  생활지도  ",
+                EscalationStatus.UNDER_REVIEW,
+                RiskLevel.EMERGENCY
+        );
+
+        when(escalation.getId()).thenReturn(1L);
+        when(escalation.getComplaint()).thenReturn(complaint);
+        when(escalation.getRiskAnalysis()).thenReturn(analysis);
+        when(escalation.getSharedBy()).thenReturn(teacher);
+        when(escalation.getAssignedAdmin()).thenReturn(admin);
+        when(escalation.getScopes()).thenReturn(Set.of(EscalationScope.MASKING_MESSAGES));
+        when(escalation.getReason()).thenReturn("공동 검토가 필요합니다.");
+        when(escalation.getStatus()).thenReturn(EscalationStatus.UNDER_REVIEW);
+        when(complaint.getTitle()).thenReturn("학생 생활지도 관련 문의");
+        when(complaint.getStudent()).thenReturn(student);
+        when(student.getName()).thenReturn("김학생");
+        when(escalationRepository.searchSharedByTeacher(
+                10L,
+                "생활지도",
+                EscalationStatus.UNDER_REVIEW,
+                RiskLevel.EMERGENCY,
+                pageable
+        )).thenReturn(new PageImpl<>(List.of(escalation), pageable, 1));
+
+        var response = service.findAll(10L, query);
+
+        assertThat(response.totalElements()).isEqualTo(1);
+        assertThat(response.content()).singleElement().satisfies(item -> {
+            assertThat(item.complaintId()).isEqualTo(42L);
+            assertThat(item.complaintTitle()).isEqualTo("학생 생활지도 관련 문의");
+            assertThat(item.assignedAdminName()).isEqualTo("관리자");
+            assertThat(item.currentRiskLevel()).isEqualTo(RiskLevel.EMERGENCY);
+        });
+        verify(escalationRepository).searchSharedByTeacher(
+                10L,
+                "생활지도",
+                EscalationStatus.UNDER_REVIEW,
+                RiskLevel.EMERGENCY,
+                pageable
+        );
+    }
+
+    @Test
+    void rejectsAnotherTeachersSharedEscalationDetail() {
+        ComplaintEscalation escalation = mock(ComplaintEscalation.class);
+        Teacher anotherTeacher = mock(Teacher.class);
+        User anotherTeacherUser = mock(User.class);
+
+        when(escalationRepository.findDetailById(1L)).thenReturn(Optional.of(escalation));
+        when(escalation.getSharedBy()).thenReturn(anotherTeacher);
+        when(anotherTeacher.getUser()).thenReturn(anotherTeacherUser);
+        when(anotherTeacherUser.getId()).thenReturn(99L);
+
+        assertThatThrownBy(() -> service.findOne(10L, 1L))
+                .isInstanceOf(EscalationAccessDeniedException.class);
     }
 }

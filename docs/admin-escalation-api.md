@@ -7,6 +7,52 @@ EMERGENCY 민원을 담당 교사가 관리자에게 공유하고, 지정된 관
 
 ## 교사 API
 
+### 본인 공유 내역 조회
+
+`GET /teacher/escalations`
+
+로그인한 교사가 직접 관리자에게 공유한 건만 최신 공유 순으로 페이지 조회한다. 클라이언트는
+교사 ID를 전달하지 않으며 서버가 인증 사용자와 `sharedBy`가 일치하는 건만 반환한다.
+`page`는 0부터 시작하고 페이지 크기는 10으로 고정한다. `keyword`는 민원 제목과 학생명,
+`status`는 공유 처리 상태, `riskLevel`은 최신 교사 검토가 반영된 현재 위험 등급을 검색한다.
+
+`GET /teacher/escalations/{escalationId}`
+
+본인이 공유한 단일 건의 같은 요약 정보를 조회한다. 다른 교사가 공유한 건은 403
+`ESCALATION_ACCESS_DENIED`, 존재하지 않는 건은 404 `ESCALATION_NOT_FOUND`다.
+관리자 내부 검토 메모와 처리 결과는 교사 공개 정책이 정해지기 전까지 반환하지 않는다.
+
+```json
+{
+  "content": [{
+    "escalationId": 1,
+    "complaintId": 42,
+    "complaintTitle": "학생 생활지도 관련 문의",
+    "studentName": "김학생",
+    "assignedAdminName": "박관리자",
+    "reason": "공동 검토가 필요합니다.",
+    "sharedScopes": ["MASKING_MESSAGES"],
+    "escalationStatus": "UNDER_REVIEW",
+    "currentRiskScore": 90,
+    "currentRiskLevel": "EMERGENCY",
+    "emergencyReviewRequestId": 10,
+    "riskReviewStatus": "PENDING_ADMIN_APPROVAL",
+    "safetyLock": true,
+    "sharedAt": "2026-11-17T09:30:00",
+    "reviewStartedAt": "2026-11-17T10:15:00",
+    "completedAt": null
+  }],
+  "page": 0,
+  "size": 10,
+  "totalElements": 1,
+  "totalPages": 1,
+  "first": true,
+  "last": true,
+  "hasNext": false,
+  "hasPrevious": false
+}
+```
+
 ### 공유 상태 조회
 
 `GET /teacher/complaints/{complaintId}/escalation`

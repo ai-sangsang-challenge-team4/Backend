@@ -9,10 +9,15 @@ import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
 import com.teacherhub.escalation.dto.EscalationStateResponse;
 import com.teacherhub.escalation.dto.ShareEscalationRequest;
+import com.teacherhub.escalation.dto.TeacherEscalationListQuery;
+import com.teacherhub.escalation.dto.TeacherEscalationPageResponse;
+import com.teacherhub.escalation.dto.TeacherEscalationSummaryResponse;
 import com.teacherhub.escalation.entity.ComplaintEscalation;
 import com.teacherhub.escalation.enums.EscalationScope;
 import com.teacherhub.escalation.exception.AdminNotFoundException;
+import com.teacherhub.escalation.exception.EscalationAccessDeniedException;
 import com.teacherhub.escalation.exception.EscalationNotAllowedException;
+import com.teacherhub.escalation.exception.EscalationNotFoundException;
 import com.teacherhub.escalation.exception.EscalationReasonRequiredException;
 import com.teacherhub.escalation.repository.ComplaintEscalationRepository;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
@@ -30,6 +35,8 @@ import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -103,6 +110,50 @@ public class TeacherEscalationService {
                 .orElseGet(() -> notSharedResponse(complaintId));
     }
 
+    public TeacherEscalationPageResponse findAll(
+            Long userId,
+            TeacherEscalationListQuery query
+    ) {
+        User teacherUser = findTeacher(userId);
+        var page = escalationRepository.searchSharedByTeacher(
+                teacherUser.getId(),
+                query.normalizedKeyword(),
+                query.status(),
+                query.riskLevel(),
+                PageRequest.of(
+                        query.resolvedPage(),
+                        TeacherEscalationListQuery.PAGE_SIZE,
+                        Sort.by(Sort.Direction.DESC, "sharedAt")
+                                .and(Sort.by(Sort.Direction.DESC, "id"))
+                )
+        );
+        var content = page.getContent().stream()
+                .map(this::summaryResponse)
+                .toList();
+
+        return new TeacherEscalationPageResponse(
+                content,
+                page.getNumber(),
+                page.getSize(),
+                page.getTotalElements(),
+                page.getTotalPages(),
+                page.isFirst(),
+                page.isLast(),
+                page.hasNext(),
+                page.hasPrevious()
+        );
+    }
+
+    public TeacherEscalationSummaryResponse findOne(Long userId, Long escalationId) {
+        User teacherUser = findTeacher(userId);
+        ComplaintEscalation escalation = escalationRepository.findDetailById(escalationId)
+                .orElseThrow(() -> new EscalationNotFoundException("공유 건을 찾을 수 없습니다."));
+        if (!escalation.getSharedBy().getUser().getId().equals(teacherUser.getId())) {
+            throw new EscalationAccessDeniedException("본인이 공유하지 않은 공유 건에는 접근할 수 없습니다.");
+        }
+        return summaryResponse(escalation);
+    }
+
     private EscalationStateResponse notSharedResponse(Long complaintId) {
         RiskAnalysis analysis = riskAnalysisRepository
                 .findFirstByComplaintIdAndCompletedTrueOrderByIdDesc(complaintId)
@@ -146,6 +197,23 @@ public class TeacherEscalationService {
         );
     }
 
+    private TeacherEscalationSummaryResponse summaryResponse(ComplaintEscalation escalation) {
+        RiskReview latestReview = riskReviewRepository
+                .findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(
+                        escalation.getRiskAnalysis().getId()
+                )
+                .orElse(null);
+        return TeacherEscalationSummaryResponse.from(
+                escalation,
+                latestReview,
+                emergencyReviewRequestRepository
+                        .findFirstByComplaintIdOrderByRequestedAtDescIdDesc(
+                                escalation.getComplaint().getId()
+                        )
+                        .orElse(null)
+        );
+    }
+
     private RiskAnalysis requireEmergencyAnalysis(Long complaintId) {
         RiskAnalysis analysis = riskAnalysisRepository
                 .findFirstByComplaintIdAndCompletedTrueOrderByIdDesc(complaintId)
@@ -167,6 +235,14 @@ public class TeacherEscalationService {
     private User findUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("사용자를 찾을 수 없습니다."));
+    }
+
+    private User findTeacher(Long userId) {
+        User user = findUser(userId);
+        if (user.getRole() != UserRole.TEACHER) {
+            throw new EscalationAccessDeniedException("교사 권한이 필요합니다.");
+        }
+        return user;
     }
 
     private String normalizeReason(String reason) {
