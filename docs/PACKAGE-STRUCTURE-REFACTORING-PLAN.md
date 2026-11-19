@@ -415,6 +415,11 @@ risk/
 
 `complaint.teacher.controller`는 교사 URL·인증·요청 변환을 담당하고, 위험 조회·검토 정책과
 응답 조립은 `risk`가 담당한다. 따라서 `risk`가 `complaint.teacher`의 DTO나 정책을 역참조하지 않는다.
+학부모 `ParentRiskFindingsResponse`와 교사 `TeacherRiskResponse`의 태그별 중첩 타입은
+`RiskTagResult`로 통일하되, 역할별 데이터 최소화를 위해 필드 구성은 각각 유지한다.
+Java 내부에서는 태그 목록을 `riskTagResults`, 태그 근거를 `evidence`로 통일한다.
+프론트 계약은 `@JsonProperty`로 학부모의 `findings`·`evidences`, 교사의
+`detectedFactors`·`evidenceSpans`를 그대로 유지한다.
 `escalation`, `auth`, `user` 등 다른 최상위 기능 패키지는 이번 작업에서 대규모 이동하지 않는다.
 
 ## 11. 작업 순서

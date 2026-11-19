@@ -148,6 +148,8 @@ EMERGENCY로 승격해 기존 관리자 재검토와 답변 차단 경로에 연
 학부모 위험 분석 요약의 `emergencyOverride`는 이 원시 값을 화면용 안전 신호 코드·제목·설명으로
 변환해 반환한다. 기존 위험 분석 경로와 필드는 유지되며 Safety Flag가 적용되지 않았으면
 `applied=false`, `safetySignals=[]`다.
+태그별 근거를 표시하는 `GET /risk-analyses/{analysisId}/findings`도 같은 `emergencyOverride`를
+반환하므로, 일반 위험 태그가 비어 있어도 학부모 검토 화면에서 Emergency 승격 사유를 표시할 수 있다.
 
 POST는 민원 관계자 컨텍스트로 원문을 마스킹한 뒤 원문 Rule 탐지를 실행하고, Rule의 evidence와 reason을 같은
 컨텍스트로 다시 마스킹해 마스킹 본문과 함께 LLM에 전달한다. LLM evidence와 reason도 저장 전에 같은 컨텍스트로

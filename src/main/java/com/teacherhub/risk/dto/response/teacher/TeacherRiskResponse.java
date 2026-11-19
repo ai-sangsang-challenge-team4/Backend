@@ -1,5 +1,6 @@
 package com.teacherhub.risk.dto.response.teacher;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.teacherhub.risk.entity.ComplaintRiskTag;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
@@ -61,7 +62,8 @@ public record TeacherRiskResponse(
         LatestReview latestReview,
 
         @Schema(description = "감지된 위험 요소. 분석이 없으면 빈 배열")
-        List<DetectedFactor> detectedFactors,
+        @JsonProperty("detectedFactors")
+        List<RiskTagResult> riskTagResults,
 
         @Schema(description = "Safety Flag로 Emergency가 강제 적용된 경우의 승격 사유. 분석이 없으면 null", nullable = true)
         EmergencyOverrideResponse emergencyOverride
@@ -72,8 +74,8 @@ public record TeacherRiskResponse(
             RiskReview latestReview,
             boolean safetyLock
     ) {
-        List<DetectedFactor> detectedFactors = riskTags.stream()
-                .map(DetectedFactor::from)
+        List<RiskTagResult> riskTagResults = riskTags.stream()
+                .map(RiskTagResult::from)
                 .toList();
 
         return new TeacherRiskResponse(
@@ -100,7 +102,7 @@ public record TeacherRiskResponse(
                         : "Rule과 AI 문맥 분석이 완료되었습니다.",
                 analysis.getAnalyzedAt(),
                 latestReview == null ? null : LatestReview.from(latestReview),
-                detectedFactors,
+                riskTagResults,
                 EmergencyOverrideResponse.from(analysis.safetyFlags())
         );
     }
@@ -127,44 +129,6 @@ public record TeacherRiskResponse(
         );
     }
 
-    public TeacherRiskResponse(
-            Long complaintId,
-            Long riskAnalysisId,
-            Integer riskScore,
-            RiskLevel riskLevel,
-            Integer reviewScale,
-            Integer reviewScore,
-            RiskLevel reviewLevel,
-            Integer currentRiskScore,
-            RiskLevel currentRiskLevel,
-            boolean safetyLock,
-            LocalDateTime analyzedAt,
-            LatestReview latestReview,
-            List<DetectedFactor> detectedFactors
-    ) {
-        this(
-                complaintId,
-                riskAnalysisId,
-                riskScore,
-                riskLevel,
-                reviewScale,
-                reviewScore,
-                reviewLevel,
-                currentRiskScore,
-                currentRiskLevel,
-                safetyLock,
-                riskAnalysisId == null ? null : RiskAnalysisMode.HYBRID,
-                riskAnalysisId == null,
-                riskAnalysisId == null
-                        ? "완료된 위험 분석이 없습니다. 교사 검토가 필요합니다."
-                        : "Rule과 AI 문맥 분석이 완료되었습니다.",
-                analyzedAt,
-                latestReview,
-                detectedFactors,
-                riskAnalysisId == null ? null : EmergencyOverrideResponse.notApplied()
-        );
-    }
-
     public record LatestReview(
             Long riskReviewId,
             RiskReviewDirection direction,
@@ -183,24 +147,26 @@ public record TeacherRiskResponse(
         }
     }
 
-    public record DetectedFactor(
+    @Schema(name = "TeacherRiskTagResult")
+    public record RiskTagResult(
             RiskTagCode code,
             String name,
             RiskTagState state,
-            List<EvidenceSpan> evidenceSpans,
+            @JsonProperty("evidenceSpans")
+            List<EvidenceSpan> evidence,
             String reason
     ) {
-        private static DetectedFactor from(ComplaintRiskTag riskTag) {
-            List<EvidenceSpan> evidenceSpans = riskTag.getEvidenceSpans().isEmpty()
+        private static RiskTagResult from(ComplaintRiskTag riskTag) {
+            List<EvidenceSpan> evidence = riskTag.getEvidenceSpans().isEmpty()
                     ? legacySpans(riskTag.getEvidence())
                     : riskTag.getEvidenceSpans().stream()
                             .map(com.teacherhub.risk.entity.RiskEvidenceSpan::toDto)
                             .toList();
-            return new DetectedFactor(
+            return new RiskTagResult(
                     riskTag.getRiskTag().getCode(),
                     riskTag.getRiskTag().getName(),
                     riskTag.effectiveFinalState(),
-                    evidenceSpans,
+                    evidence,
                     riskTag.getReason()
             );
         }

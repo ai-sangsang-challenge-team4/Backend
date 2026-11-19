@@ -1,6 +1,8 @@
 package com.teacherhub.risk.service;
 
 import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.dto.llm.SafetyFlags;
+import com.teacherhub.risk.enums.SafetySignalCode;
 import com.teacherhub.risk.enums.RevisionStatus;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
@@ -23,13 +25,18 @@ class ParentRiskAnalysisQueryServiceTest {
         when(analysis.isCompleted()).thenReturn(true);
         when(analysis.getComplaint().getParent().getUser().getId()).thenReturn(1L);
         when(analysis.getRevisionStatus()).thenReturn(RevisionStatus.PENDING);
+        when(analysis.safetyFlags()).thenReturn(new SafetyFlags(true, false, false));
         when(analysis.getTagRevisionSuggestions()).thenReturn(List.of());
         when(tags.findByRiskAnalysisId(10L)).thenReturn(List.of());
 
         var response = new ParentRiskAnalysisQueryService(analyses, tags).findFindings(1L, 10L);
 
         assertThat(response.revisionStatus()).isEqualTo(RevisionStatus.PENDING);
-        assertThat(response.findings()).isEmpty();
+        assertThat(response.riskTagResults()).isEmpty();
         assertThat(response.finalRevision()).isNull();
+        assertThat(response.emergencyOverride().applied()).isTrue();
+        assertThat(response.emergencyOverride().safetySignals())
+                .extracting(com.teacherhub.risk.dto.response.common.EmergencyOverrideResponse.SafetySignalResponse::code)
+                .containsExactly(SafetySignalCode.CREDIBLE_THREAT);
     }
 }

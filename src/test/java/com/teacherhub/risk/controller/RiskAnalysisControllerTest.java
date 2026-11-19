@@ -4,6 +4,10 @@ import com.teacherhub.risk.service.RiskAnalysisService;
 import com.teacherhub.risk.service.ParentRiskAnalysisQueryService;
 import com.teacherhub.risk.dto.response.MaskingResponse;
 import com.teacherhub.risk.dto.response.parent.ParentRiskSummaryResponse;
+import com.teacherhub.risk.dto.response.parent.ParentRiskFindingsResponse;
+import com.teacherhub.risk.dto.response.common.EmergencyOverrideResponse;
+import com.teacherhub.risk.dto.llm.SafetyFlags;
+import com.teacherhub.risk.enums.RevisionStatus;
 import com.teacherhub.risk.masking.ComplaintMaskingService;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
@@ -65,7 +69,18 @@ class RiskAnalysisControllerTest {
                 .andExpect(jsonPath("$.analysisId").value(21))
                 .andExpect(jsonPath("$.riskLevel").value("MEDIUM"))
                 .andExpect(jsonPath("$.aiAnalysisStatus").value("COMPLETED"));
-        mvc.perform(get("/risk-analyses/20/findings").principal(auth)).andExpect(status().isOk());
+        when(query.findFindings(7L, 20L)).thenReturn(new ParentRiskFindingsResponse(
+                RevisionStatus.PENDING,
+                List.of(),
+                null,
+                EmergencyOverrideResponse.from(new SafetyFlags(true, false, false))
+        ));
+        mvc.perform(get("/risk-analyses/20/findings").principal(auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.findings").isEmpty())
+                .andExpect(jsonPath("$.emergencyOverride.applied").value(true))
+                .andExpect(jsonPath("$.emergencyOverride.safetySignals[0].code")
+                        .value("CREDIBLE_THREAT"));
         mvc.perform(get("/risk-analyses/20/detector-results").principal(auth)).andExpect(status().isOk());
         verify(query).findFindings(7L, 20L);
         verify(query).findDetectorResults(7L, 20L);

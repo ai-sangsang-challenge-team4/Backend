@@ -55,9 +55,13 @@ class AdminEscalationControllerTest {
                 70,
                 com.teacherhub.risk.enums.RiskLevel.EMERGENCY,
                 false,
+                com.teacherhub.risk.enums.RiskAnalysisMode.HYBRID,
+                false,
+                "Rule과 AI 문맥 분석이 완료되었습니다.",
                 null,
                 null,
-                List.of()
+                List.of(),
+                com.teacherhub.risk.dto.response.common.EmergencyOverrideResponse.notApplied()
         );
         var history = new TeacherHistoryResponse(42L, List.of(
                 new TeacherHistoryResponse.HistoryEvent(

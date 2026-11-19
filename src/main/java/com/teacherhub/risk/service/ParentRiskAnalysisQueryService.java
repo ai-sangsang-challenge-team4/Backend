@@ -3,6 +3,7 @@ package com.teacherhub.risk.service;
 import com.teacherhub.complaint.exception.ComplaintAccessDeniedException;
 import com.teacherhub.risk.dto.response.parent.ParentRiskFindingsResponse;
 import com.teacherhub.risk.dto.response.parent.ParentRiskDetectorResponse;
+import com.teacherhub.risk.dto.response.common.EmergencyOverrideResponse;
 import com.teacherhub.risk.entity.ComplaintRiskTag;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
@@ -29,14 +30,14 @@ public class ParentRiskAnalysisQueryService {
     public ParentRiskFindingsResponse findFindings(Long userId, Long analysisId) {
         var analysis = ownedAnalysis(userId, analysisId);
 
-        var findings = resultRepository.findByRiskAnalysisId(analysisId).stream()
+        var riskTagResults = resultRepository.findByRiskAnalysisId(analysisId).stream()
                 .filter(ComplaintRiskTag::isFinalDetected)
                 .sorted(Comparator.comparing(tag -> tag.getRiskTag().getCode()))
-                .map(tag -> new ParentRiskFindingsResponse.Finding(tag.getRiskTag().getCode(),
-                        evidences(tag.getEvidence()),
+                .map(tag -> new ParentRiskFindingsResponse.RiskTagResult(tag.getRiskTag().getCode(),
+                        evidenceLines(tag.getEvidence()),
                         analysis.getTagRevisionSuggestions().stream()
                                 .filter(suggestion -> suggestion.getCode() == tag.getRiskTag().getCode())
-                                .map(suggestion -> new ParentRiskFindingsResponse.Suggestion(
+                                .map(suggestion -> new ParentRiskFindingsResponse.RevisionSuggestion(
                                         suggestion.getOriginalExpression(), suggestion.getSuggestedExpression(),
                                         suggestion.getReason())).toList()))
                 .toList();
@@ -45,7 +46,12 @@ public class ParentRiskAnalysisQueryService {
                 : new ParentRiskFindingsResponse.FinalRevision(
                         analysis.getRevisionReason(), analysis.getAiRevision());
 
-        return new ParentRiskFindingsResponse(analysis.getRevisionStatus(), findings, revision);
+        return new ParentRiskFindingsResponse(
+                analysis.getRevisionStatus(),
+                riskTagResults,
+                revision,
+                EmergencyOverrideResponse.from(analysis.safetyFlags())
+        );
     }
 
     // 민원 위험 분석 결과에서 감지된 태그별 탐지기 결과 조회
@@ -87,13 +93,13 @@ public class ParentRiskAnalysisQueryService {
     }
 
     // 문자열을 줄 단위로 분리하여 공백 제거 및 중복 제거
-    private List<String> evidences(String value) {
+    private List<String> evidenceLines(String value) {
         return value == null || value.isBlank() ? List.of()
                 : value.lines().filter(line -> !line.isBlank()).distinct().toList();
     }
 
     private List<com.teacherhub.risk.dto.detection.EvidenceSpan> spans(String value) {
-        return evidences(value).stream()
+        return evidenceLines(value).stream()
                 .map(com.teacherhub.risk.dto.detection.EvidenceSpan::unlocated)
                 .toList();
     }

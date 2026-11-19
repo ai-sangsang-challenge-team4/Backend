@@ -21,30 +21,6 @@ public record ParentRiskSummaryResponse(
         RevisionStatus revisionStatus,
         EmergencyOverrideResponse emergencyOverride
 ) {
-    public ParentRiskSummaryResponse(
-            Long analysisId,
-            Long complaintId,
-            Integer riskScore,
-            RiskLevel riskLevel,
-            SubmissionAnalysisStatus aiAnalysisStatus,
-            RiskAnalysisMode analysisMode,
-            boolean manualReviewRequired,
-            String analysisMessage,
-            RevisionStatus revisionStatus
-    ) {
-        this(
-                analysisId,
-                complaintId,
-                riskScore,
-                riskLevel,
-                aiAnalysisStatus,
-                analysisMode,
-                manualReviewRequired,
-                analysisMessage,
-                revisionStatus,
-                EmergencyOverrideResponse.notApplied()
-        );
-    }
 
     public ParentRiskSummaryResponse(
             Long analysisId,

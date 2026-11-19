@@ -43,7 +43,7 @@ class TeacherRiskQueryServiceTest {
 
         assertThat(response.complaintId()).isEqualTo(42L);
         assertThat(response.riskAnalysisId()).isNull();
-        assertThat(response.detectedFactors()).isEmpty();
+        assertThat(response.riskTagResults()).isEmpty();
         assertThat(response.emergencyOverride()).isNull();
     }
 
@@ -74,8 +74,8 @@ class TeacherRiskQueryServiceTest {
 
         var response = fixture.service.findRisk(7L, 42L);
 
-        assertThat(response.detectedFactors()).singleElement().satisfies(factor ->
-                assertThat(factor.evidenceSpans())
+        assertThat(response.riskTagResults()).singleElement().satisfies(factor ->
+                assertThat(factor.evidence())
                         .extracting(com.teacherhub.risk.dto.detection.EvidenceSpan::text)
                         .containsExactly("첫 번째 근거", "두 번째 근거"));
         assertThat(response.emergencyOverride().applied()).isTrue();

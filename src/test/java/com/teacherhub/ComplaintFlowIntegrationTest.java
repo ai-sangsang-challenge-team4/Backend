@@ -534,8 +534,8 @@ public class ComplaintFlowIntegrationTest {
         var findings = riskAnalysisQueryService.findFindings(parentUser.getId(), analysisId);
         assertThat(findings.revisionStatus())
                 .isEqualTo(com.teacherhub.risk.enums.RevisionStatus.PENDING);
-        assertThat(findings.findings()).hasSize(2).allSatisfy(finding -> {
-            assertThat(finding.evidences()).isNotEmpty();
+        assertThat(findings.riskTagResults()).hasSize(2).allSatisfy(finding -> {
+            assertThat(finding.evidence()).isNotEmpty();
             assertThat(finding.revisionSuggestions()).isEmpty();
         });
         assertThat(findings.finalRevision()).isNull();
