@@ -13,6 +13,7 @@ import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
 import com.teacherhub.risk.entity.RiskAnalysis;
+import com.teacherhub.risk.dto.llm.SafetyFlags;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
@@ -205,5 +206,32 @@ class TeacherComplaintQueryServiceTest {
                     assertThat(span.start()).isNull();
                     assertThat(span.end()).isNull();
                 });
+    }
+
+    @Test
+    void exposesStudentSafetyConcernAsEmergencyOverrideReasonWithoutDetectedTags() {
+        RiskAnalysis analysis = mock(RiskAnalysis.class);
+        Complaint complaint = mock(Complaint.class);
+        when(analysis.getComplaint()).thenReturn(complaint);
+        when(complaint.getId()).thenReturn(42L);
+        when(analysis.getId()).thenReturn(100L);
+        when(analysis.getRiskScore()).thenReturn(100);
+        when(analysis.getRiskLevel()).thenReturn(RiskLevel.EMERGENCY);
+        when(analysis.safetyFlags()).thenReturn(new SafetyFlags(false, true, false));
+
+        var response = com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse.from(
+                analysis,
+                List.of(),
+                null,
+                false
+        );
+
+        assertThat(response.detectedFactors()).isEmpty();
+        assertThat(response.emergencyOverride().applied()).isTrue();
+        assertThat(response.emergencyOverride().safetySignals()).singleElement().satisfies(signal -> {
+            assertThat(signal.code().name()).isEqualTo("STUDENT_SAFETY_CONCERN");
+            assertThat(signal.title()).isEqualTo("학생 안전 우려");
+            assertThat(signal.description()).contains("긴급 단계로 상향");
+        });
     }
 }

@@ -7,6 +7,7 @@ import com.teacherhub.complaint.query.dto.ComplaintPageResponse;
 import com.teacherhub.complaint.query.dto.ComplaintListSort;
 import com.teacherhub.complaint.teacher.dto.query.TeacherComplaintDetailResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
+import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherAiDraftResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseDraftResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseRequest;
@@ -20,6 +21,7 @@ import com.teacherhub.common.exception.GlobalExceptionHandler;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskReviewDirection;
 import com.teacherhub.risk.enums.RiskReviewStatus;
+import com.teacherhub.risk.enums.SafetySignalCode;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -272,5 +274,66 @@ class TeacherParentComplaintControllerTest {
 
         verify(service).findDetail(7L, 42L);
         verify(service).findConversation(7L, 42L);
+    }
+
+    @Test
+    void returnsEmergencySafetySignalOnTeacherRiskRoute() throws Exception {
+        var queryService = mock(TeacherComplaintQueryService.class);
+        var responseService = mock(TeacherResponseService.class);
+        var riskReviewService = mock(TeacherRiskReviewService.class);
+        var complaintQueryService = mock(ComplaintQueryService.class);
+        var users = mock(UserRepository.class);
+        var user = mock(User.class);
+        var emergencyOverride = new TeacherRiskResponse.EmergencyOverride(
+                true,
+                List.of(new TeacherRiskResponse.SafetySignal(
+                        SafetySignalCode.STUDENT_SAFETY_CONCERN,
+                        "학생 안전 우려",
+                        "학생 안전 우려 신호가 확인되어 일반 위험 태그 점수와 별도로 긴급 단계로 상향되었습니다."
+                ))
+        );
+
+        when(user.getId()).thenReturn(7L);
+        when(users.findByEmail("teacher@test.com")).thenReturn(Optional.of(user));
+        when(queryService.findRisk(7L, 42L)).thenReturn(new TeacherRiskResponse(
+                42L,
+                100L,
+                100,
+                RiskLevel.EMERGENCY,
+                null,
+                null,
+                null,
+                100,
+                RiskLevel.EMERGENCY,
+                false,
+                null,
+                false,
+                "Rule과 AI 문맥 분석이 완료되었습니다.",
+                LocalDateTime.of(2026, 11, 19, 12, 30),
+                null,
+                List.of(),
+                emergencyOverride
+        ));
+
+        var mvc = MockMvcBuilders.standaloneSetup(new TeacherComplaintController(
+                queryService,
+                responseService,
+                riskReviewService,
+                complaintQueryService,
+                users
+        )).build();
+        var auth = new UsernamePasswordAuthenticationToken("teacher@test.com", null, List.of());
+
+        mvc.perform(get("/teacher/complaints/42/risk").principal(auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.riskLevel").value("EMERGENCY"))
+                .andExpect(jsonPath("$.detectedFactors").isEmpty())
+                .andExpect(jsonPath("$.emergencyOverride.applied").value(true))
+                .andExpect(jsonPath("$.emergencyOverride.safetySignals[0].code")
+                        .value("STUDENT_SAFETY_CONCERN"))
+                .andExpect(jsonPath("$.emergencyOverride.safetySignals[0].title")
+                        .value("학생 안전 우려"))
+                .andExpect(jsonPath("$.emergencyOverride.safetySignals[0].description")
+                        .value(org.hamcrest.Matchers.containsString("긴급 단계로 상향")));
     }
 }

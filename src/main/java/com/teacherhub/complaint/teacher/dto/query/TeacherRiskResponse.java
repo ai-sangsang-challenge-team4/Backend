@@ -3,11 +3,13 @@ package com.teacherhub.complaint.teacher.dto.query;
 import com.teacherhub.risk.entity.ComplaintRiskTag;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
+import com.teacherhub.risk.dto.llm.SafetyFlags;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskAnalysisMode;
 import com.teacherhub.risk.enums.RiskReviewDirection;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.enums.RiskTagState;
+import com.teacherhub.risk.enums.SafetySignalCode;
 import com.teacherhub.risk.dto.detection.EvidenceSpan;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -45,7 +47,9 @@ public record TeacherRiskResponse(
         @Schema(description = "최신 교사 검토 정보. 검토 또는 분석이 없으면 null", nullable = true)
         LatestReview latestReview,
         @Schema(description = "감지된 위험 요소. 분석이 없으면 빈 배열")
-        List<DetectedFactor> detectedFactors
+        List<DetectedFactor> detectedFactors,
+        @Schema(description = "Safety Flag로 Emergency가 강제 적용된 경우의 승격 사유. 분석이 없으면 null")
+        EmergencyOverride emergencyOverride
 ) {
     public static TeacherRiskResponse from(
             RiskAnalysis analysis,
@@ -83,7 +87,8 @@ public record TeacherRiskResponse(
                         : "Rule과 AI 문맥 분석이 완료되었습니다.",
                 analysis.getAnalyzedAt(),
                 latestReview == null ? null : LatestReview.from(latestReview),
-                detectedFactors
+                detectedFactors,
+                EmergencyOverride.from(analysis.safetyFlags())
         );
     }
 
@@ -104,7 +109,8 @@ public record TeacherRiskResponse(
                 "완료된 위험 분석이 없습니다. 교사 검토가 필요합니다.",
                 null,
                 null,
-                List.of()
+                List.of(),
+                null
         );
     }
 
@@ -141,8 +147,60 @@ public record TeacherRiskResponse(
                         : "Rule과 AI 문맥 분석이 완료되었습니다.",
                 analyzedAt,
                 latestReview,
-                detectedFactors
+                detectedFactors,
+                riskAnalysisId == null ? null : EmergencyOverride.notApplied()
         );
+    }
+
+    public record EmergencyOverride(
+            @Schema(description = "Safety Flag에 의해 Emergency가 강제 적용됐는지 여부")
+            boolean applied,
+            @Schema(description = "Emergency 강제 적용에 기여한 안전 신호 목록")
+            List<SafetySignal> safetySignals
+    ) {
+        private static EmergencyOverride from(SafetyFlags flags) {
+            if (flags == null) {
+                return notApplied();
+            }
+
+            java.util.ArrayList<SafetySignal> signals = new java.util.ArrayList<>();
+            if (Boolean.TRUE.equals(flags.credibleThreat())) {
+                signals.add(new SafetySignal(
+                        SafetySignalCode.CREDIBLE_THREAT,
+                        "구체적 위해 위협",
+                        "구체적인 위해 위협 신호가 확인되어 일반 위험 태그 점수와 별도로 긴급 단계로 상향되었습니다."
+                ));
+            }
+            if (Boolean.TRUE.equals(flags.studentSafetyConcern())) {
+                signals.add(new SafetySignal(
+                        SafetySignalCode.STUDENT_SAFETY_CONCERN,
+                        "학생 안전 우려",
+                        "학생 안전 우려 신호가 확인되어 일반 위험 태그 점수와 별도로 긴급 단계로 상향되었습니다."
+                ));
+            }
+            if (Boolean.TRUE.equals(flags.privacyExposure())) {
+                signals.add(new SafetySignal(
+                        SafetySignalCode.PRIVACY_EXPOSURE,
+                        "중대한 개인정보 노출",
+                        "중대한 개인정보 노출 또는 유포 위험 신호가 확인되어 일반 위험 태그 점수와 별도로 긴급 단계로 상향되었습니다."
+                ));
+            }
+            return new EmergencyOverride(!signals.isEmpty(), List.copyOf(signals));
+        }
+
+        private static EmergencyOverride notApplied() {
+            return new EmergencyOverride(false, List.of());
+        }
+    }
+
+    public record SafetySignal(
+            @Schema(description = "안정된 안전 신호 코드")
+            SafetySignalCode code,
+            @Schema(description = "화면 표시용 안전 신호 제목")
+            String title,
+            @Schema(description = "Emergency 승격 사유 안내")
+            String description
+    ) {
     }
 
     public record LatestReview(

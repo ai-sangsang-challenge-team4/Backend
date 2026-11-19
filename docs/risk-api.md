@@ -185,6 +185,11 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
   실제 교사 검토가 없으면 두 필드와 `reviewLevel`은 null이다.
 - `/risk` 응답의 `currentRiskScore`는 교사 검토가 있으면 `reviewScore`, 없으면 시스템
   `riskScore`다. 시스템 점수는 0~100이고 기존 교사 선택 척도의 환산 점수는 10~70이다.
+- `/risk` 응답의 `emergencyOverride`는 Safety Flag가 일반 위험 태그 점수와 별도로 Emergency를
+  강제 적용했는지와 그 원인이 된 안전 신호를 반환한다. `safetySignals`의 안정된 코드는
+  `CREDIBLE_THREAT`, `STUDENT_SAFETY_CONCERN`, `PRIVACY_EXPOSURE`이며, 일반 위험 태그가 모두
+  미탐지여도 안전 신호가 있으면 교사 화면에서 승격 사유를 별도로 표시할 수 있다. 완료된 분석이
+  없으면 `emergencyOverride=null`, 분석은 있지만 강제 적용되지 않았으면 `applied=false`와 빈 배열이다.
 - 교사 검토 척도의 등급은 시스템 점수의 52점·80점 경계를 다시 적용하지 않고, 아래의 독립된
   1~7 척도 구간으로 판정한다.
 - 최초 검토값은 시스템 등급을 LOW 2점, MEDIUM 4점, HIGH 6점, EMERGENCY 7점으로 변환한다.
