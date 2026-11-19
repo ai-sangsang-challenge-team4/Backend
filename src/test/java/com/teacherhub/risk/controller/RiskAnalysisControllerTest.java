@@ -1,9 +1,9 @@
 package com.teacherhub.risk.controller;
 
 import com.teacherhub.risk.service.RiskAnalysisService;
-import com.teacherhub.risk.service.RiskAnalysisQueryService;
+import com.teacherhub.risk.service.ParentRiskAnalysisQueryService;
 import com.teacherhub.risk.dto.response.MaskingResponse;
-import com.teacherhub.risk.dto.response.RiskSummaryResponse;
+import com.teacherhub.risk.dto.response.parent.ParentRiskSummaryResponse;
 import com.teacherhub.risk.masking.ComplaintMaskingService;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RiskAnalysisControllerTest {
     private final ComplaintMaskingService api = mock(ComplaintMaskingService.class);
     private final RiskAnalysisService review = mock(RiskAnalysisService.class);
-    private final RiskAnalysisQueryService query = mock(RiskAnalysisQueryService.class);
+    private final ParentRiskAnalysisQueryService query = mock(ParentRiskAnalysisQueryService.class);
     private final UserRepository users = mock(UserRepository.class);
     private final MockMvc mvc = MockMvcBuilders.standaloneSetup(new RiskAnalysisController(api, review, query, users))
             .setControllerAdvice(new GlobalExceptionHandler()).build();
@@ -44,7 +44,7 @@ class RiskAnalysisControllerTest {
         when(api.mask(7L, 10L)).thenReturn(new MaskingResponse(10L, 1L, "[전화번호]"));
         mvc.perform(post("/complaints/10/mask").principal(auth)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.maskedContent").value("[전화번호]"));
-        when(review.analyze(7L, 10L)).thenReturn(new RiskSummaryResponse(
+        when(review.analyze(7L, 10L)).thenReturn(new ParentRiskSummaryResponse(
                 20L, 10L, 5, com.teacherhub.risk.enums.RiskLevel.HIGH));
         mvc.perform(post("/complaints/10/risk-analysis").principal(auth)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.analysisId").value(20))
@@ -52,11 +52,13 @@ class RiskAnalysisControllerTest {
                 .andExpect(jsonPath("$.riskLevel").value("HIGH"))
                 .andExpect(jsonPath("$.aiAnalysisStatus").value("COMPLETED"))
                 .andExpect(jsonPath("$.revisionStatus").value("PENDING"))
+                .andExpect(jsonPath("$.emergencyOverride.applied").value(false))
+                .andExpect(jsonPath("$.emergencyOverride.safetySignals").isEmpty())
                 .andExpect(jsonPath("$.riskAnalysis").doesNotExist())
                 .andExpect(jsonPath("$.originalContent").doesNotExist())
                 .andExpect(jsonPath("$.riskyExpressions").doesNotExist())
                 .andExpect(jsonPath("$.revision").doesNotExist());
-        when(review.analyzeMessage(7L, 10L, 30L)).thenReturn(new RiskSummaryResponse(
+        when(review.analyzeMessage(7L, 10L, 30L)).thenReturn(new ParentRiskSummaryResponse(
                 21L, 10L, 2, com.teacherhub.risk.enums.RiskLevel.MEDIUM));
         mvc.perform(post("/complaints/10/messages/30/risk-analysis").principal(auth))
                 .andExpect(status().isOk())

@@ -2,11 +2,11 @@ package com.teacherhub.complaint.parent.service;
 
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.access.ComplaintAccessPolicy;
-import com.teacherhub.complaint.parent.dto.complaint.ComplaintCreateRequest;
-import com.teacherhub.complaint.parent.dto.complaint.ComplaintDraftUpdateRequest;
-import com.teacherhub.complaint.parent.dto.complaint.ComplaintRecipientResponse;
-import com.teacherhub.complaint.parent.dto.complaint.ComplaintResponse;
-import com.teacherhub.complaint.parent.dto.complaint.ComplaintSubmissionResponse;
+import com.teacherhub.complaint.parent.dto.complaint.ParentComplaintCreateRequest;
+import com.teacherhub.complaint.parent.dto.complaint.ParentComplaintDraftUpdateRequest;
+import com.teacherhub.complaint.parent.dto.complaint.ParentComplaintRecipientResponse;
+import com.teacherhub.complaint.parent.dto.complaint.ParentComplaintStateResponse;
+import com.teacherhub.complaint.parent.dto.complaint.ParentComplaintSubmissionResponse;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.repository.ComplaintRepository;
@@ -57,9 +57,9 @@ public class ParentComplaintService {
 
     // 민원 초안 작성
     @Transactional
-    public ComplaintResponse createDraft(
+    public ParentComplaintStateResponse createDraft(
             Long userId,
-            ComplaintCreateRequest request
+            ParentComplaintCreateRequest request
     ) {
 
         // 작성할 때는 studentId가 반드시 필요
@@ -106,7 +106,7 @@ public class ParentComplaintService {
         eventRepository.save(ComplaintEvent.statusChanged(
                 complaint, parent.getUser(), null, ComplaintStatus.DRAFT));
 
-        return ComplaintResponse.builder()
+        return ParentComplaintStateResponse.builder()
                 .complaintId(complaint.getId())
                 .status(complaint.getStatus())
                 .waitingFor(complaint.getWaitingFor())
@@ -114,14 +114,14 @@ public class ParentComplaintService {
     }
 
 
-    public ComplaintResponse findStatus(Long userId, Long complaintId) {
+    public ParentComplaintStateResponse findStatus(Long userId, Long complaintId) {
         Complaint complaint = complaintRepository.findById(complaintId)
                 .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
 
         User user = findUser(userId);
 
         complaintAccessPolicy.validateParentOwner(user, complaint);
-        return ComplaintResponse.builder()
+        return ParentComplaintStateResponse.builder()
                 .complaintId(complaint.getId())
                 .status(complaint.getStatus())
                 .waitingFor(complaint.getWaitingFor())
@@ -133,7 +133,7 @@ public class ParentComplaintService {
     public void updateDraft(
             Long userId,
             Long complaintId,
-            ComplaintDraftUpdateRequest request
+            ParentComplaintDraftUpdateRequest request
     ) {
 
         Complaint complaint = complaintRepository.findForUpdate(complaintId)
@@ -158,7 +158,7 @@ public class ParentComplaintService {
 
     //4. 민원 최종 제출
     @Transactional(propagation = Propagation.SUPPORTS)
-    public ComplaintSubmissionResponse submitComplaint(
+    public ParentComplaintSubmissionResponse submitComplaint(
             Long userId,
             Long complaintId
     ) {
@@ -186,7 +186,7 @@ public class ParentComplaintService {
                     ComplaintStatus.OPEN
             ));
             eventRepository.save(ComplaintEvent.messageSent(complaint.initialMessage()));
-            return ComplaintSubmissionResponse.from(complaint, analysisResult);
+            return ParentComplaintSubmissionResponse.from(complaint, analysisResult);
         });
     }
 
@@ -197,7 +197,7 @@ public class ParentComplaintService {
                 );
     }
 
-    public List<ComplaintRecipientResponse> findRecipients(Long userId, Long studentId) {
+    public List<ParentComplaintRecipientResponse> findRecipients(Long userId, Long studentId) {
         Parent parent = parentRepository.findByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("학부모 정보를 찾을 수 없습니다."));
         Student student = studentRepository.findById(studentId)
@@ -208,10 +208,10 @@ public class ParentComplaintService {
 
         return latestSchoolClass(student)
                 .map(schoolClass -> schoolClass.availableTeachers().stream()
-                        .map(teacher -> ComplaintRecipientResponse.from(teacher, schoolClass.getHomeroomTeacher()))
+                        .map(teacher -> ParentComplaintRecipientResponse.from(teacher, schoolClass.getHomeroomTeacher()))
                         .sorted(Comparator
-                                .comparing(ComplaintRecipientResponse::homeroomTeacher).reversed()
-                                .thenComparing(ComplaintRecipientResponse::teacherName))
+                                .comparing(ParentComplaintRecipientResponse::homeroomTeacher).reversed()
+                                .thenComparing(ParentComplaintRecipientResponse::teacherName))
                         .toList())
                 .orElseGet(List::of);
     }

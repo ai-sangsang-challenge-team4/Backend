@@ -7,14 +7,13 @@ import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.enums.MessageType;
-import com.teacherhub.complaint.history.service.ComplaintHistoryService;
+import com.teacherhub.complaint.history.ComplaintHistoryService;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.enums.RiskLevel;
-import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
@@ -44,7 +43,6 @@ class TeacherComplaintQueryServiceTest {
         RiskAnalysisRepository analyses = mock(RiskAnalysisRepository.class);
         RiskReviewRepository reviews = mock(RiskReviewRepository.class);
         EmergencyRiskReviewRequestRepository emergencyReviews = mock(EmergencyRiskReviewRequestRepository.class);
-        ComplaintRiskTagRepository riskTags = mock(ComplaintRiskTagRepository.class);
         StudentClassRepository studentClasses = mock(StudentClassRepository.class);
         UserRepository users = mock(UserRepository.class);
         ComplaintAccessPolicy accessPolicy = mock(ComplaintAccessPolicy.class);
@@ -52,7 +50,7 @@ class TeacherComplaintQueryServiceTest {
         TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
         BufferedSummaryService bufferedSummaryService = mock(BufferedSummaryService.class);
         TeacherComplaintQueryService service = new TeacherComplaintQueryService(
-                complaints, events, messages, analyses, reviews, emergencyReviews, riskTags,
+                complaints, events, messages, analyses, reviews, emergencyReviews,
                 studentClasses, users, accessPolicy, historyService, supportPolicy,
                 bufferedSummaryService);
 
@@ -120,7 +118,6 @@ class TeacherComplaintQueryServiceTest {
         RiskAnalysisRepository analyses = mock(RiskAnalysisRepository.class);
         RiskReviewRepository reviews = mock(RiskReviewRepository.class);
         EmergencyRiskReviewRequestRepository emergencyReviews = mock(EmergencyRiskReviewRequestRepository.class);
-        ComplaintRiskTagRepository riskTags = mock(ComplaintRiskTagRepository.class);
         StudentClassRepository studentClasses = mock(StudentClassRepository.class);
         UserRepository users = mock(UserRepository.class);
         ComplaintAccessPolicy accessPolicy = mock(ComplaintAccessPolicy.class);
@@ -128,7 +125,7 @@ class TeacherComplaintQueryServiceTest {
         TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
         BufferedSummaryService bufferedSummaryService = mock(BufferedSummaryService.class);
         TeacherComplaintQueryService service = new TeacherComplaintQueryService(
-                complaints, events, messages, analyses, reviews, emergencyReviews, riskTags,
+                complaints, events, messages, analyses, reviews, emergencyReviews,
                 studentClasses, users, accessPolicy, historyService, supportPolicy,
                 bufferedSummaryService);
 
@@ -153,57 +150,8 @@ class TeacherComplaintQueryServiceTest {
         when(submitted.getOccurredAt()).thenReturn(LocalDateTime.of(2026, 10, 29, 10, 0));
 
         var conversation = service.findConversation(7L, 42L);
-        var risk = service.findRisk(7L, 42L);
 
         assertThat(conversation.allowedActions())
-                .containsExactly(com.teacherhub.complaint.teacher.dto.AllowedAction.REQUEST_MANUAL_REVIEW);
-        assertThat(risk.complaintId()).isEqualTo(42L);
-        assertThat(risk.riskAnalysisId()).isNull();
-        assertThat(risk.riskLevel()).isNull();
-        assertThat(risk.detectedFactors()).isEmpty();
-    }
-
-    @Test
-    void convertsLegacyEvidenceTextToUnlocatedSpans() {
-        RiskAnalysis analysis = mock(RiskAnalysis.class);
-        Complaint complaint = mock(Complaint.class);
-        com.teacherhub.risk.entity.ComplaintRiskTag result =
-                mock(com.teacherhub.risk.entity.ComplaintRiskTag.class);
-        com.teacherhub.risk.entity.RiskTag definition = mock(com.teacherhub.risk.entity.RiskTag.class);
-        when(analysis.getComplaint()).thenReturn(complaint);
-        when(complaint.getId()).thenReturn(42L);
-        when(analysis.getId()).thenReturn(100L);
-        when(analysis.getRiskScore()).thenReturn(55);
-        when(analysis.getRiskLevel()).thenReturn(RiskLevel.HIGH);
-        when(result.getRiskTag()).thenReturn(definition);
-        when(result.effectiveFinalState()).thenReturn(com.teacherhub.risk.enums.RiskTagState.PRESENT);
-        when(result.getEvidenceSpans()).thenReturn(List.of());
-        when(result.getEvidence()).thenReturn("첫 번째 근거\n두 번째 근거");
-        when(definition.getCode()).thenReturn(com.teacherhub.risk.enums.RiskTagCode.THREAT);
-        when(definition.getName()).thenReturn("위협");
-
-        var response = com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse.from(
-                analysis,
-                List.of(result),
-                null,
-                false
-        );
-
-        assertThat(response.riskScore()).isEqualTo(55);
-        assertThat(response.reviewScale()).isNull();
-        assertThat(response.reviewScore()).isNull();
-        assertThat(response.reviewLevel()).isNull();
-        assertThat(response.currentRiskScore()).isEqualTo(55);
-        assertThat(response.currentRiskLevel()).isEqualTo(RiskLevel.HIGH);
-
-        assertThat(response.detectedFactors()).singleElement().satisfies(factor ->
-                assertThat(factor.evidenceSpans())
-                        .extracting(com.teacherhub.risk.dto.detection.EvidenceSpan::text)
-                        .containsExactly("첫 번째 근거", "두 번째 근거"));
-        assertThat(response.detectedFactors().get(0).evidenceSpans())
-                .allSatisfy(span -> {
-                    assertThat(span.start()).isNull();
-                    assertThat(span.end()).isNull();
-                });
+                .containsExactly(com.teacherhub.complaint.teacher.dto.TeacherAllowedAction.REQUEST_MANUAL_REVIEW);
     }
 }

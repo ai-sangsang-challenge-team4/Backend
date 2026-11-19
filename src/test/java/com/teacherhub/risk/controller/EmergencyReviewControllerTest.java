@@ -2,9 +2,9 @@ package com.teacherhub.risk.controller;
 
 import com.teacherhub.common.exception.GlobalExceptionHandler;
 import com.teacherhub.risk.enums.RiskReviewStatus;
-import com.teacherhub.risk.dto.EmergencyReviewCreateRequest;
-import com.teacherhub.risk.dto.EmergencyReviewResponse;
-import com.teacherhub.risk.dto.EmergencyReviewUpdateRequest;
+import com.teacherhub.risk.dto.review.EmergencyReviewCreateRequest;
+import com.teacherhub.risk.dto.review.EmergencyReviewResponse;
+import com.teacherhub.risk.dto.review.EmergencyReviewUpdateRequest;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.exception.EmergencyReviewDuplicateException;
 import com.teacherhub.risk.service.EmergencyReviewService;

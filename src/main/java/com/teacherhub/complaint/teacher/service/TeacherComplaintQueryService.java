@@ -14,21 +14,19 @@ import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
-import com.teacherhub.complaint.history.service.ComplaintHistoryService;
+import com.teacherhub.complaint.history.ComplaintHistoryService;
 import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.teacher.dto.query.TeacherComplaintDetailResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse.BufferedSummary;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.complaint.teacher.dto.query.TeacherOriginalViewResponse;
-import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
-import com.teacherhub.complaint.teacher.dto.AllowedAction;
+import com.teacherhub.complaint.teacher.dto.TeacherAllowedAction;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.masking.PiiMaskingContext;
-import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
@@ -56,7 +54,6 @@ public class TeacherComplaintQueryService {
     private final RiskAnalysisRepository riskAnalysisRepository;
     private final RiskReviewRepository riskReviewRepository;
     private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository;
-    private final ComplaintRiskTagRepository complaintRiskTagRepository;
     private final StudentClassRepository studentClassRepository;
     private final UserRepository userRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
@@ -103,7 +100,7 @@ public class TeacherComplaintQueryService {
                 complaint,
                 bufferedSummaries,
                 analysis == null && !safetyLock
-                        ? List.of(AllowedAction.REQUEST_MANUAL_REVIEW)
+                        ? List.of(TeacherAllowedAction.REQUEST_MANUAL_REVIEW)
                         : supportPolicy.allowedActions(
                                 safetyLock
                                         ? RiskLevel.EMERGENCY
@@ -179,24 +176,6 @@ public class TeacherComplaintQueryService {
                 message.getId(),
                 message.getContent(),
                 event.getOccurredAt()
-        );
-    }
-
-    public TeacherRiskResponse findRisk(Long userId, Long complaintId) {
-        User user = findUser(userId);
-        Complaint complaint = findTeacherComplaint(user, complaintId);
-        RiskAnalysis analysis = latestAnalysis(complaint).orElse(null);
-        boolean safetyLock = isSafetyLocked(complaintId);
-
-        if (analysis == null) {
-            return TeacherRiskResponse.unavailable(complaintId, safetyLock);
-        }
-
-        return TeacherRiskResponse.from(
-                analysis,
-                complaintRiskTagRepository.findByRiskAnalysisId(analysis.getId()),
-                latestReview(analysis),
-                safetyLock
         );
     }
 

@@ -29,7 +29,7 @@ class OpenApiDocumentationTest {
                 .andExpect(jsonPath("$.components.schemas.ErrorResponse.properties.timestamp").exists())
                 .andExpect(jsonPath("$.components.schemas.ErrorResponse.properties.path").exists())
                 .andExpect(jsonPath("$.paths['/complaints'].post.summary").value("민원 초안 생성"))
-                .andExpect(jsonPath("$.components.schemas.ComplaintCreateRequest.properties.studentId.description")
+                .andExpect(jsonPath("$.components.schemas.ParentComplaintCreateRequest.properties.studentId.description")
                         .value(containsString("/users/me")))
                 .andExpect(jsonPath("$.paths['/complaints'].post.responses['201']").exists())
                 .andExpect(jsonPath("$.paths['/complaints'].post.responses['400']").exists())
@@ -46,6 +46,12 @@ class OpenApiDocumentationTest {
                         .value(containsString("빈 배열")))
                 .andExpect(jsonPath("$.components.schemas.TeacherRiskResponse.properties.riskLevel.description")
                         .value(containsString("null")))
+                .andExpect(jsonPath("$.components.schemas.RiskSummaryResponse").exists())
+                .andExpect(jsonPath("$.components.schemas.RiskRevisionResponse").exists())
+                .andExpect(jsonPath("$.components.schemas.RiskDetectorResponse").exists())
+                .andExpect(jsonPath("$.components.schemas.ParentRiskSummaryResponse").doesNotExist())
+                .andExpect(jsonPath("$.components.schemas.ParentRiskFindingsResponse").doesNotExist())
+                .andExpect(jsonPath("$.components.schemas.ParentRiskDetectorResponse").doesNotExist())
                 .andExpect(jsonPath("$.paths['/admin/escalations/{escalationId}/complete'].post.responses['409']")
                         .exists());
     }

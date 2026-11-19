@@ -13,7 +13,7 @@ import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.exception.ContentVersionConflictException;
 import com.teacherhub.complaint.exception.MessageDraftNotFoundException;
 import com.teacherhub.complaint.exception.MessageNotEditableException;
-import com.teacherhub.complaint.parent.dto.message.ComplaintConversationResponse;
+import com.teacherhub.complaint.parent.dto.message.ParentComplaintConversationResponse;
 import com.teacherhub.complaint.parent.dto.message.ParentMessageRequest;
 import com.teacherhub.complaint.parent.dto.message.ParentMessageResponse;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
@@ -137,11 +137,11 @@ public class ParentMessageService {
     }
 
     @Transactional
-    public ComplaintConversationResponse findConversation(Long userId, Long complaintId) {
+    public ParentComplaintConversationResponse findConversation(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findParentComplaint(user, complaintId);
         markLatestTeacherMessageRead(complaintId, user);
-        return ComplaintConversationResponse.from(
+        return ParentComplaintConversationResponse.from(
                 complaint,
                 messageRepository.findByComplaintIdAndStatusNotOrderByIdAsc(
                         complaintId,

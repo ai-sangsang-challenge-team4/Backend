@@ -1,12 +1,12 @@
 package com.teacherhub.complaint.parent.controller;
 
-import com.teacherhub.complaint.parent.dto.complaint.ComplaintResponse;
+import com.teacherhub.complaint.parent.dto.complaint.ParentComplaintStateResponse;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.exception.ComplaintAccessDeniedException;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.parent.service.ParentComplaintService;
-import com.teacherhub.complaint.parent.service.ParentMessageService;
-import com.teacherhub.complaint.query.service.ComplaintQueryService;
+import com.teacherhub.complaint.parent.service.ParentComplaintQueryService;
+import com.teacherhub.complaint.query.service.ComplaintListQueryService;
 import com.teacherhub.common.exception.GlobalExceptionHandler;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.exception.StudentNotFoundException;
@@ -25,15 +25,16 @@ class ComplaintStatusControllerTest {
     @Test
     void returnsNotFoundWhenRecipientStudentDoesNotExist() throws Exception {
         var service = mock(ParentComplaintService.class);
-        var queryService = mock(ComplaintQueryService.class);
+        var listQueryService = mock(ComplaintListQueryService.class);
+        var parentQueryService = mock(ParentComplaintQueryService.class);
         var users = mock(UserRepository.class);
         var user = mock(User.class);
         when(user.getId()).thenReturn(7L);
         when(users.findByEmail("parent@test.com")).thenReturn(Optional.of(user));
         when(service.findRecipients(7L, 999L))
                 .thenThrow(new StudentNotFoundException("학생 정보를 찾을 수 없습니다."));
-        var messageService = mock(ParentMessageService.class);
-        var mvc = MockMvcBuilders.standaloneSetup(new ParentComplaintController(queryService, service, messageService, users))
+        var mvc = MockMvcBuilders.standaloneSetup(new ParentComplaintController(
+                        listQueryService, parentQueryService, service, users))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         var auth = new UsernamePasswordAuthenticationToken("parent@test.com", null, List.of());
 
@@ -48,10 +49,11 @@ class ComplaintStatusControllerTest {
     @Test
     void returnsBadRequestWithValidationMessageWhenRequiredFieldIsMissing() throws Exception {
         var service = mock(ParentComplaintService.class);
-        var queryService = mock(ComplaintQueryService.class);
+        var listQueryService = mock(ComplaintListQueryService.class);
+        var parentQueryService = mock(ParentComplaintQueryService.class);
         var users = mock(UserRepository.class);
-        var messageService = mock(ParentMessageService.class);
-        var mvc = MockMvcBuilders.standaloneSetup(new ParentComplaintController(queryService, service, messageService, users))
+        var mvc = MockMvcBuilders.standaloneSetup(new ParentComplaintController(
+                        listQueryService, parentQueryService, service, users))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         var auth = new UsernamePasswordAuthenticationToken("parent@test.com", null, List.of());
 
@@ -78,14 +80,14 @@ class ComplaintStatusControllerTest {
     @Test
     void returnsConsistentBodyForMalformedAndUnexpectedErrors() throws Exception {
         var service = mock(ParentComplaintService.class);
-        var queryService = mock(ComplaintQueryService.class);
+        var listQueryService = mock(ComplaintListQueryService.class);
+        var parentQueryService = mock(ParentComplaintQueryService.class);
         var users = mock(UserRepository.class);
         var user = mock(User.class);
-        var messageService = mock(ParentMessageService.class);
         when(user.getId()).thenReturn(7L);
         when(users.findByEmail("parent@test.com")).thenReturn(Optional.of(user));
         var mvc = MockMvcBuilders.standaloneSetup(
-                        new ParentComplaintController(queryService, service, messageService, users)
+                        new ParentComplaintController(listQueryService, parentQueryService, service, users)
                 )
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -116,16 +118,17 @@ class ComplaintStatusControllerTest {
     @Test
     void returnsStatusAndUpdateMessageWithAuthenticationAndErrorHandling() throws Exception {
         var service = mock(ParentComplaintService.class);
-        var queryService = mock(ComplaintQueryService.class);
+        var listQueryService = mock(ComplaintListQueryService.class);
+        var parentQueryService = mock(ParentComplaintQueryService.class);
         var users = mock(UserRepository.class);
         var user = mock(User.class);
         when(user.getId()).thenReturn(7L);
         when(users.findByEmail("parent@test.com")).thenReturn(Optional.of(user));
-        var messageService = mock(ParentMessageService.class);
-        var mvc = MockMvcBuilders.standaloneSetup(new ParentComplaintController(queryService, service, messageService, users))
+        var mvc = MockMvcBuilders.standaloneSetup(new ParentComplaintController(
+                        listQueryService, parentQueryService, service, users))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         var auth = new UsernamePasswordAuthenticationToken("parent@test.com", null, List.of());
-        when(service.findStatus(7L, 42L)).thenReturn(ComplaintResponse.builder()
+        when(service.findStatus(7L, 42L)).thenReturn(ParentComplaintStateResponse.builder()
                 .complaintId(42L).status(ComplaintStatus.OPEN).build());
 
         mvc.perform(get("/complaints/42/status").principal(auth)).andExpect(status().isOk())

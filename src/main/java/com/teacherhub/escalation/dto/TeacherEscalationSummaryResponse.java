@@ -1,6 +1,6 @@
 package com.teacherhub.escalation.dto;
 
-import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
+import com.teacherhub.risk.policy.TeacherRiskScale;
 import com.teacherhub.escalation.entity.ComplaintEscalation;
 import com.teacherhub.escalation.enums.EscalationScope;
 import com.teacherhub.escalation.enums.EscalationStatus;

@@ -5,7 +5,7 @@ import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.risk.enums.RiskLevel;
-import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
+import com.teacherhub.risk.policy.TeacherRiskScale;
 
 import java.time.LocalDateTime;
 import java.util.List;

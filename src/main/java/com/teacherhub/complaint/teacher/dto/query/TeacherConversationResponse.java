@@ -10,7 +10,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
-import com.teacherhub.complaint.teacher.dto.AllowedAction;
+import com.teacherhub.complaint.teacher.dto.TeacherAllowedAction;
 import com.teacherhub.user.enums.UserRole;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -18,13 +18,13 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record TeacherConversationResponse(
         Long complaintId,
         @Schema(description = "위험도별 허용 행동. 완료된 분석이 없으면 REQUEST_MANUAL_REVIEW")
-        List<AllowedAction> allowedActions,
+        List<TeacherAllowedAction> allowedActions,
         List<Message> messages
 ) {
     public static TeacherConversationResponse from(
             Complaint complaint,
             Map<Long, BufferedSummary> bufferedSummaries,
-            List<AllowedAction> allowedActions,
+            List<TeacherAllowedAction> allowedActions,
             LocalDateTime submittedAt,
             List<ComplaintMessage> sourceMessages
     ) {
