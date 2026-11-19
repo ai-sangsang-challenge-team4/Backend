@@ -15,16 +15,6 @@ public record ComplaintSubmissionResponse(
         String aiAnalysisMessage,
         RiskSummaryResponse riskAnalysis
 ) {
-    public ComplaintSubmissionResponse(
-            Long complaintId,
-            ComplaintStatus status,
-            WaitingFor waitingFor,
-            SubmissionAnalysisStatus submissionAnalysisStatus,
-            String aiAnalysisMessage
-    ) {
-        this(complaintId, status, waitingFor, submissionAnalysisStatus, aiAnalysisMessage, null);
-    }
-
     public static ComplaintSubmissionResponse from(
             Complaint complaint,
             SubmissionAnalysisResult analysisResult

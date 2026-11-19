@@ -126,7 +126,7 @@ public class TeacherComplaintController {
     }
 
     // 민원 위험 분석 조회
-    @Operation(summary = "민원 위험 분석 조회", description = "시스템 위험도, 교사 검토값과 감지된 위험 태그를 조회합니다. 완료된 위험 분석이 없으면 분석 관련 필드는 null, detectedFactors는 빈 배열로 반환합니다.", responses = {
+    @Operation(summary = "민원 위험 분석 조회", description = "시스템 위험도, 교사 검토값, 감지된 위험 태그와 Safety Flag 기반 Emergency 승격 사유를 조회합니다. 완료된 위험 분석이 없으면 분석 관련 필드와 emergencyOverride는 null, detectedFactors는 빈 배열로 반환합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "위험 분석 조회 성공. 분석이 없으면 nullable 필드와 빈 detectedFactors를 반환", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
