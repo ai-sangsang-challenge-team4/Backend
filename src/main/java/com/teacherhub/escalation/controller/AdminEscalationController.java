@@ -3,7 +3,7 @@ package com.teacherhub.escalation.controller;
 import com.teacherhub.common.exception.ErrorResponse;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
-import com.teacherhub.complaint.teacher.dto.query.TeacherRiskResponse;
+import com.teacherhub.risk.dto.response.teacher.TeacherRiskResponse;
 import com.teacherhub.escalation.dto.EscalationMessageRequest;
 import com.teacherhub.escalation.dto.EscalationStateResponse;
 import com.teacherhub.escalation.dto.AdminEscalationSummaryResponse;

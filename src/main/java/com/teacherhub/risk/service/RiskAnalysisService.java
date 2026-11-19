@@ -9,7 +9,8 @@ import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
 import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
-import com.teacherhub.risk.dto.response.RiskSummaryResponse;
+import com.teacherhub.risk.dto.response.parent.ParentRiskSummaryResponse;
+import com.teacherhub.risk.dto.response.common.EmergencyOverrideResponse;
 import com.teacherhub.risk.dto.response.SubmissionAnalysisResult;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.enums.RiskTagState;
@@ -53,7 +54,7 @@ import java.util.stream.Collectors;
 public class RiskAnalysisService {
 
     private record AnalysisExecutionResult(
-            Optional<RiskSummaryResponse> summary,
+            Optional<ParentRiskSummaryResponse> summary,
             SubmissionAnalysisStatus submissionStatus,
             long contentVersion
     ) {
@@ -154,7 +155,7 @@ public class RiskAnalysisService {
     private final RiskAnalysisTransactionRunner transactionRunner;
     private final RiskRevisionService revisionService;
 
-    public RiskSummaryResponse analyze(
+    public ParentRiskSummaryResponse analyze(
             Long userId,
             Long complaintId
     ) {
@@ -169,7 +170,7 @@ public class RiskAnalysisService {
         return submissionResult(analyzeInitialMessage(userId, complaintId, true));
     }
 
-    public RiskSummaryResponse analyzeMessage(
+    public ParentRiskSummaryResponse analyzeMessage(
             Long userId,
             Long complaintId,
             Long messageId
@@ -858,12 +859,12 @@ public class RiskAnalysisService {
         }
     }
 
-    private RiskSummaryResponse summary(
+    private ParentRiskSummaryResponse summary(
             RiskAnalysis analysis,
             SubmissionAnalysisStatus analysisStatus
     ) {
         boolean ruleOnly = analysis.getAnalysisMode() == RiskAnalysisMode.RULE_ONLY;
-        return new RiskSummaryResponse(
+        return new ParentRiskSummaryResponse(
                 analysis.getId(),
                 analysis.getComplaint()
                         .getId(),
@@ -873,7 +874,8 @@ public class RiskAnalysisService {
                 analysis.getAnalysisMode(),
                 ruleOnly,
                 analysisStatus.userMessage(),
-                analysis.getRevisionStatus()
+                analysis.getRevisionStatus(),
+                EmergencyOverrideResponse.from(analysis.safetyFlags())
         );
     }
 

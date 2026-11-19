@@ -4,11 +4,9 @@ import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.parent.dto.message.ParentMessageRequest;
 import com.teacherhub.complaint.parent.dto.message.ParentMessageResponse;
-import com.teacherhub.complaint.parent.service.ParentComplaintService;
 import com.teacherhub.complaint.parent.service.ParentMessageService;
 import com.teacherhub.complaint.exception.ContentVersionConflictException;
 import com.teacherhub.common.exception.GlobalExceptionHandler;
-import com.teacherhub.complaint.query.service.ComplaintQueryService;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -32,8 +30,6 @@ class ParentMessageControllerTest {
 
     @Test
     void routesDraftAndSendWithCurrentTurnInResponse() throws Exception {
-        var queryService = mock(ComplaintQueryService.class);
-        var complaintService = mock(ParentComplaintService.class);
         var messageService = mock(ParentMessageService.class);
         var users = mock(UserRepository.class);
         var user = mock(User.class);
@@ -57,12 +53,8 @@ class ParentMessageControllerTest {
         when(messageService.saveDraft(7L, 42L, new ParentMessageRequest("충돌 내용", 1L)))
                 .thenThrow(new ContentVersionConflictException(1L, 2L));
 
-        var mvc = MockMvcBuilders.standaloneSetup(new ParentComplaintController(
-                queryService,
-                complaintService,
-                messageService,
-                users
-        )).setControllerAdvice(new GlobalExceptionHandler()).build();
+        var mvc = MockMvcBuilders.standaloneSetup(new ParentMessageController(messageService, users))
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
 
         mvc.perform(put("/complaints/42/message-draft")
                         .principal(auth)

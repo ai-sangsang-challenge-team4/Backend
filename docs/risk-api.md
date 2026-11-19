@@ -84,7 +84,7 @@ LLM을 실행하지 않고 500 `PRIVACY_MASKING_FAILED`로 제출을 중단한�
 ## 분석 실행 응답
 
 POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 API는
-`RiskSummaryResponse`를 반환한다.
+`ParentRiskSummaryResponse`를 반환한다. 기존 OpenAPI 스키마 이름과 JSON 필드는 호환을 위해 유지한다.
 
 ```json
 {
@@ -145,6 +145,11 @@ confidence와 repeatCount는 점수에 직접 사용하지 않는다. 같은 태
 `true`, `false`, `null`을 허용한다. 하나라도 true이면 서버가 최종 점수를 100점
 EMERGENCY로 승격해 기존 관리자 재검토와 답변 차단 경로에 연결한다. null은 정보 부족을
 뜻하며 false로 치환하지 않는다. AI가 임의 점수나 가중치를 직접 전달하는 구조는 허용하지 않는다.
+학부모 위험 분석 요약의 `emergencyOverride`는 이 원시 값을 화면용 안전 신호 코드·제목·설명으로
+변환해 반환한다. 기존 위험 분석 경로와 필드는 유지되며 Safety Flag가 적용되지 않았으면
+`applied=false`, `safetySignals=[]`다.
+태그별 근거를 표시하는 `GET /risk-analyses/{analysisId}/findings`도 같은 `emergencyOverride`를
+반환하므로, 일반 위험 태그가 비어 있어도 학부모 검토 화면에서 Emergency 승격 사유를 표시할 수 있다.
 
 POST는 민원 관계자 컨텍스트로 원문을 마스킹한 뒤 원문 Rule 탐지를 실행하고, Rule의 evidence와 reason을 같은
 컨텍스트로 다시 마스킹해 마스킹 본문과 함께 LLM에 전달한다. LLM evidence와 reason도 저장 전에 같은 컨텍스트로
@@ -185,11 +190,12 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
   실제 교사 검토가 없으면 두 필드와 `reviewLevel`은 null이다.
 - `/risk` 응답의 `currentRiskScore`는 교사 검토가 있으면 `reviewScore`, 없으면 시스템
   `riskScore`다. 시스템 점수는 0~100이고 기존 교사 선택 척도의 환산 점수는 10~70이다.
-- `/risk` 응답의 `emergencyOverride`는 Safety Flag가 일반 위험 태그 점수와 별도로 Emergency를
-  강제 적용했는지와 그 원인이 된 안전 신호를 반환한다. `safetySignals`의 안정된 코드는
-  `CREDIBLE_THREAT`, `STUDENT_SAFETY_CONCERN`, `PRIVACY_EXPOSURE`이며, 일반 위험 태그가 모두
-  미탐지여도 안전 신호가 있으면 교사 화면에서 승격 사유를 별도로 표시할 수 있다. 완료된 분석이
-  없으면 `emergencyOverride=null`, 분석은 있지만 강제 적용되지 않았으면 `applied=false`와 빈 배열이다.
+- 학부모 분석 요약과 교사 `/risk` 응답은 공통 `emergencyOverride` 구조를 사용한다. 이 구조는
+  Safety Flag가 일반 위험 태그 점수와 별도로 Emergency를 강제 적용했는지와 그 원인이 된 안전
+  신호를 반환한다. `safetySignals`의 안정된 코드는 `CREDIBLE_THREAT`,
+  `STUDENT_SAFETY_CONCERN`, `PRIVACY_EXPOSURE`이며, 일반 위험 태그가 모두 미탐지여도 안전 신호가
+  있으면 교사 화면에서 승격 사유를 별도로 표시할 수 있다. 완료된 분석이 없으면
+  `emergencyOverride=null`, 분석은 있지만 강제 적용되지 않았으면 `applied=false`와 빈 배열이다.
 - 교사 검토 척도의 등급은 시스템 점수의 52점·80점 경계를 다시 적용하지 않고, 아래의 독립된
   1~7 척도 구간으로 판정한다.
 - 최초 검토값은 시스템 등급을 LOW 2점, MEDIUM 4점, HIGH 6점, EMERGENCY 7점으로 변환한다.
@@ -318,7 +324,7 @@ LLM이 `REPEAT` 상태를 반환하면 현재 입력의 반복 횟수와 과거 
 
 ## 분리된 조회 응답
 
-`RiskSummaryResponse`는 analysisId, complaintId, riskScore, riskLevel과 분석·수정안 상태만 반환한다.
+`ParentRiskSummaryResponse`는 analysisId, complaintId, riskScore, riskLevel과 분석·수정안 상태만 반환한다.
 내부 수정안 생성 입력은 `ComplaintRevisionGenerator.RiskEvaluation`으로 분리했다. POST 응답도 이 요약 DTO다.
 수정안 생성 결과는 내부 ComplaintRevisionGenerator.RevisionResult로 받는다.
 전체 수정본과 태그별 제안은 내부 수정 결과 타입으로 생성해 DB에 저장한 뒤 `ComplaintRiskReviewResponse`로 변환하여 반환한다.
@@ -422,7 +428,7 @@ API 응답 구조를 유지하면서 보조 타입을 사용하는 클래스 안
 DTO를 반환하는 기존 API의 응답은 유지한다. 빈 성공 응답을 반환하던 민원 수정·제출 API는 JSON 메시지를 반환한다.
 
 - GET `/complaints/recipients?studentId={studentId}`: 학생의 최신 학급에 배정된 문의 가능 교사 목록을 반환한다.
-- POST `/complaints`: `ComplaintCreateRequest`(`studentId`, `teacherId`, `title`, `content`)로 최초 초안을 생성한다. 선택한 교사는 해당 학생의 담당 교사여야 한다.
+- POST `/complaints`: `ParentComplaintCreateRequest`(`studentId`, `teacherId`, `title`, `content`)로 최초 초안을 생성한다. 선택한 교사는 해당 학생의 담당 교사여야 한다.
 - PATCH `/complaints/{complaintId}`: 200, `{"message":"민원 내용이 수정되었습니다."}`.
   기존 204에서 200으로 변경했다. 요청 본문은 `ComplaintDraftUpdateRequest`(`content`)를 사용한다.
 - POST `/complaints/{complaintId}/send`: 200, 제출 상태와 `submissionAnalysisStatus`,
@@ -433,7 +439,7 @@ DTO를 반환하는 기존 API의 응답은 유지한다. 빈 성공 응답을 �
 - 추가 문의 전송 응답도 `submissionAnalysisStatus`, `aiAnalysisMessage`, `riskAnalysis`를
   반환해 최초 민원과 동일하게 처리한다.
   요청 본문은 없다.
-- GET `/complaints/{complaintId}/status`: 200, 기존 ComplaintResponse 사용.
+- GET `/complaints/{complaintId}/status`: 200, `ParentComplaintStateResponse` 사용.
 
 ```json
 {"complaintId":42,"status":"OPEN"}

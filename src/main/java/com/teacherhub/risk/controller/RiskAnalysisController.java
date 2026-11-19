@@ -2,11 +2,11 @@ package com.teacherhub.risk.controller;
 
 import com.teacherhub.common.exception.ErrorResponse;
 import com.teacherhub.risk.service.RiskAnalysisService;
-import com.teacherhub.risk.service.RiskAnalysisQueryService;
-import com.teacherhub.risk.dto.response.RiskRevisionResponse;
+import com.teacherhub.risk.service.ParentRiskAnalysisQueryService;
+import com.teacherhub.risk.dto.response.parent.ParentRiskFindingsResponse;
 import com.teacherhub.risk.dto.response.MaskingResponse;
-import com.teacherhub.risk.dto.response.RiskSummaryResponse;
-import com.teacherhub.risk.dto.response.RiskDetectorResponse;
+import com.teacherhub.risk.dto.response.parent.ParentRiskSummaryResponse;
+import com.teacherhub.risk.dto.response.parent.ParentRiskDetectorResponse;
 import com.teacherhub.risk.masking.ComplaintMaskingService;
 import com.teacherhub.user.repository.UserRepository;
 import com.teacherhub.common.exception.UnauthorizedException;
@@ -40,7 +40,7 @@ public class RiskAnalysisController {
 
     private final ComplaintMaskingService maskingService;
     private final RiskAnalysisService analysisService;
-    private final RiskAnalysisQueryService queryService;
+    private final ParentRiskAnalysisQueryService queryService;
     private final UserRepository users;
 
     @PostMapping("/complaints/{complaintId}/mask")
@@ -74,7 +74,7 @@ public class RiskAnalysisController {
                             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
             })
 
-    public RiskSummaryResponse analyze(@Parameter(hidden = true) Authentication authentication,
+    public ParentRiskSummaryResponse analyze(@Parameter(hidden = true) Authentication authentication,
                                        @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId) {
         return analysisService.analyze(userId(authentication), complaintId);
     }
@@ -89,7 +89,7 @@ public class RiskAnalysisController {
             @ApiResponse(responseCode = "409", description = "분석 가능 상태가 아니거나 재분석 제한 초과",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
-    public RiskSummaryResponse analyzeMessage(
+    public ParentRiskSummaryResponse analyzeMessage(
             @Parameter(hidden = true) Authentication authentication,
             @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId,
             @Parameter(description = "추가 문의 메시지 ID", example = "101") @PathVariable Long messageId
@@ -103,7 +103,7 @@ public class RiskAnalysisController {
             @ApiResponse(responseCode = "404", description = "완료된 위험 분석 결과를 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
-    public RiskRevisionResponse findFindings(
+    public ParentRiskFindingsResponse findFindings(
             @Parameter(hidden = true) Authentication authentication,
             @Parameter(description = "위험 분석 ID", example = "20") @PathVariable Long analysisId
     ) {
@@ -116,7 +116,7 @@ public class RiskAnalysisController {
             @ApiResponse(responseCode = "404", description = "완료된 위험 분석 결과를 찾을 수 없음",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
-    public RiskDetectorResponse findDetectorResults(
+    public ParentRiskDetectorResponse findDetectorResults(
             @Parameter(hidden = true) Authentication authentication,
             @Parameter(description = "위험 분석 ID", example = "20") @PathVariable Long analysisId
     ) {

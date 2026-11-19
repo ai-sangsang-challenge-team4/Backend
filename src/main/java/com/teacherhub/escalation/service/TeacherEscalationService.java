@@ -6,7 +6,7 @@ import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.entity.ComplaintEvent;
 import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
-import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
+import com.teacherhub.risk.policy.TeacherRiskScale;
 import com.teacherhub.escalation.dto.EscalationStateResponse;
 import com.teacherhub.escalation.dto.ShareEscalationRequest;
 import com.teacherhub.escalation.dto.TeacherEscalationListQuery;

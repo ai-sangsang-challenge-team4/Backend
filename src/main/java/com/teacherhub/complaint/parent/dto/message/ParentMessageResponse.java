@@ -4,7 +4,7 @@ import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.risk.enums.SubmissionAnalysisStatus;
-import com.teacherhub.risk.dto.response.RiskSummaryResponse;
+import com.teacherhub.risk.dto.response.parent.ParentRiskSummaryResponse;
 import com.teacherhub.risk.dto.response.SubmissionAnalysisResult;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
@@ -23,7 +23,7 @@ public record ParentMessageResponse(
         LocalDateTime sentAt,
         SubmissionAnalysisStatus submissionAnalysisStatus,
         String aiAnalysisMessage,
-        RiskSummaryResponse riskAnalysis
+        ParentRiskSummaryResponse riskAnalysis
 ) {
     public ParentMessageResponse(
             Long messageId,

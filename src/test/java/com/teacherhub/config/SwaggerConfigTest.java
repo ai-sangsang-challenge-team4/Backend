@@ -12,7 +12,7 @@ class SwaggerConfigTest {
     @Test
     void conversationMessageSchemasHaveDistinctNames() {
         var parentSchema = com.teacherhub.complaint.parent.dto.message
-                .ComplaintConversationResponse.Message.class
+                .ParentComplaintConversationResponse.Message.class
                 .getAnnotation(io.swagger.v3.oas.annotations.media.Schema.class);
         var teacherSchema = com.teacherhub.complaint.teacher.dto.query
                 .TeacherConversationResponse.Message.class

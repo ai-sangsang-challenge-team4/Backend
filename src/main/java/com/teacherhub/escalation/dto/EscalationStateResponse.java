@@ -6,7 +6,7 @@ import com.teacherhub.risk.enums.RiskReviewStatus;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.entity.EmergencyRiskReviewRequest;
 import com.teacherhub.risk.enums.RiskLevel;
-import com.teacherhub.complaint.teacher.policy.TeacherRiskScale;
+import com.teacherhub.risk.policy.TeacherRiskScale;
 
 // 공유 민원 상태 조회
 public record EscalationStateResponse(

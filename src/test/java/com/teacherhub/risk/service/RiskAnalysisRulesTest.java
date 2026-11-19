@@ -566,6 +566,10 @@ class RiskAnalysisRulesTest {
 
         assertThat(response.riskScore()).isEqualTo(100);
         assertThat(response.riskLevel()).isEqualTo(RiskLevel.EMERGENCY);
+        assertThat(response.emergencyOverride().applied()).isTrue();
+        assertThat(response.emergencyOverride().safetySignals())
+                .extracting(com.teacherhub.risk.dto.response.common.EmergencyOverrideResponse.SafetySignalResponse::code)
+                .containsExactly(SafetySignalCode.CREDIBLE_THREAT);
         verify(analyses).save(argThat(analysis ->
                 Boolean.TRUE.equals(analysis.safetyFlags().credibleThreat())));
     }
