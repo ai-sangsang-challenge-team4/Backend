@@ -30,12 +30,10 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
-
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/teacher/complaints")
-@Tag(name = "Teacher Response", description = "교사 답변 작성 및 상담 완료 API")
+@Tag(name = "Teacher Response", description = "교사 답변 작성 API")
 @SecurityRequirement(name = "bearerAuth")
 @ApiResponses({
         @ApiResponse(responseCode = "401", description = "인증 토큰이 없거나 유효하지 않음",
@@ -94,7 +92,7 @@ public class TeacherResponseController {
         return ResponseEntity.ok(teacherResponseService.saveDraft(userId(authentication), complaintId, request));
     }
 
-    @Operation(summary = "교사 답변 최종 제출", description = "작성한 교사 답변을 학부모에게 전송하고 답변 차례를 학부모로 변경합니다. 답변만으로 상담이 자동 완료되지는 않으며, EMERGENCY 또는 safetyLock 상태에서는 차단합니다.", responses = {
+    @Operation(summary = "교사 답변 최종 제출", description = "작성한 교사 답변을 학부모에게 전송하고 민원을 ANSWERED 상태로 변경합니다. 학부모가 문의 완료 또는 추가 문의를 선택할 수 있으며, 3일간 응답이 없으면 자동 종료됩니다. EMERGENCY 또는 safetyLock 상태에서는 차단합니다.", responses = {
             @ApiResponse(responseCode = "201", description = "교사 답변 제출 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "400", description = "입력값 검증 실패",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
@@ -113,21 +111,6 @@ public class TeacherResponseController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(teacherResponseService.submit(
                         userId(authentication), complaintId, request, idempotencyKey));
-    }
-
-    @Operation(summary = "교사 상담 완료 처리", description = "교사가 답변을 전송한 뒤 학부모 응답 대기 중인 문의를 완료 처리합니다. 답변 전송만으로는 자동 완료되지 않습니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "상담 완료 처리 성공"),
-            @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "RESPONSE_NOT_EDITABLE: 이미 완료되었거나 진행 중이 아닌 민원, 교사 답변 전송 전, Emergency 위험도 또는 안전 잠금 상태",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    })
-    @PostMapping("/{complaintId}/close")
-    public ResponseEntity<Map<String, String>> closeComplaint(
-            @Parameter(hidden = true) Authentication authentication,
-            @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId) {
-        teacherResponseService.close(userId(authentication), complaintId);
-        return ResponseEntity.ok(Map.of("message", "상담이 완료 처리되었습니다."));
     }
 
     private Long userId(Authentication authentication) {

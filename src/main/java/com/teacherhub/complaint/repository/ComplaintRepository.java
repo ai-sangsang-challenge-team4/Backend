@@ -1,12 +1,14 @@
 package com.teacherhub.complaint.repository;
 
 import com.teacherhub.complaint.entity.Complaint;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,5 +23,16 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
     @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Complaint c where c.id = :id")
     Optional<Complaint> findForUpdate(@Param("id") Long id);
+
+    @Query("""
+            select c.id from Complaint c
+            where c.status = com.teacherhub.complaint.enums.ComplaintStatus.ANSWERED
+              and c.answeredAt <= :cutoff
+            order by c.answeredAt asc, c.id asc
+            """)
+    List<Long> findAnsweredIdsForAutoClose(
+            @Param("cutoff") LocalDateTime cutoff,
+            Pageable pageable
+    );
 
 }

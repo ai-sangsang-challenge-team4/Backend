@@ -5,17 +5,17 @@ import com.teacherhub.common.exception.InternalSystemException;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.access.ComplaintAccessPolicy;
 import com.teacherhub.complaint.entity.Complaint;
-import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.complaint.entity.ComplaintEvent;
-import com.teacherhub.complaint.enums.MessageType;
+import com.teacherhub.complaint.entity.ComplaintMessage;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.MessageStatus;
+import com.teacherhub.complaint.enums.MessageType;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.exception.ResponseDraftNotFoundException;
 import com.teacherhub.complaint.exception.ResponseNotEditableException;
-import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
+import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherAiDraftResponse;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseDraftResponse;
@@ -23,20 +23,22 @@ import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseRequest;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseSubmissionResponse;
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.complaint.template.repository.ResponseTemplateAdoptionRepository;
+import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.masking.PiiMaskingContext;
+import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
-import com.teacherhub.risk.enums.RiskLevel;
-import com.teacherhub.risk.masking.PiiMaskingService;
-import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.stream.Collectors;
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -54,6 +56,7 @@ public class TeacherResponseService {
     private final RiskReviewRepository riskReviewRepository;
     private final PiiMaskingService piiMaskingService;
     private final ResponseTemplateAdoptionRepository templateAdoptionRepository;
+    private final Clock clock;
 
     @Transactional(noRollbackFor = ResponseNotEditableException.class)
     // 교사 AI 초안 생성
@@ -173,25 +176,16 @@ public class TeacherResponseService {
         markLatestParentMessageRead(complaintId, user);
         response.assignIdempotencyKey(normalizedKey);
         response.send();
-        complaint.teacherMessageSent();
+        complaint.teacherMessageSent(LocalDateTime.now(clock));
         ComplaintMessage saved = messageRepository.saveAndFlush(response);
         eventRepository.save(ComplaintEvent.messageSent(saved));
-        return TeacherResponseSubmissionResponse.from(saved);
-    }
-
-    @Transactional(noRollbackFor = ResponseNotEditableException.class)
-    public void close(Long userId, Long complaintId) {
-        User user = findUser(userId);
-        Complaint complaint = findComplaintForUpdate(user, complaintId);
-        ensureClosable(complaint);
-        ensureResponseAllowed(complaint, user, "상담 완료 처리");
-        complaint.closeByTeacher();
         eventRepository.save(ComplaintEvent.statusChanged(
                 complaint,
                 user,
                 ComplaintStatus.OPEN,
-                ComplaintStatus.CLOSED
+                ComplaintStatus.ANSWERED
         ));
+        return TeacherResponseSubmissionResponse.from(saved);
     }
 
     // 민원 조회 및 교사 권한 검증
@@ -295,20 +289,6 @@ public class TeacherResponseService {
         if (complaint.getStatus() != ComplaintStatus.OPEN
                 || complaint.getWaitingFor() != WaitingFor.TEACHER) {
             throw new ResponseNotEditableException("접수되어 답변 대기 중인 민원만 답변할 수 있습니다.");
-        }
-    }
-
-    private void ensureClosable(Complaint complaint) {
-        if (complaint.getStatus() == ComplaintStatus.CLOSED) {
-            throw new ResponseNotEditableException("이미 완료된 민원은 다시 완료 처리할 수 없습니다.");
-        }
-        if (complaint.getStatus() != ComplaintStatus.OPEN) {
-            throw new ResponseNotEditableException("진행 중인 민원만 상담 완료 처리할 수 있습니다.");
-        }
-        if (complaint.getWaitingFor() != WaitingFor.PARENT) {
-            throw new ResponseNotEditableException(
-                    "교사 답변 전송 후 학부모 응답을 기다리는 민원만 상담 완료 처리할 수 있습니다."
-            );
         }
     }
 

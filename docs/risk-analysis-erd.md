@@ -13,8 +13,8 @@ erDiagram
     complaints ||--o{ complaint_events : history
 ```
 
-- `complaints`: parent_id, student_id, teacher_id, title, status, waiting_for, closed_at,
-  created_at, updated_at. 하나의 민원 대화방을 나타낸다. 최초 생성 시 학생의 담당 교사 중 한 명을 문의 대상으로 선택하고 제목을 저장한다. 상태는 DRAFT, OPEN, CLOSED이고
+- `complaints`: parent_id, student_id, teacher_id, title, status, waiting_for, answered_at,
+  closed_at, created_at, updated_at. 하나의 민원 대화방을 나타낸다. 최초 생성 시 학생의 담당 교사 중 한 명을 문의 대상으로 선택하고 제목을 저장한다. 상태는 DRAFT, OPEN, ANSWERED, CLOSED이고
   `waiting_for`는 다음 작성 차례(PARENT, TEACHER, NONE)를 나타낸다.
 - `school_class_teachers`: school_class_id, teacher_id. 학급별 복수 담당 교사를 관리한다. 기존 담임교사는 선택 가능 교사에 기본 포함한다.
 - `complaint_messages`: complaint_id, sender_id, type, status,
@@ -77,8 +77,10 @@ masked_content를 비우고 content_version을 증가시킨다. 최초 메시지
 교사 차례가 된다. 교사는 LOW·MEDIUM에서 답변 초안을 검토·수정해 보낼 수 있고,
 HIGH에서는 검증된 제한형 공식 템플릿을 채택한 내용만 저장·전송할 수 있다.
 EMERGENCY에서는 개별 답변 생성을 차단한다.
-교사 답변 뒤에는 학부모 차례가 된다. 학부모는 같은 흐름으로 추가 문의를 보내거나 답변을
-확인하고 민원을 CLOSED로 종료한다. AI 초안 생성 결과는 응답으로만 반환하고 DB에 저장하지
+교사 답변 뒤에는 민원이 ANSWERED가 되고 학부모 차례가 된다. 학부모는 같은 흐름으로 추가
+문의를 보내거나 답변을 확인하고 민원을 CLOSED로 종료한다. 3일간 응답이 없으면 배치가 행 잠금
+후 상태를 다시 확인하고 SYSTEM 주체로 자동 종료한다. 종료 뒤 같은 사안의 추가 문의는 기존
+민원을 OPEN으로 재개해 이력을 연결한다. AI 초안 생성 결과는 응답으로만 반환하고 DB에 저장하지
 않는다. 교사가 수정한 내용은 일반 답변 초안 또는 최종 메시지에 저장한다. AI 초안 생성 사실은
 `AI_DRAFT_GENERATED` 이벤트로만 남긴다. High 템플릿 조회·채택과 정책 차단도 감사 이벤트로 남긴다.
 

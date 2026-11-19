@@ -134,6 +134,20 @@ public class ParentComplaintController {
         return ResponseEntity.ok(parentComplaintService.findStatus(userId(authentication), complaintId));
     }
 
+    @Operation(summary = "학부모 문의 완료 처리", description = "교사 답변을 확인한 학부모가 ANSWERED 상태의 민원을 최종 종료합니다.", responses = {
+            @ApiResponse(responseCode = "200", description = "문의 완료 처리 성공", useReturnTypeSchema = true),
+            @ApiResponse(responseCode = "404", description = "민원을 찾을 수 없음",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "409", description = "COMPLAINT_NOT_CLOSABLE: 교사 답변 완료 상태가 아니거나 이미 종료된 민원",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/{complaintId}/close")
+    public ResponseEntity<ParentComplaintStateResponse> closeComplaint(
+            @Parameter(hidden = true) Authentication authentication,
+            @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId) {
+        return ResponseEntity.ok(parentComplaintService.close(userId(authentication), complaintId));
+    }
+
     @Operation(summary = "학부모 민원 목록 조회", description = "검색어, 상태, 정렬, 페이지 조건으로 본인의 민원 목록을 조회합니다.", responses = {
             @ApiResponse(responseCode = "200", description = "민원 목록 조회 성공", useReturnTypeSchema = true),
             @ApiResponse(responseCode = "400", description = "목록 조회 조건 오류",

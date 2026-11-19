@@ -458,7 +458,7 @@ Postman에서는 생성 후 DRAFT, send 성공 후 OPEN을 조회하고,
 |---|---|---|
 | `page` | `0` | 0부터 시작하는 페이지 번호 |
 | `keyword` | 없음 | 제목·학생명·상대방 이름·메시지 내용 통합 검색 |
-| `status` | 없음 | `DRAFT`, `OPEN`, `CLOSED` |
+| `status` | 없음 | `DRAFT`, `OPEN`, `ANSWERED`, `CLOSED` |
 | `riskLevel` | 없음 | `LOW`, `MEDIUM`, `HIGH`, `EMERGENCY` |
 | `sort` | `LATEST` | `LATEST`(최근 활동순), `OLDEST`(오래된순) |
 
@@ -484,7 +484,7 @@ FastAPI에는 현재 교사용 감정 완충 요약만 있고 일반 민원 요�
 
 ## 민원 대화 메시지 흐름
 
-민원 상태와 메시지 상태를 분리한다. 민원은 `DRAFT → OPEN → CLOSED`, 메시지는
+민원 상태와 메시지 상태를 분리한다. 민원은 `DRAFT → OPEN → ANSWERED → CLOSED`, 메시지는
 `DRAFT → SENT → READ` 흐름이며 `waitingFor`가 현재 작성 차례를 나타낸다.
 
 | 메서드 | 경로 | 동작 |
@@ -494,18 +494,27 @@ FastAPI에는 현재 교사용 감정 완충 요약만 있고 일반 민원 요�
 | GET | `/complaints/{complaintId}/message-draft` | 학부모 추가 문의 임시저장 조회 |
 | POST | `/complaints/{complaintId}/messages/{messageId}/risk-analysis` | 추가 문의 AI 위험 분석 후 비동기 수정안 생성 |
 | POST | `/complaints/{complaintId}/messages/{messageId}/send` | 버전 조건 확인 후 추가 문의 전송 및 교사 차례로 변경 |
-| POST | `/teacher/complaints/{complaintId}/close` | 교사가 답변 후 상담 완료 처리 |
+| POST | `/complaints/{complaintId}/close` | 학부모가 교사 답변 확인 후 문의 완료 처리 |
 
 교사 답변 API 경로는 기존 값을 유지한다. AI 초안 생성 시 지금까지 전송된 전체 대화가
 입력 문맥이 되며 각 메시지는 현재 민원의 관계자 컨텍스트로 개인정보 마스킹 후
 `TeacherSupportContentProvider` 경계에 전달한다. 생성 결과는 빈값·최대 1,500자·모델명 형식을
 검증하고 같은 컨텍스트로 다시 마스킹한 뒤 반환한다.
 임시저장과 최종 전송은 `complaint_messages`의 `TEACHER_REPLY` 행을
-사용한다. 교사 전송 후 민원은 계속 OPEN이고 `waitingFor=PARENT`가 된다. 따라서 학부모가
-추가 문의를 보내면 다시 `waitingFor=TEACHER`로 바뀌어 같은 분기 처리를 반복할 수 있다.
-답변 전송만으로 자동 완료되지 않으며, 교사가 별도 완료 API를 호출해야 CLOSED가 된다.
+사용한다. 교사 전송 후 민원은 `ANSWERED`, `waitingFor=PARENT`가 되어 교사의 OPEN 미처리
+목록에서 제외된다. 학부모는 답변을 확인한 뒤 문의 완료 API로 종료하거나 추가 문의를 보낼 수
+있다. 추가 문의를 보내면 `ANSWERED → OPEN`, `waitingFor=TEACHER`로 바뀌어 같은 분기 처리를
+반복한다. 교사 답변 후 3일 동안 학부모 응답이 없으면 서버가 `ANSWERED → CLOSED`로 자동
+종료하고 SYSTEM 상태 변경 이력을 남긴다. 자동 종료 기준과 실행 주기는
+`complaint.auto-close.*` 설정으로 운영하되 기본 정책은 3일이다.
 완료된 문의에 학부모가 같은 사안의 추가 질문을 보내면 기존 문의를 OPEN으로 다시 열고
 `waitingFor=TEACHER`로 변경하며 `CLOSED → OPEN` 상태 변경 이력을 남긴다. 다른 주제는 새 문의로 생성한다.
+
+배포 후에는 `OPEN → ANSWERED` 전환 수, 학부모 `ANSWERED → CLOSED` 전환 수, SYSTEM 자동
+종료 수와 `COMPLAINT_NOT_CLOSABLE` 응답 비율을 확인한다. 자동 종료량이 예상 대기 건수보다
+크거나 3일이 지나지 않은 건이 종료되면 `COMPLAINT_AUTO_CLOSE_ENABLED=false`로 배치를 먼저
+중지한다. 이전 애플리케이션으로 롤백해야 하면 ANSWERED 데이터를 `OPEN + waitingFor=PARENT`로
+되돌린 뒤 배포하며, V5 컬럼과 감사 이벤트는 삭제하지 않는다.
 
 추가 문의 최초 저장은 `{"content":"..."}`처럼 버전을 생략할 수 있다. 기존 초안 수정은
 `{"content":"...","expectedContentVersion":2}`, 전송은 `{"expectedContentVersion":2}`를
@@ -526,7 +535,8 @@ AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/
 
 Low·Medium에서만 생성형 AI 초안을 허용한다. High는 생성형 AI 초안을 차단하고 검증된 제한형
 공식 템플릿을 채택한 내용만 임시저장·전송할 수 있다. Emergency 또는 safetyLock 상태에서는
-AI 초안 생성, 임시저장, 최종 전송과 상담 완료를 모두 차단한다. 정책 차단은
+AI 초안 생성, 임시저장과 최종 전송을 차단한다. 학부모 문의 완료와 무응답 자동 종료는
+생성형 AI나 위험 분석을 호출하지 않는 결정론적 상태 전이로 처리한다. 정책 차단은
 `AI_DRAFT_BLOCKED_BY_RISK_POLICY`, `RESPONSE_BLOCKED_BY_RISK_POLICY`,
 `RESPONSE_BLOCKED_BY_SAFETY_LOCK` 감사 이벤트로 구분한다.
 `GET /teacher/complaints/{complaintId}/risk`의 `analysisMode`, `manualReviewRequired`,

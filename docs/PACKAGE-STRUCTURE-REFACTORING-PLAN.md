@@ -225,6 +225,7 @@ ParentComplaintController
   - 민원 초안 수정
   - 문의 대상 교사 조회
   - 최초 민원 전송
+  - 학부모 문의 완료
   - 상태·목록·상세 조회
 
 ParentMessageController
@@ -247,7 +248,6 @@ TeacherResponseController
   - AI 답변 초안 생성
   - 답변 초안 저장·조회
   - 답변 전송
-  - 상담 완료
 
 TeacherRiskReviewController
   - 위험 분석 조회

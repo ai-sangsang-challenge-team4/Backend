@@ -524,7 +524,7 @@ public class RiskAnalysisService {
 
     private void validateAdditionalMessageState(Complaint complaint) {
         boolean canSubmit = complaint.getStatus() == ComplaintStatus.CLOSED
-                || (complaint.getStatus() == ComplaintStatus.OPEN
+                || (complaint.getStatus() == ComplaintStatus.ANSWERED
                 && complaint.getWaitingFor() == WaitingFor.PARENT);
         if (!canSubmit) {
             throw new MessageNotEditableException("학부모가 추가 문의를 작성할 차례가 아닙니다.");

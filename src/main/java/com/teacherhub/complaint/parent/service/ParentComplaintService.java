@@ -2,16 +2,26 @@ package com.teacherhub.complaint.parent.service;
 
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.access.ComplaintAccessPolicy;
+import com.teacherhub.complaint.entity.Complaint;
+import com.teacherhub.complaint.entity.ComplaintEvent;
+import com.teacherhub.complaint.enums.ComplaintStatus;
+import com.teacherhub.complaint.enums.MessageStatus;
+import com.teacherhub.complaint.enums.MessageType;
+import com.teacherhub.complaint.enums.WaitingFor;
+import com.teacherhub.complaint.exception.ComplaintAccessDeniedException;
+import com.teacherhub.complaint.exception.ComplaintNotClosableException;
+import com.teacherhub.complaint.exception.ComplaintNotDraftException;
+import com.teacherhub.complaint.exception.ComplaintNotFoundException;
+import com.teacherhub.complaint.exception.ContentVersionConflictException;
+import com.teacherhub.complaint.exception.InvalidComplaintRecipientException;
 import com.teacherhub.complaint.parent.dto.complaint.ParentComplaintCreateRequest;
 import com.teacherhub.complaint.parent.dto.complaint.ParentComplaintDraftUpdateRequest;
 import com.teacherhub.complaint.parent.dto.complaint.ParentComplaintRecipientResponse;
 import com.teacherhub.complaint.parent.dto.complaint.ParentComplaintStateResponse;
 import com.teacherhub.complaint.parent.dto.complaint.ParentComplaintSubmissionResponse;
-import com.teacherhub.complaint.entity.Complaint;
-import com.teacherhub.complaint.enums.ComplaintStatus;
-import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.repository.ComplaintEventRepository;
-import com.teacherhub.complaint.entity.ComplaintEvent;
+import com.teacherhub.complaint.repository.ComplaintMessageRepository;
+import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.risk.service.RiskAnalysisService;
 import com.teacherhub.risk.service.RiskAnalysisTransactionRunner;
 import com.teacherhub.school.entity.SchoolClass;
@@ -19,20 +29,21 @@ import com.teacherhub.school.entity.StudentClass;
 import com.teacherhub.school.repository.StudentClassRepository;
 import com.teacherhub.user.entity.Parent;
 import com.teacherhub.user.entity.Student;
+import com.teacherhub.user.entity.Teacher;
 import com.teacherhub.user.entity.User;
+import com.teacherhub.user.exception.StudentNotFoundException;
 import com.teacherhub.user.repository.ParentRepository;
 import com.teacherhub.user.repository.ParentStudentRepository;
-import com.teacherhub.user.entity.Teacher;
 import com.teacherhub.user.repository.StudentRepository;
 import com.teacherhub.user.repository.TeacherRepository;
 import com.teacherhub.user.repository.UserRepository;
-import com.teacherhub.user.exception.StudentNotFoundException;
 import lombok.RequiredArgsConstructor;
-import com.teacherhub.complaint.exception.*;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -44,6 +55,7 @@ public class ParentComplaintService {
 
     private final UserRepository userRepository;
     private final ComplaintRepository complaintRepository;
+    private final ComplaintMessageRepository messageRepository;
     private final RiskAnalysisService riskAnalysisService;
     private final ComplaintEventRepository eventRepository;
     private final ParentRepository parentRepository;
@@ -53,6 +65,7 @@ public class ParentComplaintService {
     private final TeacherRepository teacherRepository;
     private final ComplaintAccessPolicy complaintAccessPolicy;
     private final RiskAnalysisTransactionRunner transactionRunner;
+    private final Clock clock;
 
 
     // 민원 초안 작성
@@ -121,6 +134,41 @@ public class ParentComplaintService {
         User user = findUser(userId);
 
         complaintAccessPolicy.validateParentOwner(user, complaint);
+        return ParentComplaintStateResponse.builder()
+                .complaintId(complaint.getId())
+                .status(complaint.getStatus())
+                .waitingFor(complaint.getWaitingFor())
+                .build();
+    }
+
+    @Transactional
+    public ParentComplaintStateResponse close(Long userId, Long complaintId) {
+        Complaint complaint = complaintRepository.findForUpdate(complaintId)
+                .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
+        User user = findUser(userId);
+        complaintAccessPolicy.validateParentOwner(user, complaint);
+        if (complaint.getStatus() == ComplaintStatus.CLOSED) {
+            throw new ComplaintNotClosableException("이미 종료된 민원입니다.");
+        }
+        if (complaint.getStatus() != ComplaintStatus.ANSWERED
+                || complaint.getWaitingFor() != WaitingFor.PARENT) {
+            throw new ComplaintNotClosableException("교사 답변이 완료된 민원만 문의 완료 처리할 수 있습니다.");
+        }
+
+        messageRepository.findFirstByComplaintIdAndTypeAndStatusNotOrderByIdDesc(
+                        complaintId,
+                        MessageType.TEACHER_REPLY,
+                        MessageStatus.DRAFT
+                )
+                .filter(com.teacherhub.complaint.entity.ComplaintMessage::markRead)
+                .ifPresent(message -> eventRepository.save(ComplaintEvent.messageRead(message, user)));
+        complaint.closeByParent(LocalDateTime.now(clock));
+        eventRepository.save(ComplaintEvent.statusChanged(
+                complaint,
+                user,
+                ComplaintStatus.ANSWERED,
+                ComplaintStatus.CLOSED
+        ));
         return ParentComplaintStateResponse.builder()
                 .complaintId(complaint.getId())
                 .status(complaint.getStatus())
