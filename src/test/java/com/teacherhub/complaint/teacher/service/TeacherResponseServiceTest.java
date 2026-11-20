@@ -29,10 +29,24 @@ import com.teacherhub.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class TeacherResponseServiceTest {
     private final ComplaintRepository complaints = mock(ComplaintRepository.class);
@@ -48,9 +62,13 @@ class TeacherResponseServiceTest {
     private final PiiMaskingService masking = mock(PiiMaskingService.class);
     private final ResponseTemplateAdoptionRepository templateAdoptions =
             mock(ResponseTemplateAdoptionRepository.class);
+    private final Clock clock = Clock.fixed(
+            Instant.parse("2026-11-19T03:00:00Z"),
+            ZoneOffset.UTC
+    );
     private final TeacherResponseService service = new TeacherResponseService(
             complaints, messages, events, users, accessPolicy, contentProvider, emergencyReviews,
-            riskAnalyses, riskReviews, masking, templateAdoptions
+            riskAnalyses, riskReviews, masking, templateAdoptions, clock
     );
 
     @Test
@@ -85,7 +103,7 @@ class TeacherResponseServiceTest {
                 .thenReturn(Optional.of(sent));
         when(sent.getComplaint()).thenReturn(complaint);
         when(complaint.getId()).thenReturn(42L);
-        when(complaint.getStatus()).thenReturn(ComplaintStatus.OPEN);
+        when(complaint.getStatus()).thenReturn(ComplaintStatus.ANSWERED);
         when(complaint.getWaitingFor()).thenReturn(WaitingFor.PARENT);
         when(sent.getId()).thenReturn(100L);
         when(sent.getType()).thenReturn(MessageType.TEACHER_REPLY);
@@ -253,40 +271,6 @@ class TeacherResponseServiceTest {
 
         verify(contentProvider).createResponseDraft("PARENT_INQUIRY: 연락처 [전화번호]");
         verify(contentProvider, never()).createResponseDraft(contains("010-1234-5678"));
-    }
-
-    @Test
-    void closeBeforeTeacherReplyUsesResponseNotEditableWithConcreteReason() {
-        User teacher = mock(User.class);
-        Complaint complaint = editableComplaint();
-        when(users.findById(7L)).thenReturn(Optional.of(teacher));
-        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
-        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
-                .thenReturn(Optional.empty());
-        when(riskAnalyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
-                42L, MessageStatus.DRAFT)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> service.close(7L, 42L))
-                .isInstanceOf(ResponseNotEditableException.class)
-                .hasMessageContainingAll("교사 답변 전송 후", "학부모 응답");
-
-        verify(complaint, never()).closeByTeacher();
-    }
-
-    @Test
-    void repeatedCloseReportsAlreadyCompletedBeforeCheckingEmergencyPolicy() {
-        User teacher = mock(User.class);
-        Complaint complaint = mock(Complaint.class);
-        when(users.findById(7L)).thenReturn(Optional.of(teacher));
-        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
-        when(complaint.getStatus()).thenReturn(ComplaintStatus.CLOSED);
-
-        assertThatThrownBy(() -> service.close(7L, 42L))
-                .isInstanceOf(ResponseNotEditableException.class)
-                .hasMessage("이미 완료된 민원은 다시 완료 처리할 수 없습니다.");
-
-        verifyNoInteractions(emergencyReviews, riskAnalyses, riskReviews);
-        verify(complaint, never()).closeByTeacher();
     }
 
     private Complaint editableComplaint() {

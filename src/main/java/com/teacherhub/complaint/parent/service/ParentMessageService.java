@@ -69,9 +69,9 @@ public class ParentMessageService {
     public ParentMessageResponse findDraft(Long userId, Long complaintId) {
         User user = findUser(userId);
         Complaint complaint = findParentComplaint(user, complaintId);
-        boolean canContinueOpenComplaint = complaint.getStatus() == ComplaintStatus.OPEN
+        boolean canContinueAnsweredComplaint = complaint.getStatus() == ComplaintStatus.ANSWERED
                 && complaint.getWaitingFor() == WaitingFor.PARENT;
-        if (!canContinueOpenComplaint && complaint.getStatus() != ComplaintStatus.CLOSED) {
+        if (!canContinueAnsweredComplaint && complaint.getStatus() != ComplaintStatus.CLOSED) {
             throw new MessageDraftNotFoundException("현재 작성할 수 있는 추가 문의 초안이 없습니다.");
         }
         return ParentMessageResponse.from(findSavedDraft(complaintId, userId)
@@ -91,7 +91,7 @@ public class ParentMessageService {
             User user = findUser(userId);
             Complaint complaint = findParentComplaint(user, complaintId);
             boolean canSubmit = complaint.getStatus() == ComplaintStatus.CLOSED
-                    || (complaint.getStatus() == ComplaintStatus.OPEN
+                    || (complaint.getStatus() == ComplaintStatus.ANSWERED
                     && complaint.getWaitingFor() == WaitingFor.PARENT);
             if (!canSubmit) {
                 throw new MessageNotEditableException(
@@ -124,11 +124,12 @@ public class ParentMessageService {
 
             ComplaintMessage saved = messageRepository.saveAndFlush(message);
             eventRepository.save(ComplaintEvent.messageSent(saved));
-            if (previousStatus == ComplaintStatus.CLOSED) {
+            if (previousStatus == ComplaintStatus.ANSWERED
+                    || previousStatus == ComplaintStatus.CLOSED) {
                 eventRepository.save(ComplaintEvent.statusChanged(
                         complaint,
                         user,
-                        ComplaintStatus.CLOSED,
+                        previousStatus,
                         ComplaintStatus.OPEN
                 ));
             }
@@ -186,9 +187,9 @@ public class ParentMessageService {
             transactionRunner.refresh(complaint);
         }
         complaintAccessPolicy.validateParentOwner(user, complaint);
-        boolean canContinueOpenComplaint = complaint.getStatus() == ComplaintStatus.OPEN
+        boolean canContinueAnsweredComplaint = complaint.getStatus() == ComplaintStatus.ANSWERED
                 && complaint.getWaitingFor() == WaitingFor.PARENT;
-        if (!canContinueOpenComplaint && complaint.getStatus() != ComplaintStatus.CLOSED) {
+        if (!canContinueAnsweredComplaint && complaint.getStatus() != ComplaintStatus.CLOSED) {
             throw new MessageNotEditableException(
                     "학부모가 추가 문의를 작성할 수 있는 상태가 아닙니다."
             );

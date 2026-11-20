@@ -2,7 +2,9 @@ package com.teacherhub.complaint.parent.controller;
 
 import com.teacherhub.complaint.parent.dto.complaint.ParentComplaintStateResponse;
 import com.teacherhub.complaint.enums.ComplaintStatus;
+import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.exception.ComplaintAccessDeniedException;
+import com.teacherhub.complaint.exception.ComplaintNotClosableException;
 import com.teacherhub.complaint.exception.ComplaintNotFoundException;
 import com.teacherhub.complaint.parent.service.ParentComplaintService;
 import com.teacherhub.complaint.parent.service.ParentComplaintQueryService;
@@ -17,9 +19,18 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.List;
 import java.util.Optional;
-import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class ComplaintStatusControllerTest {
     @Test
@@ -144,5 +155,40 @@ class ComplaintStatusControllerTest {
         doThrow(new ComplaintNotFoundException("missing"))
                 .when(service).findStatus(7L, 42L);
         mvc.perform(get("/complaints/42/status").principal(auth)).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void routesParentCloseAndReturnsStateConflict() throws Exception {
+        var service = mock(ParentComplaintService.class);
+        var listQueryService = mock(ComplaintListQueryService.class);
+        var parentQueryService = mock(ParentComplaintQueryService.class);
+        var users = mock(UserRepository.class);
+        var user = mock(User.class);
+        when(user.getId()).thenReturn(7L);
+        when(users.findByEmail("parent@test.com")).thenReturn(Optional.of(user));
+        when(service.close(7L, 42L)).thenReturn(ParentComplaintStateResponse.builder()
+                .complaintId(42L)
+                .status(ComplaintStatus.CLOSED)
+                .waitingFor(WaitingFor.NONE)
+                .build());
+        var mvc = MockMvcBuilders.standaloneSetup(new ParentComplaintController(
+                        listQueryService, parentQueryService, service, users))
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
+        var auth = new UsernamePasswordAuthenticationToken("parent@test.com", null, List.of());
+
+        mvc.perform(post("/complaints/42/close").principal(auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CLOSED"))
+                .andExpect(jsonPath("$.waitingFor").value("NONE"));
+
+        when(service.close(7L, 43L)).thenThrow(new ComplaintNotClosableException(
+                "교사 답변이 완료된 민원만 문의 완료 처리할 수 있습니다."
+        ));
+        mvc.perform(post("/complaints/43/close").principal(auth))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("COMPLAINT_NOT_CLOSABLE"));
+
+        verify(service).close(7L, 42L);
+        verify(service).close(7L, 43L);
     }
 }

@@ -59,6 +59,10 @@ public class ComplaintHistoryService {
         if (complaint.getStatus() != ComplaintStatus.DRAFT) {
             expectStatus(events, missingLogs, complaint.getId(), ComplaintStatus.OPEN);
         }
+        if (complaint.getStatus() == ComplaintStatus.ANSWERED
+                || complaint.getAnsweredAt() != null) {
+            expectStatus(events, missingLogs, complaint.getId(), ComplaintStatus.ANSWERED);
+        }
         if (complaint.getStatus() == ComplaintStatus.CLOSED) {
             expectStatus(events, missingLogs, complaint.getId(), ComplaintStatus.CLOSED);
         }

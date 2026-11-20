@@ -4,7 +4,20 @@ import com.teacherhub.complaint.enums.MessageType;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.user.entity.Student;
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -65,6 +78,8 @@ public class Complaint {
 
     private LocalDateTime closedAt;
 
+    private LocalDateTime answeredAt;
+
     // 하나의 민원에 여러 메세지 존재
     @OneToMany(mappedBy = "complaint", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")
@@ -124,35 +139,55 @@ public class Complaint {
         this.waitingFor = WaitingFor.TEACHER;
     }
 
-    public void teacherMessageSent() {
+    public void teacherMessageSent(LocalDateTime answeredAt) {
         if (status != ComplaintStatus.OPEN || waitingFor != WaitingFor.TEACHER) {
             throw new IllegalStateException("교사가 답변할 차례가 아닙니다.");
         }
+        if (answeredAt == null) {
+            throw new IllegalArgumentException("답변 완료 시각이 필요합니다.");
+        }
+        this.status = ComplaintStatus.ANSWERED;
         this.waitingFor = WaitingFor.PARENT;
+        this.answeredAt = answeredAt;
     }
 
     public ComplaintStatus parentMessageSent() {
         ComplaintStatus previousStatus = status;
-        if (status == ComplaintStatus.CLOSED) {
+        if (status == ComplaintStatus.ANSWERED || status == ComplaintStatus.CLOSED) {
             this.status = ComplaintStatus.OPEN;
             this.waitingFor = WaitingFor.TEACHER;
+            this.answeredAt = null;
             this.closedAt = null;
             return previousStatus;
         }
-        if (status != ComplaintStatus.OPEN || waitingFor != WaitingFor.PARENT) {
-            throw new IllegalStateException("학부모가 추가 문의를 작성할 차례가 아닙니다.");
-        }
-        this.waitingFor = WaitingFor.TEACHER;
-        return previousStatus;
+        throw new IllegalStateException("학부모가 추가 문의를 작성할 차례가 아닙니다.");
     }
 
-    public void closeByTeacher() {
-        if (status != ComplaintStatus.OPEN || waitingFor != WaitingFor.PARENT) {
-            throw new IllegalStateException("교사 답변 전송 후 학부모 응답 대기 중인 민원만 종료할 수 있습니다.");
+    public void closeByParent(LocalDateTime closedAt) {
+        closeAnsweredComplaint(closedAt);
+    }
+
+    public void closeAutomatically(LocalDateTime closedAt) {
+        closeAnsweredComplaint(closedAt);
+    }
+
+    public boolean isAnsweredNoLaterThan(LocalDateTime cutoff) {
+        return status == ComplaintStatus.ANSWERED
+                && waitingFor == WaitingFor.PARENT
+                && answeredAt != null
+                && !answeredAt.isAfter(cutoff);
+    }
+
+    private void closeAnsweredComplaint(LocalDateTime closedAt) {
+        if (status != ComplaintStatus.ANSWERED || waitingFor != WaitingFor.PARENT) {
+            throw new IllegalStateException("교사 답변 완료 후 학부모 응답 대기 중인 민원만 종료할 수 있습니다.");
+        }
+        if (closedAt == null) {
+            throw new IllegalArgumentException("민원 종료 시각이 필요합니다.");
         }
         this.status = ComplaintStatus.CLOSED;
         this.waitingFor = WaitingFor.NONE;
-        this.closedAt = LocalDateTime.now();
+        this.closedAt = closedAt;
     }
 
     public String getContent() {

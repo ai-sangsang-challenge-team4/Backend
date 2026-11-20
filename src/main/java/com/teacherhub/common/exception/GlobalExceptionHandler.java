@@ -274,6 +274,14 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.CONFLICT, "COMPLAINT_NOT_DRAFT", e, request);
     }
 
+    @ExceptionHandler(ComplaintNotClosableException.class)
+    public ResponseEntity<ErrorResponse> handleComplaintNotClosable(
+            ComplaintNotClosableException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.CONFLICT, "COMPLAINT_NOT_CLOSABLE", e, request);
+    }
+
     @ExceptionHandler(EmptyComplaintContentException.class)
     public ResponseEntity<ErrorResponse> handleEmptyComplaintContent(EmptyComplaintContentException e, HttpServletRequest request) {
         return error(HttpStatus.BAD_REQUEST, "EMPTY_COMPLAINT_CONTENT", e, request);

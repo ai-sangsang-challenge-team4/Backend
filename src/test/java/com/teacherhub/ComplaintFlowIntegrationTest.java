@@ -257,7 +257,7 @@ public class ComplaintFlowIntegrationTest {
         );
 
         assertThat(submitted.responseId()).isEqualTo(firstSave.responseDraftId());
-        assertThat(submitted.complaintStatus()).isEqualTo(ComplaintStatus.OPEN);
+        assertThat(submitted.complaintStatus()).isEqualTo(ComplaintStatus.ANSWERED);
         assertThat(messageRepository.findByComplaintIdAndStatusNotOrderByIdAsc(
                         complaintId,
                         MessageStatus.DRAFT
@@ -273,7 +273,11 @@ public class ComplaintFlowIntegrationTest {
                 .filteredOn(event -> event.getEventType()
                         == MessageEventType.STATUS_CHANGED)
                 .extracting(com.teacherhub.complaint.entity.ComplaintEvent::getNewStatus)
-                .containsExactlyInAnyOrder(ComplaintStatus.DRAFT, ComplaintStatus.OPEN);
+                .containsExactlyInAnyOrder(
+                        ComplaintStatus.DRAFT,
+                        ComplaintStatus.OPEN,
+                        ComplaintStatus.ANSWERED
+                );
         org.assertj.core.api.Assertions.assertThatThrownBy(
                         () -> teacherResponseService.findDraft(teacherUser.getId(), complaintId)
                 )
@@ -296,7 +300,7 @@ public class ComplaintFlowIntegrationTest {
         );
 
         assertThat(submitted.content()).isEqualTo("교사가 직접 작성한 답변입니다.");
-        assertThat(submitted.complaintStatus()).isEqualTo(ComplaintStatus.OPEN);
+        assertThat(submitted.complaintStatus()).isEqualTo(ComplaintStatus.ANSWERED);
     }
 
     @Test
@@ -637,7 +641,7 @@ public class ComplaintFlowIntegrationTest {
     private Student student;
 
     @Test
-    void teacherClosesConversationAndParentFollowUpReopensIt() {
+    void parentClosesConversationAndFollowUpReopensIt() {
         Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
                 createRequest("첫 번째 문의입니다.")
@@ -743,7 +747,7 @@ public class ComplaintFlowIntegrationTest {
                 .hasSize(2)
                 .allMatch(TeacherConversationResponse.Message::summarized);
 
-        teacherResponseService.close(teacherUser.getId(), complaintId);
+        parentComplaintService.close(parentUser.getId(), complaintId);
         var closed = complaintRepository.findById(complaintId).orElseThrow();
         assertThat(closed.getStatus()).isEqualTo(ComplaintStatus.CLOSED);
         assertThat(closed.getWaitingFor())

@@ -35,11 +35,11 @@ class FlywayInitialSchemaTest {
     @Test
     void appliesInitialSchemaAndValidatesAllEntityMappings() {
         Integer appliedMigrationCount = jdbcTemplate.queryForObject(
-                "select count(*) from flyway_schema_history where version in ('1', '2', '3', '4') and success = true",
+                "select count(*) from flyway_schema_history where version in ('1', '2', '3', '4', '5') and success = true",
                 Integer.class
         );
 
-        assertThat(appliedMigrationCount).isEqualTo(4);
+        assertThat(appliedMigrationCount).isEqualTo(5);
 
         Map<String, Integer> configuredScores = jdbcTemplate.query(
                 "select code, default_score from risk_tags",
