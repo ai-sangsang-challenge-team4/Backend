@@ -513,8 +513,21 @@ FastAPI에는 현재 교사용 감정 완충 요약만 있고 일반 민원 요�
 배포 후에는 `OPEN → ANSWERED` 전환 수, 학부모 `ANSWERED → CLOSED` 전환 수, SYSTEM 자동
 종료 수와 `COMPLAINT_NOT_CLOSABLE` 응답 비율을 확인한다. 자동 종료량이 예상 대기 건수보다
 크거나 3일이 지나지 않은 건이 종료되면 `COMPLAINT_AUTO_CLOSE_ENABLED=false`로 배치를 먼저
-중지한다. 이전 애플리케이션으로 롤백해야 하면 ANSWERED 데이터를 `OPEN + waitingFor=PARENT`로
-되돌린 뒤 배포하며, V5 컬럼과 감사 이벤트는 삭제하지 않는다.
+중지한다. 단, 이 설정은 자동 종료만 중단하며 교사 답변 제출이 새 `ANSWERED` 데이터를 생성하는
+것은 막지 않는다.
+
+이전 애플리케이션으로 롤백할 때는 다음 순서를 지킨다.
+
+1. `POST /teacher/complaints/{complaintId}/responses` 신규 요청을 인그레스 또는 점검 모드에서
+   차단한다. 경로 단위 차단이 불가능하면 민원 쓰기 요청 전체를 중지한다.
+2. 이미 수락된 교사 답변 요청과 관련 DB 트랜잭션이 모두 끝날 때까지 drain한다.
+3. 자동 종료 작업을 중지하고 `ANSWERED` 데이터를 `OPEN + waitingFor=PARENT`로 변환한다.
+4. 변환 후 `ANSWERED` 잔여 건수가 0인지 확인한다.
+5. 이전 애플리케이션을 배포하고 상태 enum 조회와 교사 미처리 목록을 확인한다.
+6. 이전 애플리케이션이 정상임을 확인한 뒤 차단했던 요청을 재개한다.
+
+쓰기 차단을 유지하지 않은 채 데이터 변환과 구버전 배포를 진행하지 않는다. V5 컬럼, 인덱스와
+감사 이벤트는 삭제하지 않아 롤포워드 가능성을 유지한다.
 
 추가 문의 최초 저장은 `{"content":"..."}`처럼 버전을 생략할 수 있다. 기존 초안 수정은
 `{"content":"...","expectedContentVersion":2}`, 전송은 `{"expectedContentVersion":2}`를
