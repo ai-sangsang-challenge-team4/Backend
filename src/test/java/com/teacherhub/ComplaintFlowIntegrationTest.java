@@ -379,6 +379,81 @@ public class ComplaintFlowIntegrationTest {
     }
 
     @Test
+    void usesTeacherReviewWhenSelectingBufferedSummaryPolicy() {
+        String raisedContent = "위험도를 상향 검토할 민원입니다.";
+        Long raisedComplaintId = parentComplaintService.createDraft(
+                parentUser.getId(),
+                createRequest(raisedContent)
+        ).getComplaintId();
+        var raisedSummary = riskAnalysisService.analyze(parentUser.getId(), raisedComplaintId);
+        var raisedAnalysis = riskAnalysisRepository.findById(raisedSummary.analysisId()).orElseThrow();
+        org.springframework.test.util.ReflectionTestUtils.setField(raisedAnalysis, "riskScore", 0);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                raisedAnalysis,
+                "riskLevel",
+                com.teacherhub.risk.enums.RiskLevel.LOW
+        );
+        entityManager.flush();
+        parentComplaintService.submitComplaint(parentUser.getId(), raisedComplaintId);
+        teacherRiskReviewService.review(
+                teacherUser.getId(),
+                raisedComplaintId,
+                new com.teacherhub.risk.dto.review.TeacherRiskReviewRequest(
+                        5,
+                        "추가 정황을 확인해 위험도를 상향합니다."
+                )
+        );
+
+        var raisedConversation = teacherComplaintQueryService.findConversation(
+                teacherUser.getId(),
+                raisedComplaintId
+        );
+
+        assertThat(raisedConversation.messages()).singleElement().satisfies(message -> {
+            assertThat(message.summarized()).isTrue();
+            assertThat(message.summaryStatus()).isEqualTo(
+                    com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse.SummaryStatus.GENERATED
+            );
+        });
+
+        String loweredContent = "위험도를 하향 검토할 민원입니다.";
+        Long loweredComplaintId = parentComplaintService.createDraft(
+                parentUser.getId(),
+                createRequest(loweredContent)
+        ).getComplaintId();
+        var loweredSummary = riskAnalysisService.analyze(parentUser.getId(), loweredComplaintId);
+        var loweredAnalysis = riskAnalysisRepository.findById(loweredSummary.analysisId()).orElseThrow();
+        org.springframework.test.util.ReflectionTestUtils.setField(loweredAnalysis, "riskScore", 52);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                loweredAnalysis,
+                "riskLevel",
+                com.teacherhub.risk.enums.RiskLevel.HIGH
+        );
+        entityManager.flush();
+        parentComplaintService.submitComplaint(parentUser.getId(), loweredComplaintId);
+        teacherRiskReviewService.review(
+                teacherUser.getId(),
+                loweredComplaintId,
+                new com.teacherhub.risk.dto.review.TeacherRiskReviewRequest(
+                        2,
+                        "문맥을 확인해 위험도를 하향합니다."
+                )
+        );
+
+        var loweredConversation = teacherComplaintQueryService.findConversation(
+                teacherUser.getId(),
+                loweredComplaintId
+        );
+
+        assertThat(loweredConversation.messages()).singleElement().satisfies(message -> {
+            assertThat(message.content()).isEqualTo(loweredContent);
+            assertThat(message.summarized()).isFalse();
+            assertThat(message.summaryStatus()).isNull();
+        });
+        verify(teacherSupportContentProvider, times(1)).createBufferedSummary(anyString());
+    }
+
+    @Test
     void excludesUnsentParentDraftAnalysisFromEveryTeacherFacingQuery() {
         String submittedContent = "제출된 최초 민원입니다.";
         Long complaintId = parentComplaintService.createDraft(

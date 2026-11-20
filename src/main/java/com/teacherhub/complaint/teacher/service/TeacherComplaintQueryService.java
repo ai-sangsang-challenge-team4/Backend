@@ -83,7 +83,13 @@ public class TeacherComplaintQueryService {
         User user = findUser(userId);
         Complaint complaint = findTeacherComplaint(user, complaintId);
         RiskAnalysis analysis = latestAnalysis(complaint).orElse(null);
-        RiskReview latestReview = analysis == null ? null : latestReview(analysis);
+        Map<Long, RiskReview> latestReviewByAnalysis = latestReviewByAnalysis(complaintId);
+        RiskReview latestReview = analysis == null
+                ? null
+                : latestReviewByAnalysis.get(analysis.getId());
+        RiskLevel currentRiskLevel = analysis == null
+                ? null
+                : currentRiskLevel(analysis, latestReview);
         boolean safetyLock = isSafetyLocked(complaintId);
         markLatestParentMessageRead(complaintId, user);
         List<ComplaintMessage> messages = messageRepository
@@ -93,7 +99,8 @@ public class TeacherComplaintQueryService {
                 complaintId,
                 PiiMaskingContext.from(complaint),
                 messages,
-                latestAnalysisByMessage
+                latestAnalysisByMessage,
+                latestReviewByAnalysis
         );
 
         return TeacherConversationResponse.from(
@@ -104,9 +111,7 @@ public class TeacherComplaintQueryService {
                         : supportPolicy.allowedActions(
                                 safetyLock
                                         ? RiskLevel.EMERGENCY
-                                        : latestReview == null
-                                        ? analysis.getRiskLevel()
-                                        : latestReview.getReviewedLevel()
+                                        : currentRiskLevel
                         ),
                 submittedAt(complaint),
                 messages
@@ -117,15 +122,20 @@ public class TeacherComplaintQueryService {
             Long complaintId,
             PiiMaskingContext maskingContext,
             List<ComplaintMessage> messages,
-            Map<Long, RiskAnalysis> latestAnalysisByMessage
+            Map<Long, RiskAnalysis> latestAnalysisByMessage,
+            Map<Long, RiskReview> latestReviewByAnalysis
     ) {
         Map<Long, BufferedSummary> summaries = new HashMap<>();
         messages.stream()
                 .filter(message -> message.getType() == MessageType.PARENT_INQUIRY)
                 .filter(message -> latestAnalysisByMessage.get(message.getId()) != null)
-                .filter(message -> requiresBufferedSummary(
-                        latestAnalysisByMessage.get(message.getId()).getRiskLevel()
-                ))
+                .filter(message -> {
+                    RiskAnalysis analysis = latestAnalysisByMessage.get(message.getId());
+                    return requiresBufferedSummary(currentRiskLevel(
+                            analysis,
+                            latestReviewByAnalysis.get(analysis.getId())
+                    ));
+                })
                 .forEach(message -> {
                     RiskAnalysis analysis = latestAnalysisByMessage.get(message.getId());
                     BufferedSummary summary = bufferedSummaryService.findOrGenerate(
@@ -144,6 +154,12 @@ public class TeacherComplaintQueryService {
 
     private boolean requiresBufferedSummary(RiskLevel riskLevel) {
         return riskLevel == RiskLevel.HIGH || riskLevel == RiskLevel.EMERGENCY;
+    }
+
+    private RiskLevel currentRiskLevel(RiskAnalysis analysis, RiskReview latestReview) {
+        return latestReview == null
+                ? analysis.getRiskLevel()
+                : latestReview.getReviewedLevel();
     }
 
     private void markLatestParentMessageRead(Long complaintId, User actor) {
@@ -251,6 +267,14 @@ public class TeacherComplaintQueryService {
                         analysis.getMessage().getId(),
                         analysis
                 ));
+        return result;
+    }
+
+    private Map<Long, RiskReview> latestReviewByAnalysis(Long complaintId) {
+        Map<Long, RiskReview> result = new HashMap<>();
+        riskReviewRepository
+                .findByRiskAnalysisComplaintIdOrderByReviewedAtAscIdAsc(complaintId)
+                .forEach(review -> result.put(review.getRiskAnalysis().getId(), review));
         return result;
     }
 }

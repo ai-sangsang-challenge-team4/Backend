@@ -71,8 +71,8 @@ class TeacherComplaintQueryServiceTest {
         when(analysis.getId()).thenReturn(100L);
         when(analysis.getRiskLevel()).thenReturn(RiskLevel.HIGH);
         when(analysis.getMessage()).thenReturn(message);
-        when(reviews.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
-                .thenReturn(Optional.empty());
+        when(reviews.findByRiskAnalysisComplaintIdOrderByReviewedAtAscIdAsc(42L))
+                .thenReturn(List.of());
         when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
                 .thenReturn(Optional.empty());
         when(messages.findFirstByComplaintIdAndTypeAndStatusNotOrderByIdDesc(
@@ -140,6 +140,8 @@ class TeacherComplaintQueryServiceTest {
                 42L, MessageStatus.DRAFT)).thenReturn(Optional.empty());
         when(analyses.findByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdAsc(
                 42L, MessageStatus.DRAFT)).thenReturn(List.of());
+        when(reviews.findByRiskAnalysisComplaintIdOrderByReviewedAtAscIdAsc(42L))
+                .thenReturn(List.of());
         when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
                 .thenReturn(Optional.empty());
         when(messages.findByComplaintIdAndStatusNotOrderByIdAsc(42L, MessageStatus.DRAFT))
