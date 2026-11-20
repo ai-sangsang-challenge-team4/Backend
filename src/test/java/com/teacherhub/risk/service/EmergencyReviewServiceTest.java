@@ -126,6 +126,7 @@ class EmergencyReviewServiceTest {
         assertThat(response.safetyLock()).isTrue();
         assertThat(response.reviewerId()).isEqualTo(20L);
         verify(requestRepository).saveAndFlush(any(EmergencyRiskReviewRequest.class));
+        verify(escalationRepository, never()).save(any());
     }
 
     @Test
