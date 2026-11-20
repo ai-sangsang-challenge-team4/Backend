@@ -4,9 +4,13 @@ import com.teacherhub.ai.exception.AiResponseInvalidException;
 import com.teacherhub.risk.dto.detection.EvidenceSpan;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
+import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.enums.RiskTagState;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -14,6 +18,8 @@ import java.util.Set;
 /** LLM 출력을 저장하거나 점수 계산에 사용하기 전 검증하는 결정론적 경계입니다. */
 public final class LlmRiskOutputValidator {
 
+    private static final Logger log = LoggerFactory.getLogger(LlmRiskOutputValidator.class);
+    private static final int MAX_TAG_ENTRIES = 32;
     private static final int MAX_MODEL_NAME_LENGTH = 100;
     private static final int MAX_REASON_LENGTH = 2_000;
     private static final int MAX_EVIDENCE_LENGTH = 1_000;
@@ -26,6 +32,14 @@ public final class LlmRiskOutputValidator {
     public static LlmRiskAnalysisResult validate(
             LlmRiskAnalysisResult result,
             String maskedContent
+    ) {
+        return validate(result, maskedContent, null);
+    }
+
+    public static LlmRiskAnalysisResult validate(
+            LlmRiskAnalysisResult result,
+            String maskedContent,
+            RepeatAnalysisContext repeatContext
     ) {
         if (result == null || result.metadata() == null || result.tags() == null
                 || maskedContent == null || maskedContent.isBlank()) {
@@ -41,7 +55,20 @@ public final class LlmRiskOutputValidator {
             throw invalid();
         }
 
-        List<RiskTagDetectionResult> tags = result.tags();
+        List<RiskTagDetectionResult> rawTags = result.tags();
+        if (rawTags.size() > MAX_TAG_ENTRIES) {
+            throw invalid();
+        }
+        List<RiskTagDetectionResult> tags = rawTags.stream()
+                .filter(tag -> tag != null && tag.code() != null && tag.state() != null)
+                .toList();
+        int discardedTags = rawTags.size() - tags.size();
+        if (discardedTags > 0) {
+            log.warn(
+                    "Unsupported AI risk tags discarded. capability=risk-analysis discardedCount={}",
+                    discardedTags
+            );
+        }
         if (tags.size() > RiskTagCode.values().length) {
             throw invalid();
         }
@@ -56,20 +83,31 @@ public final class LlmRiskOutputValidator {
         }
 
         Set<RiskTagCode> uniqueCodes = new HashSet<>();
+        List<RiskTagDetectionResult> normalizedTags = new ArrayList<>();
         for (RiskTagDetectionResult tag : tags) {
-            validateTag(tag, maskedContent, uniqueCodes, extendedSchema);
+            normalizedTags.add(validateTag(
+                    tag,
+                    maskedContent,
+                    uniqueCodes,
+                    extendedSchema,
+                    repeatContext
+            ));
         }
-        return result;
+        return new LlmRiskAnalysisResult(
+                List.copyOf(normalizedTags),
+                result.metadata(),
+                result.safetyFlags()
+        );
     }
 
-    private static void validateTag(
+    private static RiskTagDetectionResult validateTag(
             RiskTagDetectionResult tag,
             String maskedContent,
             Set<RiskTagCode> uniqueCodes,
-            boolean extendedSchema
+            boolean extendedSchema,
+            RepeatAnalysisContext repeatContext
     ) {
-        if (tag == null || tag.code() == null || tag.state() == null
-                || !uniqueCodes.add(tag.code())) {
+        if (!uniqueCodes.add(tag.code())) {
             throw invalid();
         }
 
@@ -88,9 +126,55 @@ public final class LlmRiskOutputValidator {
         if (spans == null || spans.size() > MAX_EVIDENCE_SPANS_PER_TAG) {
             throw invalid();
         }
+        List<EvidenceSpan> supportedSpans = new ArrayList<>();
         for (EvidenceSpan span : spans) {
-            validateEvidence(span, maskedContent);
+            if (isSupportedEvidence(span, maskedContent)) {
+                supportedSpans.add(span);
+            }
         }
+        int discardedEvidenceCount = spans.size() - supportedSpans.size();
+        if (discardedEvidenceCount > 0) {
+            log.warn(
+                    "Unsupported AI risk evidence discarded. capability=risk-analysis code={} discardedCount={}",
+                    tag.code(),
+                    discardedEvidenceCount
+            );
+        }
+
+        RiskTagState normalizedState = tag.state();
+        Integer normalizedSeverity = tag.severity();
+        Integer normalizedRepeatCount = tag.repeatCount();
+        if (normalizedState == RiskTagState.PRESENT && supportedSpans.isEmpty()) {
+            normalizedState = RiskTagState.BOUNDARY;
+            normalizedSeverity = null;
+            normalizedRepeatCount = null;
+            log.warn(
+                    "AI risk tag downgraded. capability=risk-analysis code={} reason=EVIDENCE_NOT_FOUND",
+                    tag.code()
+            );
+        }
+        if (tag.code() == RiskTagCode.REPEAT
+                && normalizedState == RiskTagState.PRESENT
+                && repeatContext != null
+                && !repeatContext.historyAvailable()) {
+            normalizedState = RiskTagState.UNKNOWN;
+            normalizedSeverity = null;
+            normalizedRepeatCount = null;
+            supportedSpans.clear();
+            log.warn(
+                    "AI risk tag downgraded. capability=risk-analysis code=REPEAT reason=HISTORY_UNAVAILABLE"
+            );
+        }
+
+        return new RiskTagDetectionResult(
+                tag.code(),
+                normalizedState,
+                tag.confidence(),
+                normalizedSeverity,
+                normalizedRepeatCount,
+                List.copyOf(supportedSpans),
+                tag.reason()
+        );
     }
 
     private static void validateSeverity(
@@ -127,7 +211,7 @@ public final class LlmRiskOutputValidator {
                 && repeatCount <= MAX_REPEAT_COUNT;
     }
 
-    private static void validateEvidence(EvidenceSpan span, String maskedContent) {
+    private static boolean isSupportedEvidence(EvidenceSpan span, String maskedContent) {
         if (span == null || span.text() == null || span.text().isBlank()
                 || span.text().length() > MAX_EVIDENCE_LENGTH) {
             throw invalid();
@@ -139,10 +223,9 @@ public final class LlmRiskOutputValidator {
                     || span.end() > maskedContent.length()) {
                 throw invalid();
             }
-            if (!maskedContent.substring(span.start(), span.end()).equals(span.text())) {
-                throw invalid();
-            }
+            return maskedContent.substring(span.start(), span.end()).equals(span.text());
         }
+        return maskedContent.contains(span.text());
     }
 
     private static AiResponseInvalidException invalid() {

@@ -26,11 +26,7 @@ public class MockLlmRiskAnalyzer implements LlmRiskAnalyzer {
                         .map(code -> {
                             boolean detected = code == RiskTagCode.THREAT
                                     || code == RiskTagCode.UNFAIR_REQUEST;
-                            String evidence = code == RiskTagCode.THREAT
-                                    ? "[MOCK LLM] 협박 문맥 예시"
-                                    : code == RiskTagCode.UNFAIR_REQUEST
-                                    ? "[MOCK LLM] 부당 요구 문맥 예시"
-                                    : null;
+                            String evidence = detected ? maskedContent : null;
                             String reason = code == RiskTagCode.THREAT
                                     ? "[MOCK LLM] 불이익을 암시하는 문맥입니다."
                                     : code == RiskTagCode.UNFAIR_REQUEST

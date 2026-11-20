@@ -11,8 +11,13 @@ public interface TeacherSupportContentProvider {
 
     record GeneratedResponseDraft(
             String content,
-            String modelName
+            String modelName,
+            boolean legalCitationWarning
     ) {
+        public GeneratedResponseDraft(String content, String modelName) {
+            this(content, modelName, false);
+        }
+
         public GeneratedResponseDraft {
             if (content == null || content.isBlank() || content.length() > 1_500) {
                 throw new AiResponseInvalidException("AI 답변 초안 형식이 올바르지 않습니다.");

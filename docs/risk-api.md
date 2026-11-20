@@ -166,6 +166,8 @@ LLM 출력이 스키마 검증에 실패하면 한 번 재생성한다. 재생�
 confidence는 `null`이고 수정안은 생성하지 않는다.
 위험 분석 LLM 성공 후 수정안 생성 AI가 연결·응답 검증에 실패해도 저장된 하이브리드 위험
 판정은 유지한다. 잘못된 수정안은 저장하지 않고 `revisionStatus=UNAVAILABLE`로 전환한다.
+수정안에 마스킹 원문에 없는 숫자·날짜·이름이 추가되거나, 원문의 인식 가능한 확인·답변·사과·
+조치 등 요구 의도가 최종 수정본에서 사라지면 무효 응답으로 처리한다.
 `AI_ANALYSIS_RULE_FALLBACK` 감사 이벤트는 위험 분석 LLM 자체가 실패한 경우에만 기록한다.
 응답에는 요약만 포함하며, 근거와 태그별 수정 제안 및 전체 수정본은
 `GET /risk-analyses/{analysisId}/findings`로 조회한다.
@@ -358,8 +360,11 @@ detector-results는 results(code, finalState, rule, llm), llm(modelName, tempera
 safetyFlags를 반환한다.
 상태는 `PRESENT`, `ABSENT`, `BOUNDARY`, `UNKNOWN` 중 하나다. rule/llm에는 state,
 confidence, severity, repeatCount, evidenceSpans가 있고 각 span은 text, start, end를 반환한다.
+AI 응답에 허용되지 않는 태그 코드나 상태가 섞이면 해당 항목만 폐기하고 원문 없이 사유를
+로그로 남긴다. 확장 스키마에서 필수 태그가 빠진 결과는 무효 응답으로 처리한다.
 Rule의 severity/repeatCount는 null이다. 위치를 확정할 수 없는
-근거는 start/end가 null이다. 근거 없이 PRESENT만 반환된 결과는 BOUNDARY로 낮추며,
+근거는 start/end가 null이다. 마스킹 본문에 존재하지 않는 AI 근거는 폐기하고, 유효한 근거 없이
+PRESENT만 반환된 결과는 BOUNDARY로 낮추며,
 이력 정보가 없는 REPEAT는 UNKNOWN으로 보존한다. 규칙 탐지 confidence는 null이다.
 모든 위험 코드(미감지 포함)를 반환한다. 기존 소유권 검증과 401/403/404 정책은 세 조회 모두 적용한다.
 미완료 분석은 조회하지 않는다.
@@ -499,7 +504,9 @@ FastAPI에는 현재 교사용 감정 완충 요약만 있고 일반 민원 요�
 교사 답변 API 경로는 기존 값을 유지한다. AI 초안 생성 시 지금까지 전송된 전체 대화가
 입력 문맥이 되며 각 메시지는 현재 민원의 관계자 컨텍스트로 개인정보 마스킹 후
 `TeacherSupportContentProvider` 경계에 전달한다. 생성 결과는 빈값·최대 1,500자·모델명 형식을
-검증하고 같은 컨텍스트로 다시 마스킹한 뒤 반환한다.
+검증하고 같은 컨텍스트로 다시 마스킹한 뒤 반환한다. 완충 요약에 원문에 없던 숫자·날짜·이름이
+추가되면 무효 응답으로 처리해 요약을 노출하지 않는다. 답변 초안이 법령·조문을 인용하면 내부
+AI 응답의 `ragSources`와 대조하고, 근거가 없으면 `legalCitationWarning=true`를 반환한다.
 임시저장과 최종 전송은 `complaint_messages`의 `TEACHER_REPLY` 행을
 사용한다. 교사 전송 후 민원은 `ANSWERED`, `waitingFor=PARENT`가 되어 교사의 OPEN 미처리
 목록에서 제외된다. 학부모는 답변을 확인한 뒤 문의 완료 API로 종료하거나 추가 문의를 보낼 수
@@ -536,7 +543,9 @@ FastAPI에는 현재 교사용 감정 완충 요약만 있고 일반 민원 요�
 버전이 누락되거나 다르면 쓰기·전송 없이 409 `CONTENT_VERSION_CONFLICT`를 반환한다.
 
 AI 초안은 영속화하지 않는다. `POST /teacher/complaints/{complaintId}/response/ai-draft`는
-`complaintId`, `content`, `modelName`, `generatedAt`만 반환한다. 교사 답변 임시저장 및 제출
+`complaintId`, `content`, `modelName`, `generatedAt`, `legalCitationWarning`을 반환한다.
+`legalCitationWarning`은 초안을 차단하지 않지만 교사가 법령 근거를 직접 확인해야 함을 뜻한다.
+교사 답변 임시저장 및 제출
 요청은 `{"content":"수정한 최종 답변"}`만 전달하며 `aiDraftId`는 사용하지 않는다.
 히스토리에는 초안 내용 대신 `AI_DRAFT_GENERATED` 이벤트만 저장한다.
 

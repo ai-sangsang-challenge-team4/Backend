@@ -705,7 +705,8 @@ public class RiskAnalysisService {
                             maskedRuleResults,
                             repeatContext
                     ),
-                    maskedContent
+                    maskedContent,
+                    repeatContext
             );
             log.info(
                     "AI capability completed. capability=risk-analysis attempt={} durationMs={} outcome=SUCCESS",

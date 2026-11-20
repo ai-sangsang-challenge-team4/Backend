@@ -97,6 +97,50 @@ class PythonLlmRiskAnalyzerTest {
                 .replace("\"severity\":2", "\"severity\":1.5"));
     }
 
+    @Test
+    void discardsUnsupportedTagCodeAndState() throws IOException {
+        String unsupportedTags = """
+                ,{"code":"FAKE_TAG","state":"PRESENT","confidence":0.9,
+                  "severity":1,"repeatCount":1,"evidenceSpans":[],"reason":null}
+                ,{"code":"THREAT","state":"MAYBE","confidence":0.9,
+                  "severity":null,"repeatCount":null,"evidenceSpans":[],"reason":null}
+                """;
+        String responseBody = extendedResponse(unsupportedTags);
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/ai/analyze", exchange -> {
+            byte[] response = responseBody.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json; charset=UTF-8");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        var raw = analyzer().analyze(
+                "마스킹된 민원: 젠장",
+                List.of(),
+                new RepeatAnalysisContext(
+                        false, 7, 3, 1, false,
+                        "DRAFT_WAITING_FOR_NONE", 0, 0, 0, 0, 0, false, List.of()
+                )
+        );
+        var validated = LlmRiskOutputValidator.validate(
+                raw,
+                "마스킹된 민원: 젠장"
+        );
+
+        assertThat(raw.tags()).hasSize(RiskTagCode.values().length + 2);
+        assertThat(raw.tags())
+                .filteredOn(tag -> tag.code() == null || tag.state() == null)
+                .hasSize(2);
+        assertThat(validated.tags())
+                .hasSize(RiskTagCode.values().length)
+                .allSatisfy(tag -> {
+                    assertThat(tag.code()).isNotNull();
+                    assertThat(tag.state()).isNotNull();
+                });
+    }
+
     private void assertInvalidResponse(String responseBody) throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/v1/ai/analyze", exchange -> {
@@ -119,6 +163,10 @@ class PythonLlmRiskAnalyzerTest {
     }
 
     private String extendedResponse() {
+        return extendedResponse("");
+    }
+
+    private String extendedResponse(String additionalTags) {
         String tags = Stream.of(RiskTagCode.values())
                 .map(code -> code == RiskTagCode.PROFANITY
                         ? """
@@ -133,11 +181,11 @@ class PythonLlmRiskAnalyzerTest {
                           """.formatted(code.name()))
                 .collect(Collectors.joining(","));
         return """
-                {"tags":[%s],
+                {"tags":[%s%s],
                  "metadata":{"modelName":"claude-sonnet-4-6","temperature":0.0},
                  "safetyFlags":{"credibleThreat":false,"studentSafetyConcern":null,
                                 "privacyExposure":false}}
-                """.formatted(tags);
+                """.formatted(tags, additionalTags);
     }
 
     private PythonLlmRiskAnalyzer analyzer() {

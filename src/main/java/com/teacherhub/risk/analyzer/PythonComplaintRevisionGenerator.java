@@ -2,6 +2,7 @@ package com.teacherhub.risk.analyzer;
 
 import com.teacherhub.ai.client.AiServerClient;
 import com.teacherhub.ai.exception.AiResponseInvalidException;
+import com.teacherhub.ai.validation.GenerationOutputValidator;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.FinalRevision;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.TagRevisionSuggestion;
@@ -10,6 +11,9 @@ import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Component
 public class PythonComplaintRevisionGenerator
@@ -43,7 +47,9 @@ public class PythonComplaintRevisionGenerator
                 RevisionResponse.class,
                 "AI 수정안"
         );
-        return toRevisionResult(response);
+        RevisionResult result = toRevisionResult(response);
+        validateGeneratedContent(maskedContent, result);
+        return result;
     }
 
     private RevisionTagInput toRevisionTagInput(
@@ -117,6 +123,33 @@ public class PythonComplaintRevisionGenerator
                     exception
             );
         }
+    }
+
+    private void validateGeneratedContent(String maskedContent, RevisionResult result) {
+        String generatedText = Stream.concat(
+                        Stream.of(
+                                result.finalRevision().reason(),
+                                result.finalRevision().content()
+                        ),
+                        result.tagSuggestions().stream().flatMap(suggestion ->
+                                Stream.of(
+                                        suggestion.originalExpression(),
+                                        suggestion.suggestedExpression(),
+                                        suggestion.reason()
+                                )
+                        )
+                )
+                .filter(Objects::nonNull)
+                .collect(Collectors.joining("\n"));
+        GenerationOutputValidator.validateNoNovelFacts(
+                maskedContent,
+                generatedText,
+                "AI 수정안"
+        );
+        GenerationOutputValidator.validateRequirementIntentPreserved(
+                maskedContent,
+                result.finalRevision().content()
+        );
     }
 
     private record RevisionRequest(

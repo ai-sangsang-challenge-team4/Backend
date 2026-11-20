@@ -236,14 +236,14 @@ class RiskAnalysisRulesTest {
                                 THREAT,
                                 true,
                                 0.9,
-                                "llm evidence",
+                                "민원",
                                 "llm reason"
                         ),
                         new RiskTagDetectionResult(
                                 UNFAIR_REQUEST,
                                 true,
                                 0.8,
-                                "llm only"
+                                "내용"
                         ),
                         new RiskTagDetectionResult(
                                 PROFANITY,
@@ -288,7 +288,7 @@ class RiskAnalysisRulesTest {
                                     com.teacherhub.risk.dto.detection.EvidenceSpan::text
                             )
                             .containsExactly(
-                                    "llm evidence"
+                                    "민원"
                             );
                     assertThat(tag.reason())
                             .isEqualTo(
@@ -311,7 +311,7 @@ class RiskAnalysisRulesTest {
                                     com.teacherhub.risk.dto.detection.EvidenceSpan::text
                             )
                             .containsExactly(
-                                    "llm only"
+                                    "내용"
                             );
                 });
 

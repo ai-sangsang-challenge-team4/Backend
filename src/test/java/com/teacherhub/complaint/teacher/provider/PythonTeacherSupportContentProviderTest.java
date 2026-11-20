@@ -40,7 +40,7 @@ class PythonTeacherSupportContentProviderTest {
         server.createContext("/api/v1/ai/response-draft", exchange -> {
             draftRequest.set(readRequest(exchange.getRequestBody().readAllBytes()));
             respond(exchange, 200, """
-                    {"content":"안녕하세요. 확인 후 안내드리겠습니다.",
+                    {"content":"초중등교육법 제20조에 따라 확인 후 안내드리겠습니다.",
                      "modelName":"claude-sonnet-4-6"}
                     """);
         });
@@ -51,8 +51,10 @@ class PythonTeacherSupportContentProviderTest {
         var draft = provider.createResponseDraft("PARENT_INQUIRY: [전화번호] 확인 요청");
 
         assertThat(summary).isEqualTo("완충된 민원 요약");
-        assertThat(draft.content()).isEqualTo("안녕하세요. 확인 후 안내드리겠습니다.");
+        assertThat(draft.content())
+                .isEqualTo("초중등교육법 제20조에 따라 확인 후 안내드리겠습니다.");
         assertThat(draft.modelName()).isEqualTo("claude-sonnet-4-6");
+        assertThat(draft.legalCitationWarning()).isTrue();
         assertThat(summaryRequest.get()).isEqualTo("{\"content\":\"[이름] 보호자의 마스킹된 민원\"}");
         assertThat(draftRequest.get()).contains("[전화번호]");
     }
@@ -70,6 +72,22 @@ class PythonTeacherSupportContentProviderTest {
         server.start();
 
         assertThatThrownBy(() -> provider(false).createBufferedSummary("마스킹된 민원"))
+                .isInstanceOf(AiResponseInvalidException.class);
+    }
+
+    @Test
+    void rejectsSummaryThatIntroducesANewFact() throws IOException {
+        startServer();
+        server.createContext("/api/v1/ai/summary", exchange -> respond(
+                exchange,
+                200,
+                """
+                {"summary":"민원이 총 3건 접수되었습니다.","modelName":"test-model"}
+                """
+        ));
+        server.start();
+
+        assertThatThrownBy(() -> provider(false).createBufferedSummary("확인을 요청드립니다."))
                 .isInstanceOf(AiResponseInvalidException.class);
     }
 
