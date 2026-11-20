@@ -27,6 +27,8 @@ import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.time.LocalDateTime;
 import java.time.Clock;
@@ -44,6 +46,7 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -71,6 +74,41 @@ class TeacherResponseServiceTest {
             riskAnalyses, riskReviews, masking, templateAdoptions, clock
     );
 
+    @ParameterizedTest
+    @EnumSource(value = RiskLevel.class, names = {"LOW", "MEDIUM"})
+    void lowAndMediumAiDraftIsReturnedWithoutPersistingOrSendingMessage(RiskLevel riskLevel) {
+        User teacher = mock(User.class);
+        Complaint complaint = editableComplaint();
+        RiskAnalysis analysis = mock(RiskAnalysis.class);
+        when(users.findById(7L)).thenReturn(Optional.of(teacher));
+        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
+        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.empty());
+        when(riskAnalyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                42L, MessageStatus.DRAFT)).thenReturn(Optional.of(analysis));
+        when(analysis.getId()).thenReturn(100L);
+        when(analysis.getRiskLevel()).thenReturn(riskLevel);
+        when(riskReviews.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
+                .thenReturn(Optional.empty());
+        when(messages.findByComplaintIdAndStatusNotOrderByIdAsc(42L, MessageStatus.DRAFT))
+                .thenReturn(java.util.List.of());
+        when(contentProvider.createResponseDraft(""))
+                .thenReturn(new TeacherSupportContentProvider.GeneratedResponseDraft(
+                        "검토용 AI 답변",
+                        "test-model"
+                ));
+        when(masking.mask(eq("검토용 AI 답변"), any())).thenReturn("검토용 AI 답변");
+        when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.generateAiDraft(7L, 42L);
+
+        assertThat(response.content()).isEqualTo("검토용 AI 답변");
+        verify(messages, never()).save(any());
+        verify(messages, never()).saveAndFlush(any());
+        verify(events).save(argThat(event ->
+                event.getEventType() == MessageEventType.AI_DRAFT_GENERATED));
+    }
+
     @Test
     void safetyLockBlocksGenerationBeforeProviderCallAndCreatesAuditEvent() {
         User teacher = mock(User.class);
@@ -89,6 +127,33 @@ class TeacherResponseServiceTest {
 
         verifyNoInteractions(contentProvider);
         verify(events).save(argThat(event ->
+                event.getEventType() == MessageEventType.RESPONSE_BLOCKED_BY_SAFETY_LOCK));
+    }
+
+    @Test
+    void safetyLockBlocksDraftSaveAndSubmissionAndCreatesAuditEvents() {
+        User teacher = mock(User.class);
+        Complaint complaint = editableComplaint();
+        EmergencyRiskReviewRequest activeLock = mock(EmergencyRiskReviewRequest.class);
+        when(users.findById(7L)).thenReturn(Optional.of(teacher));
+        when(teacher.getId()).thenReturn(7L);
+        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
+        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.of(activeLock));
+        when(activeLock.isSafetyLock()).thenReturn(true);
+        when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        TeacherResponseRequest request = new TeacherResponseRequest("잠금 중 직접 답변");
+
+        assertThatThrownBy(() -> service.saveDraft(7L, 42L, request))
+                .isInstanceOf(ResponseNotEditableException.class)
+                .hasMessageContaining("안전 잠금");
+        assertThatThrownBy(() -> service.submit(7L, 42L, request, "locked-response-42"))
+                .isInstanceOf(ResponseNotEditableException.class)
+                .hasMessageContaining("안전 잠금");
+
+        verify(messages, never()).save(any());
+        verify(messages, never()).saveAndFlush(any());
+        verify(events, times(2)).save(argThat(event ->
                 event.getEventType() == MessageEventType.RESPONSE_BLOCKED_BY_SAFETY_LOCK));
     }
 
@@ -146,6 +211,40 @@ class TeacherResponseServiceTest {
                 .hasMessageContaining("Emergency 위험도");
 
         verifyNoInteractions(contentProvider);
+        verify(events).save(argThat(event ->
+                event.getEventType() == MessageEventType.RESPONSE_BLOCKED_BY_SAFETY_LOCK));
+    }
+
+    @Test
+    void emergencyRiskBlocksDraftSaveAndSubmissionAndCreatesAuditEvents() {
+        User teacher = mock(User.class);
+        Complaint complaint = editableComplaint();
+        RiskAnalysis analysis = mock(RiskAnalysis.class);
+        when(users.findById(7L)).thenReturn(Optional.of(teacher));
+        when(teacher.getId()).thenReturn(7L);
+        when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
+        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.empty());
+        when(riskAnalyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                42L, MessageStatus.DRAFT)).thenReturn(Optional.of(analysis));
+        when(analysis.getId()).thenReturn(100L);
+        when(analysis.getRiskLevel()).thenReturn(RiskLevel.EMERGENCY);
+        when(riskReviews.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
+                .thenReturn(Optional.empty());
+        when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        TeacherResponseRequest request = new TeacherResponseRequest("Emergency 직접 답변");
+
+        assertThatThrownBy(() -> service.saveDraft(7L, 42L, request))
+                .isInstanceOf(ResponseNotEditableException.class)
+                .hasMessageContaining("Emergency 위험도");
+        assertThatThrownBy(() -> service.submit(7L, 42L, request, "emergency-response-42"))
+                .isInstanceOf(ResponseNotEditableException.class)
+                .hasMessageContaining("Emergency 위험도");
+
+        verify(messages, never()).save(any());
+        verify(messages, never()).saveAndFlush(any());
+        verify(events, times(2)).save(argThat(event ->
+                event.getEventType() == MessageEventType.RESPONSE_BLOCKED_BY_SAFETY_LOCK));
     }
 
     @Test
@@ -175,7 +274,7 @@ class TeacherResponseServiceTest {
     }
 
     @Test
-    void highRiskBlocksDraftThatWasNotAdoptedFromOfficialTemplate() {
+    void highRiskBlocksDraftAndSubmissionThatWereNotAdoptedFromOfficialTemplate() {
         User teacher = mock(User.class);
         Complaint complaint = editableComplaint();
         RiskAnalysis analysis = mock(RiskAnalysis.class);
@@ -194,15 +293,18 @@ class TeacherResponseServiceTest {
                 42L, 7L)).thenReturn(Optional.empty());
         when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertThatThrownBy(() -> service.saveDraft(
-                7L,
-                42L,
-                new TeacherResponseRequest("임의로 작성한 답변")
-        )).isInstanceOf(ResponseNotEditableException.class)
+        TeacherResponseRequest request = new TeacherResponseRequest("임의로 작성한 답변");
+
+        assertThatThrownBy(() -> service.saveDraft(7L, 42L, request))
+                .isInstanceOf(ResponseNotEditableException.class)
+                .hasMessageContaining("제한형 공식 템플릿");
+        assertThatThrownBy(() -> service.submit(7L, 42L, request, "high-response-42"))
+                .isInstanceOf(ResponseNotEditableException.class)
                 .hasMessageContaining("제한형 공식 템플릿");
 
-        verify(events).save(argThat(event ->
+        verify(events, times(2)).save(argThat(event ->
                 event.getEventType() == MessageEventType.RESPONSE_BLOCKED_BY_RISK_POLICY));
+        verify(messages, never()).save(any());
         verify(messages, never()).saveAndFlush(any());
     }
 

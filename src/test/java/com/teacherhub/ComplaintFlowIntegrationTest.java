@@ -43,6 +43,8 @@ import com.teacherhub.user.repository.UserRepository;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -113,6 +115,56 @@ public class ComplaintFlowIntegrationTest {
                 com.teacherhub.risk.enums.RiskTagCode.PRIVACY, 6
         ));
         assertThat(scores.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(60);
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {
+            "교사를 찾아가 다치게 하겠다고 구체적으로 위협했습니다.|CREDIBLE_THREAT",
+            "학생이 지금 다칠 위험이 있어 즉시 안전 조치가 필요합니다.|STUDENT_SAFETY_CONCERN"
+    }, delimiter = '|')
+    void emergencySafetySentenceForcesEmergencyWithoutAutomaticShareOrTeacherResponse(
+            String content,
+            com.teacherhub.risk.enums.SafetySignalCode expectedSignal
+    ) {
+        MockLlmRiskAnalyzer baseAnalyzer = new MockLlmRiskAnalyzer();
+        when(llmRiskAnalyzer.analyze(anyString(), anyList(), any()))
+                .thenAnswer(invocation -> {
+                    var base = baseAnalyzer.analyze(
+                            invocation.getArgument(0),
+                            invocation.getArgument(1),
+                            invocation.getArgument(2)
+                    );
+                    return new com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult(
+                            base.tags(),
+                            base.metadata(),
+                            new com.teacherhub.risk.dto.llm.SafetyFlags(
+                                    expectedSignal == com.teacherhub.risk.enums.SafetySignalCode.CREDIBLE_THREAT,
+                                    expectedSignal == com.teacherhub.risk.enums.SafetySignalCode.STUDENT_SAFETY_CONCERN,
+                                    false
+                            )
+                    );
+                });
+        Long complaintId = parentComplaintService.createDraft(
+                parentUser.getId(),
+                createRequest(content)
+        ).getComplaintId();
+
+        var analysis = riskAnalysisService.analyze(parentUser.getId(), complaintId);
+        parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
+
+        assertThat(analysis.riskScore()).isEqualTo(100);
+        assertThat(analysis.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.EMERGENCY);
+        assertThat(analysis.emergencyOverride().applied()).isTrue();
+        assertThat(analysis.emergencyOverride().safetySignals())
+                .extracting(com.teacherhub.risk.dto.response.common.EmergencyOverrideResponse.SafetySignalResponse::code)
+                .containsExactly(expectedSignal);
+        assertThat(complaintEscalationRepository.findByComplaintId(complaintId)).isEmpty();
+        assertThat(messageRepository.findByComplaintIdOrderByIdAsc(complaintId))
+                .filteredOn(message -> message.getType() == MessageType.TEACHER_REPLY)
+                .isEmpty();
+        assertThat(eventRepository.findByComplaintIdOrderByOccurredAtDescIdDesc(complaintId))
+                .extracting(com.teacherhub.complaint.entity.ComplaintEvent::getEventType)
+                .doesNotContain(MessageEventType.ESCALATION_SHARED);
     }
 
     @Test
@@ -710,6 +762,9 @@ public class ComplaintFlowIntegrationTest {
 
     @Autowired
     private com.teacherhub.risk.repository.RiskReviewRepository riskReviewRepository;
+
+    @Autowired
+    private com.teacherhub.escalation.repository.ComplaintEscalationRepository complaintEscalationRepository;
 
     @Autowired
     private com.teacherhub.complaint.query.service.ComplaintListQueryService complaintListQueryService;
