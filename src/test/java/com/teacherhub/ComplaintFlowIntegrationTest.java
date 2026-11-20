@@ -304,7 +304,7 @@ public class ComplaintFlowIntegrationTest {
     }
 
     @Test
-    void showsBufferedSummaryForLowRiskParentMessage() {
+    void showsOriginalWithoutBufferedSummaryForLowRiskParentMessage() {
         String content = "학교생활에 관해 확인하고 싶습니다.";
         Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
@@ -327,16 +327,14 @@ public class ComplaintFlowIntegrationTest {
         );
         teacherComplaintQueryService.findConversation(teacherUser.getId(), complaintId);
 
-        verify(teacherSupportContentProvider, times(1)).createBufferedSummary(anyString());
+        verifyNoInteractions(teacherSupportContentProvider);
 
         assertThat(conversation.messages()).singleElement().satisfies(message -> {
-            assertThat(message.content()).isEqualTo("[MOCK] 학부모가 전달한 민원의 완충 요약을 확인해 주세요.");
+            assertThat(message.content()).isEqualTo(content);
             assertThat(message.status()).isEqualTo(MessageStatus.READ);
             assertThat(message.readAt()).isNotNull();
-            assertThat(message.summarized()).isTrue();
-            assertThat(message.summaryStatus()).isEqualTo(
-                    com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse.SummaryStatus.GENERATED
-            );
+            assertThat(message.summarized()).isFalse();
+            assertThat(message.summaryStatus()).isNull();
         });
         assertThat(eventRepository.findByComplaintIdOrderByOccurredAtDescIdDesc(complaintId))
                 .filteredOn(event -> event.getEventType() == MessageEventType.MESSAGE_READ)
@@ -344,6 +342,115 @@ public class ComplaintFlowIntegrationTest {
                 .satisfies(event -> assertThat(event.getReferenceId())
                         .isEqualTo(complaintRepository.findById(complaintId).orElseThrow()
                                 .initialMessage().getId()));
+    }
+
+    @Test
+    void showsBufferedSummaryForHighRiskParentMessage() {
+        String content = "학교생활에 관해 확인하고 싶습니다.";
+        Long complaintId = parentComplaintService.createDraft(
+                parentUser.getId(),
+                createRequest(content)
+        ).getComplaintId();
+        var summary = riskAnalysisService.analyze(parentUser.getId(), complaintId);
+        var analysis = riskAnalysisRepository.findById(summary.analysisId()).orElseThrow();
+        org.springframework.test.util.ReflectionTestUtils.setField(analysis, "riskScore", 52);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                analysis,
+                "riskLevel",
+                com.teacherhub.risk.enums.RiskLevel.HIGH
+        );
+        entityManager.flush();
+
+        parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
+        var conversation = teacherComplaintQueryService.findConversation(
+                teacherUser.getId(),
+                complaintId
+        );
+        teacherComplaintQueryService.findConversation(teacherUser.getId(), complaintId);
+
+        verify(teacherSupportContentProvider, times(1)).createBufferedSummary(anyString());
+        assertThat(conversation.messages()).singleElement().satisfies(message -> {
+            assertThat(message.content()).isEqualTo("[MOCK] 학부모가 전달한 민원의 완충 요약을 확인해 주세요.");
+            assertThat(message.summarized()).isTrue();
+            assertThat(message.summaryStatus()).isEqualTo(
+                    com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse.SummaryStatus.GENERATED
+            );
+        });
+    }
+
+    @Test
+    void usesTeacherReviewWhenSelectingBufferedSummaryPolicy() {
+        String raisedContent = "위험도를 상향 검토할 민원입니다.";
+        Long raisedComplaintId = parentComplaintService.createDraft(
+                parentUser.getId(),
+                createRequest(raisedContent)
+        ).getComplaintId();
+        var raisedSummary = riskAnalysisService.analyze(parentUser.getId(), raisedComplaintId);
+        var raisedAnalysis = riskAnalysisRepository.findById(raisedSummary.analysisId()).orElseThrow();
+        org.springframework.test.util.ReflectionTestUtils.setField(raisedAnalysis, "riskScore", 0);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                raisedAnalysis,
+                "riskLevel",
+                com.teacherhub.risk.enums.RiskLevel.LOW
+        );
+        entityManager.flush();
+        parentComplaintService.submitComplaint(parentUser.getId(), raisedComplaintId);
+        teacherRiskReviewService.review(
+                teacherUser.getId(),
+                raisedComplaintId,
+                new com.teacherhub.risk.dto.review.TeacherRiskReviewRequest(
+                        5,
+                        "추가 정황을 확인해 위험도를 상향합니다."
+                )
+        );
+
+        var raisedConversation = teacherComplaintQueryService.findConversation(
+                teacherUser.getId(),
+                raisedComplaintId
+        );
+
+        assertThat(raisedConversation.messages()).singleElement().satisfies(message -> {
+            assertThat(message.summarized()).isTrue();
+            assertThat(message.summaryStatus()).isEqualTo(
+                    com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse.SummaryStatus.GENERATED
+            );
+        });
+
+        String loweredContent = "위험도를 하향 검토할 민원입니다.";
+        Long loweredComplaintId = parentComplaintService.createDraft(
+                parentUser.getId(),
+                createRequest(loweredContent)
+        ).getComplaintId();
+        var loweredSummary = riskAnalysisService.analyze(parentUser.getId(), loweredComplaintId);
+        var loweredAnalysis = riskAnalysisRepository.findById(loweredSummary.analysisId()).orElseThrow();
+        org.springframework.test.util.ReflectionTestUtils.setField(loweredAnalysis, "riskScore", 52);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                loweredAnalysis,
+                "riskLevel",
+                com.teacherhub.risk.enums.RiskLevel.HIGH
+        );
+        entityManager.flush();
+        parentComplaintService.submitComplaint(parentUser.getId(), loweredComplaintId);
+        teacherRiskReviewService.review(
+                teacherUser.getId(),
+                loweredComplaintId,
+                new com.teacherhub.risk.dto.review.TeacherRiskReviewRequest(
+                        2,
+                        "문맥을 확인해 위험도를 하향합니다."
+                )
+        );
+
+        var loweredConversation = teacherComplaintQueryService.findConversation(
+                teacherUser.getId(),
+                loweredComplaintId
+        );
+
+        assertThat(loweredConversation.messages()).singleElement().satisfies(message -> {
+            assertThat(message.content()).isEqualTo(loweredContent);
+            assertThat(message.summarized()).isFalse();
+            assertThat(message.summaryStatus()).isNull();
+        });
+        verify(teacherSupportContentProvider, times(1)).createBufferedSummary(anyString());
     }
 
     @Test
@@ -745,7 +852,12 @@ public class ComplaintFlowIntegrationTest {
         assertThat(teacherConversation.messages())
                 .filteredOn(message -> message.senderRole() == UserRole.PARENT)
                 .hasSize(2)
-                .allMatch(TeacherConversationResponse.Message::summarized);
+                .allSatisfy(message -> {
+                    assertThat(message.summarized()).isFalse();
+                    assertThat(message.summaryStatus()).isNull();
+                })
+                .extracting(TeacherConversationResponse.Message::content)
+                .containsExactly("첫 번째 문의입니다.", "수정한 추가 문의입니다.");
 
         parentComplaintService.close(parentUser.getId(), complaintId);
         var closed = complaintRepository.findById(complaintId).orElseThrow();
@@ -1309,7 +1421,10 @@ public class ComplaintFlowIntegrationTest {
         var conversation = teacherComplaintQueryService.findConversation(teacherUser.getId(), complaintId);
         assertThat(conversation.messages()).hasSize(3);
         assertThat(conversation.messages().get(0).senderRole()).isEqualTo(UserRole.PARENT);
-        assertThat(conversation.messages().get(0).summarized()).isTrue();
+        assertThat(conversation.messages().get(0).content())
+                .isEqualTo("아이의 학교생활과 관련하여 상황 확인을 요청드립니다.");
+        assertThat(conversation.messages().get(0).summarized()).isFalse();
+        assertThat(conversation.messages().get(0).summaryStatus()).isNull();
         assertThat(conversation.messages().subList(1, 3))
                 .extracting(TeacherConversationResponse.Message::senderRole)
                 .containsOnly(UserRole.TEACHER);
