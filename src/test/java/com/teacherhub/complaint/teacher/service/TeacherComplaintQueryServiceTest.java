@@ -36,7 +36,7 @@ import static org.mockito.Mockito.when;
 class TeacherComplaintQueryServiceTest {
 
     @Test
-    void requiresExplicitOriginalViewWhenBufferedSummaryGenerationFails() {
+    void requiresExplicitOriginalViewWhenHighRiskBufferedSummaryGenerationFails() {
         ComplaintRepository complaints = mock(ComplaintRepository.class);
         ComplaintEventRepository events = mock(ComplaintEventRepository.class);
         ComplaintMessageRepository messages = mock(ComplaintMessageRepository.class);
@@ -69,7 +69,7 @@ class TeacherComplaintQueryServiceTest {
         when(analyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
                 42L, MessageStatus.DRAFT)).thenReturn(Optional.of(analysis));
         when(analysis.getId()).thenReturn(100L);
-        when(analysis.getRiskLevel()).thenReturn(RiskLevel.LOW);
+        when(analysis.getRiskLevel()).thenReturn(RiskLevel.HIGH);
         when(analysis.getMessage()).thenReturn(message);
         when(reviews.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
                 .thenReturn(Optional.empty());
@@ -95,7 +95,7 @@ class TeacherComplaintQueryServiceTest {
         when(bufferedSummaryService.findOrGenerate(
                 eq(42L), eq(11L), eq(analysis), eq("원문 요청과 사실 정보"), any()
         )).thenReturn(Optional.empty());
-        when(supportPolicy.allowedActions(RiskLevel.LOW)).thenReturn(List.of());
+        when(supportPolicy.allowedActions(RiskLevel.HIGH)).thenReturn(List.of());
 
         var response = service.findConversation(7L, 42L);
 

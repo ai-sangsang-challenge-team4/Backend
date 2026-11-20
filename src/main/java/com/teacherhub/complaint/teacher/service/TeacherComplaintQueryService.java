@@ -123,6 +123,9 @@ public class TeacherComplaintQueryService {
         messages.stream()
                 .filter(message -> message.getType() == MessageType.PARENT_INQUIRY)
                 .filter(message -> latestAnalysisByMessage.get(message.getId()) != null)
+                .filter(message -> requiresBufferedSummary(
+                        latestAnalysisByMessage.get(message.getId()).getRiskLevel()
+                ))
                 .forEach(message -> {
                     RiskAnalysis analysis = latestAnalysisByMessage.get(message.getId());
                     BufferedSummary summary = bufferedSummaryService.findOrGenerate(
@@ -137,6 +140,10 @@ public class TeacherComplaintQueryService {
                     summaries.put(message.getId(), summary);
                 });
         return summaries;
+    }
+
+    private boolean requiresBufferedSummary(RiskLevel riskLevel) {
+        return riskLevel == RiskLevel.HIGH || riskLevel == RiskLevel.EMERGENCY;
     }
 
     private void markLatestParentMessageRead(Long complaintId, User actor) {

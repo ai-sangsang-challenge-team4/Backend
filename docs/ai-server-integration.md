@@ -77,12 +77,13 @@ AI_SERVER_URL=http://localhost:8000 ./gradlew liveAiTest
 2. `analysisMode=HYBRID`, `aiAnalysisStatus=COMPLETED`
 3. 분석·태그·Severity·안전 신호의 DB 저장과 조회
 4. 위험 분석 응답 후 `revisionStatus=PENDING`, 이후 수정안 `/api/v1/ai/revision` 결과 저장과 `COMPLETED` 전환
-5. 교사 대화 완충 요약 `/api/v1/ai/summary`
+5. HIGH·EMERGENCY 교사 대화 완충 요약 `/api/v1/ai/summary`
 6. Low·Medium 교사 답변 초안 `/api/v1/ai/response-draft`
 
 위험 분석 AI가 중단되면 Rule-only로 전환한다. 위험 분석은 성공하고 수정안 AI만 실패하면
-HYBRID 결과를 유지하고 `revisionStatus=UNAVAILABLE`로 전환한다. 완충 요약은
-`summaryStatus=UNAVAILABLE`, 답변 초안은 503이 되는지 확인한다. 이 세 동작이 롤백 기준과
+HYBRID 결과를 유지하고 `revisionStatus=UNAVAILABLE`로 전환한다. HIGH·EMERGENCY 완충 요약은
+`summaryStatus=UNAVAILABLE`, 답변 초안은 503이 되는지 확인한다. LOW·MEDIUM 대화 조회는
+완충 요약 서버 장애와 무관하게 원문을 반환한다. 이 세 동작이 롤백 기준과
 장애 알림의 기준이다.
 
 ## 배포 후 관측과 롤백
