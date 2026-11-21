@@ -26,7 +26,9 @@ public class MockLlmRiskAnalyzer implements LlmRiskAnalyzer {
                         .map(code -> {
                             boolean detected = code == RiskTagCode.THREAT
                                     || code == RiskTagCode.UNFAIR_REQUEST;
-                            String evidence = detected ? maskedContent : null;
+                            String evidence = detected
+                                    ? resolveEvidence(code, maskedContent)
+                                    : null;
                             String reason = code == RiskTagCode.THREAT
                                     ? "[MOCK LLM] 불이익을 암시하는 문맥입니다."
                                     : code == RiskTagCode.UNFAIR_REQUEST
@@ -48,5 +50,14 @@ public class MockLlmRiskAnalyzer implements LlmRiskAnalyzer {
                 new LlmAnalysisMetadata("mock-llm", 0.0),
                 new SafetyFlags(false, false, false)
         );
+    }
+
+    private String resolveEvidence(RiskTagCode code, String maskedContent) {
+        if (maskedContent != null && !maskedContent.isBlank()) {
+            return maskedContent;
+        }
+        return code == RiskTagCode.THREAT
+                ? "[MOCK LLM] 협박 문맥 예시"
+                : "[MOCK LLM] 부당 요구 문맥 예시";
     }
 }
