@@ -52,8 +52,11 @@ import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -82,9 +85,9 @@ public class MediationPackageService {
             boolean includeOriginalMessages,
             String idempotencyKey
     ) {
-        User user = findUser(userId);
         Complaint complaint = complaintRepository.findForUpdate(complaintId)
                 .orElseThrow(() -> new ComplaintNotFoundException("민원을 찾을 수 없습니다."));
+        User user = findUser(userId);
         validatePackageAccess(user, complaint);
         String normalizedKey = normalizeIdempotencyKey(idempotencyKey);
 
@@ -159,9 +162,10 @@ public class MediationPackageService {
             boolean includeOriginalMessages
     ) {
         Long complaintId = complaint.getId();
-        PiiMaskingContext maskingContext = PiiMaskingContext.from(complaint);
         List<ComplaintMessage> messages = messageRepository
                 .findByComplaintIdAndStatusNotOrderByIdAsc(complaintId, MessageStatus.DRAFT);
+        PiiMaskingContext maskingContext = PiiMaskingContext.from(complaint)
+                .withAdditionalNames(packageActorNames(complaint, messages));
         List<RiskAnalysis> analyses = riskAnalysisRepository
                 .findByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdAsc(
                         complaintId,
@@ -195,6 +199,23 @@ public class MediationPackageService {
                         .toList(),
                 historySnapshot(history, maskingContext)
         );
+    }
+
+    private List<String> packageActorNames(
+            Complaint complaint,
+            List<ComplaintMessage> messages
+    ) {
+        Stream<String> parentName = Optional.ofNullable(complaint.getParent())
+                .map(parent -> parent.getUser())
+                .map(User::getName)
+                .stream();
+        Stream<String> senderNames = messages.stream()
+                .map(ComplaintMessage::getSender)
+                .filter(Objects::nonNull)
+                .map(User::getName);
+        return Stream.concat(parentName, senderNames)
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     private MessageSnapshot messageSnapshot(

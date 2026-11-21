@@ -18,9 +18,11 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.masking.PiiMaskingServiceImpl;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
+import com.teacherhub.user.entity.Parent;
 import com.teacherhub.user.entity.User;
 import com.teacherhub.user.enums.UserRole;
 import com.teacherhub.user.repository.UserRepository;
@@ -28,6 +30,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -40,6 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -114,15 +118,19 @@ class MediationPackageServiceTest {
                 .thenReturn(List.of());
         when(complaintHistoryService.findHistory(42L))
                 .thenReturn(new TeacherHistoryResponse(42L, List.of()));
-        when(piiMaskingService.mask(any(String.class), any(PiiMaskingContext.class)))
-                .thenReturn("[학생명]과 [전화번호]");
         when(packageRepository.saveAndFlush(any(MediationPackage.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    private void configureMockMasking() {
+        when(piiMaskingService.mask(any(String.class), any(PiiMaskingContext.class)))
+                .thenReturn("[학생명]과 [전화번호]");
     }
 
     @Test
     void createsImmutableMaskedSnapshotWithoutOriginalByDefault() {
         configureSuccessfulGeneration();
+        configureMockMasking();
 
         var response = service.create(7L, 42L, false, " package-42-1 ");
 
@@ -139,6 +147,7 @@ class MediationPackageServiceTest {
     @Test
     void includesOriginalOnlyWhenExplicitlyRequestedAndDownloadMatchesStoredSnapshot() {
         configureSuccessfulGeneration();
+        configureMockMasking();
 
         var response = service.create(7L, 42L, true, "package-42-1");
         when(complaintRepository.findDetailById(42L)).thenReturn(Optional.of(complaint));
@@ -177,6 +186,54 @@ class MediationPackageServiceTest {
         assertThatThrownBy(() -> service.create(7L, 42L, true, "package-42-1"))
                 .isInstanceOf(MediationPackageConflictException.class);
         verify(packageRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void acquiresComplaintLockBeforePlainReadsForIdempotentRetry() {
+        configureSuccessfulGeneration();
+        configureMockMasking();
+
+        service.create(7L, 42L, false, "package-42-1");
+
+        InOrder reads = inOrder(complaintRepository, userRepository, packageRepository);
+        reads.verify(complaintRepository).findForUpdate(42L);
+        reads.verify(userRepository).findById(7L);
+        reads.verify(packageRepository)
+                .findByComplaintIdAndCreatedByIdAndIdempotencyKey(
+                        42L, 7L, "package-42-1"
+                );
+    }
+
+    @Test
+    void masksParentAndMessageSenderNamesWithRealMasker() {
+        configureSuccessfulGeneration();
+        Parent parentEntity = org.mockito.Mockito.mock(Parent.class);
+        when(complaint.getParent()).thenReturn(parentEntity);
+        when(parentEntity.getUser()).thenReturn(parent);
+        when(parent.getName()).thenReturn("박지영");
+        when(message.getContent()).thenReturn("박지영입니다. 010-1234-5678로 연락해 주세요.");
+        service = new MediationPackageService(
+                complaintRepository,
+                messageRepository,
+                eventRepository,
+                riskAnalysisRepository,
+                riskTagRepository,
+                riskReviewRepository,
+                packageRepository,
+                userRepository,
+                complaintAccessPolicy,
+                complaintHistoryService,
+                new PiiMaskingServiceImpl(),
+                objectMapper
+        );
+
+        var response = service.create(7L, 42L, false, "package-42-1");
+
+        assertThat(response.content().messages()).singleElement().satisfies(snapshot -> {
+            assertThat(snapshot.maskedContent())
+                    .isEqualTo("[사용자명]입니다. [전화번호]로 연락해 주세요.");
+            assertThat(snapshot.originalContent()).isNull();
+        });
     }
 
     private MediationPackageContent emptyContent() {

@@ -10,13 +10,30 @@ public record PiiMaskingContext(
         List<String> studentNames,
         List<String> teacherNames,
         List<String> studentIdentifiers,
-        List<String> teacherIdentifiers
+        List<String> teacherIdentifiers,
+        List<String> additionalNames
 ) {
     public PiiMaskingContext {
         studentNames = normalize(studentNames, 2);
         teacherNames = normalize(teacherNames, 2);
         studentIdentifiers = normalize(studentIdentifiers, 1);
         teacherIdentifiers = normalize(teacherIdentifiers, 1);
+        additionalNames = normalize(additionalNames, 2);
+    }
+
+    public PiiMaskingContext(
+            List<String> studentNames,
+            List<String> teacherNames,
+            List<String> studentIdentifiers,
+            List<String> teacherIdentifiers
+    ) {
+        this(
+                studentNames,
+                teacherNames,
+                studentIdentifiers,
+                teacherIdentifiers,
+                List.of()
+        );
     }
 
     public static PiiMaskingContext empty() {
@@ -39,6 +56,23 @@ public record PiiMaskingContext(
                         ).filter(Objects::nonNull).toList(),
                 student == null ? List.of() : nullableValue(student.getStudentNo()),
                 teacher == null ? List.of() : nullableValue(teacher.getEmployeeNo())
+        );
+    }
+
+    public PiiMaskingContext withAdditionalNames(List<String> names) {
+        List<String> knownNames = Stream.concat(
+                studentNames.stream(),
+                teacherNames.stream()
+        ).toList();
+        List<String> newNames = normalize(names, 2).stream()
+                .filter(name -> !knownNames.contains(name))
+                .toList();
+        return new PiiMaskingContext(
+                studentNames,
+                teacherNames,
+                studentIdentifiers,
+                teacherIdentifiers,
+                Stream.concat(additionalNames.stream(), newNames.stream()).toList()
         );
     }
 
