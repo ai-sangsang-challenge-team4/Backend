@@ -13,10 +13,19 @@ public interface TeacherSupportContentProvider {
     record GeneratedResponseDraft(
             String content,
             String modelName,
+            boolean legalCitationWarning,
             List<RagReference> references
     ) {
         public GeneratedResponseDraft(String content, String modelName) {
-            this(content, modelName, List.of());
+            this(content, modelName, false, List.of());
+        }
+
+        public GeneratedResponseDraft(String content, String modelName, boolean legalCitationWarning) {
+            this(content, modelName, legalCitationWarning, List.of());
+        }
+
+        public GeneratedResponseDraft(String content, String modelName, List<RagReference> references) {
+            this(content, modelName, false, references);
         }
 
         public GeneratedResponseDraft {
