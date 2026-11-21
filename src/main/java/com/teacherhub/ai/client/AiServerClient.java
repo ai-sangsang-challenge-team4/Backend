@@ -67,6 +67,28 @@ public class AiServerClient {
             Class<T> responseType,
             String capabilityName
     ) {
+        return post(path, requestBody, responseType, capabilityName, false);
+    }
+
+    /**
+     * 개별 출력 검증기가 허용값 밖 enum 항목을 폐기해야 하는 AI 응답에만 사용합니다.
+     */
+    public <T> T postAllowingUnknownEnums(
+            String path,
+            Object requestBody,
+            Class<T> responseType,
+            String capabilityName
+    ) {
+        return post(path, requestBody, responseType, capabilityName, true);
+    }
+
+    private <T> T post(
+            String path,
+            Object requestBody,
+            Class<T> responseType,
+            String capabilityName,
+            boolean allowUnknownEnums
+    ) {
         HttpRequest request = prepareRequest(path, requestBody, capabilityName);
         try {
             HttpResponse<String> response = httpClient.send(
@@ -77,7 +99,11 @@ public class AiServerClient {
                 throwForStatus(response.statusCode(), capabilityName);
             }
             try {
-                return objectMapper.readValue(response.body(), responseType);
+                var reader = objectMapper.readerFor(responseType);
+                if (allowUnknownEnums) {
+                    reader = reader.with(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_AS_NULL);
+                }
+                return reader.readValue(response.body());
             } catch (Exception exception) {
                 throw new AiResponseInvalidException(
                         capabilityName + " 응답을 해석할 수 없습니다.",

@@ -23,7 +23,7 @@ public class PythonLlmRiskAnalyzer implements LlmRiskAnalyzer {
             List<RiskTagDetectionResult> ruleResults,
             RepeatAnalysisContext repeatContext
     ) {
-        return aiServerClient.post(
+        return aiServerClient.postAllowingUnknownEnums(
                 "/api/v1/ai/analyze",
                 new AnalyzeRequest(maskedContent, ruleResults, repeatContext),
                 LlmRiskAnalysisResult.class,

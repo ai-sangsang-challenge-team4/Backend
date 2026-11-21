@@ -181,6 +181,25 @@ public class ComplaintEvent {
         );
     }
 
+    public static ComplaintEvent mediationPackageCreated(
+            Complaint complaint,
+            User actor,
+            Long packageId,
+            boolean originalMessagesIncluded
+    ) {
+        ComplaintEvent event = new ComplaintEvent(
+                complaint,
+                actor,
+                MessageEventType.MEDIATION_PACKAGE_CREATED,
+                "MEDIATION_PACKAGE",
+                packageId
+        );
+        event.reason = originalMessagesIncluded
+                ? "원문을 포함한 대응 기록 패키지를 생성했습니다."
+                : "마스킹본만 포함한 대응 기록 패키지를 생성했습니다.";
+        return event;
+    }
+
     public static ComplaintEvent aiDraftGenerated(Complaint complaint) {
         return new ComplaintEvent(
                 complaint,

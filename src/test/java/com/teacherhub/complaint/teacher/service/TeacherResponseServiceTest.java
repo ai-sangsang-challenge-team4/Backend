@@ -365,14 +365,19 @@ class TeacherResponseServiceTest {
         when(message.getContent()).thenReturn("연락처 010-1234-5678");
         when(masking.mask(eq("연락처 010-1234-5678"), any())).thenReturn("연락처 [전화번호]");
         when(contentProvider.createResponseDraft("PARENT_INQUIRY: 연락처 [전화번호]"))
-                .thenReturn(new TeacherSupportContentProvider.GeneratedResponseDraft("안전한 답변", "test-model"));
+                .thenReturn(new TeacherSupportContentProvider.GeneratedResponseDraft(
+                        "안전한 답변",
+                        "test-model",
+                        true
+                ));
         when(masking.mask(eq("안전한 답변"), any())).thenReturn("안전한 답변");
         when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        service.generateAiDraft(7L, 42L);
+        var response = service.generateAiDraft(7L, 42L);
 
         verify(contentProvider).createResponseDraft("PARENT_INQUIRY: 연락처 [전화번호]");
         verify(contentProvider, never()).createResponseDraft(contains("010-1234-5678"));
+        assertThat(response.legalCitationWarning()).isTrue();
     }
 
     private Complaint editableComplaint() {
