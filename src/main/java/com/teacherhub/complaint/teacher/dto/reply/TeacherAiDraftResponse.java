@@ -1,6 +1,7 @@
 package com.teacherhub.complaint.teacher.dto.reply;
 
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider.GeneratedResponseDraft;
+import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider.RagReference;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -11,7 +12,7 @@ public record TeacherAiDraftResponse(
         String content,
         String modelName,
         LocalDateTime generatedAt,
-        List<GeneratedResponseDraft.RagReference> references
+        List<RagReference> references
 ) {
     public TeacherAiDraftResponse(Long complaintId, String content, String modelName, LocalDateTime generatedAt) {
         this(complaintId, content, modelName, generatedAt, List.of());
