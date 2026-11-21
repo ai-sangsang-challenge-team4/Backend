@@ -1,6 +1,7 @@
 package com.teacherhub.complaint.teacher.provider;
 
 import com.teacherhub.ai.exception.AiResponseInvalidException;
+import java.util.List;
 
 public interface TeacherSupportContentProvider {
     // 완충 요약 제공
@@ -11,9 +12,15 @@ public interface TeacherSupportContentProvider {
 
     record GeneratedResponseDraft(
             String content,
-            String modelName
+            String modelName,
+            List<RagReference> references
     ) {
+        public GeneratedResponseDraft(String content, String modelName) {
+            this(content, modelName, List.of());
+        }
+
         public GeneratedResponseDraft {
+            references = references == null ? List.of() : List.copyOf(references);
             if (content == null || content.isBlank() || content.length() > 1_500) {
                 throw new AiResponseInvalidException("AI 답변 초안 형식이 올바르지 않습니다.");
             }
@@ -22,4 +29,6 @@ public interface TeacherSupportContentProvider {
             }
         }
     }
+
+    record RagReference(String source, Integer page, String content) {}
 }
