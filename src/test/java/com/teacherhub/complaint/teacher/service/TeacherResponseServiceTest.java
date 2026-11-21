@@ -92,10 +92,19 @@ class TeacherResponseServiceTest {
                 .thenReturn(Optional.empty());
         when(messages.findByComplaintIdAndStatusNotOrderByIdAsc(42L, MessageStatus.DRAFT))
                 .thenReturn(java.util.List.of());
+        var references = java.util.List.of(
+                new TeacherSupportContentProvider.RagReference(
+                        "교원의학생생활지도에관한고시해설서.pdf",
+                        44,
+                        "학생 간 갈등 조정 및 관계 개선을 위한 생활지도"
+                )
+        );
         when(contentProvider.createResponseDraft(""))
                 .thenReturn(new TeacherSupportContentProvider.GeneratedResponseDraft(
                         "검토용 AI 답변",
-                        "test-model"
+                        "test-model",
+                        false,
+                        references
                 ));
         when(masking.mask(eq("검토용 AI 답변"), any())).thenReturn("검토용 AI 답변");
         when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -103,6 +112,7 @@ class TeacherResponseServiceTest {
         var response = service.generateAiDraft(7L, 42L);
 
         assertThat(response.content()).isEqualTo("검토용 AI 답변");
+        assertThat(response.references()).containsExactlyElementsOf(references);
         verify(messages, never()).save(any());
         verify(messages, never()).saveAndFlush(any());
         verify(events).save(argThat(event ->

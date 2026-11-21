@@ -71,7 +71,8 @@ public class TeacherResponseService {
         var safeGenerated = new TeacherSupportContentProvider.GeneratedResponseDraft(
                 maskForAi(generated.content(), complaint),
                 generated.modelName(),
-                generated.legalCitationWarning()
+                generated.legalCitationWarning(),
+                generated.references()
         );
         ComplaintEvent event = eventRepository.save(ComplaintEvent.aiDraftGenerated(complaint));
         return TeacherAiDraftResponse.from(complaint.getId(), safeGenerated, event.getOccurredAt());
