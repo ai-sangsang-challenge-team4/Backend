@@ -2,10 +2,14 @@ package com.teacherhub.complaint.teacher.provider;
 
 import com.teacherhub.ai.client.AiServerClient;
 import com.teacherhub.ai.exception.AiResponseInvalidException;
+import com.teacherhub.ai.validation.GenerationOutputValidator;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+
 import java.util.List;
 
 @Component
+@Slf4j
 public class PythonTeacherSupportContentProvider
         implements TeacherSupportContentProvider {
 
@@ -28,6 +32,11 @@ public class PythonTeacherSupportContentProvider
         );
         validateText(response == null ? null : response.summary(), "AI 완충 요약");
         validateModelName(response.modelName());
+        GenerationOutputValidator.validateNoNovelFacts(
+                maskedContent,
+                response.summary(),
+                "AI 완충 요약"
+        );
         return response.summary();
     }
 
@@ -42,12 +51,37 @@ public class PythonTeacherSupportContentProvider
         if (response == null) {
             throw invalid("AI 답변 초안");
         }
-        return new GeneratedResponseDraft(response.content(), response.modelName(),
-                response.references() == null ? List.of() : response.references().stream()
-                        .filter(ref -> ref != null && ref.source() != null && ref.content() != null)
+        List<TeacherSupportContentProvider.RagReference> references = response.references() == null
+                ? List.of()
+                : response.references().stream()
+                        .filter(ref -> ref != null && ref.source() != null && !ref.source().isBlank()
+                                && ref.content() != null && !ref.content().isBlank())
                         .map(ref -> new TeacherSupportContentProvider.RagReference(
                                 ref.source(), ref.page(), ref.content()))
-                        .toList());
+                        .toList();
+        // Current AI response supplies references with the actual retrieved passages.
+        // Preserve older ragSources compatibility while validating legal citations against
+        // retrieved text, rather than trusting an unsupported citation.
+        List<String> sourceTexts = new java.util.ArrayList<>(
+                references.stream().map(TeacherSupportContentProvider.RagReference::content).toList());
+        if (response.ragSources() != null) {
+            sourceTexts.addAll(response.ragSources());
+        }
+        boolean legalCitationWarning = GenerationOutputValidator.hasUnsupportedLegalCitation(
+                response.content(),
+                sourceTexts
+        );
+        if (legalCitationWarning) {
+            log.warn(
+                    "AI response draft contains an unsupported legal citation. capability=response-draft"
+            );
+        }
+        return new GeneratedResponseDraft(
+                response.content(),
+                response.modelName(),
+                legalCitationWarning,
+                references
+        );
     }
 
     private void validateText(String value, String capabilityName) {
@@ -72,8 +106,12 @@ public class PythonTeacherSupportContentProvider
     private record SummaryResponse(String summary, String modelName) {
     }
 
-    private record ResponseDraftResponse(String content, String modelName,
-                                         List<ReferenceResponse> references) {
+    private record ResponseDraftResponse(
+            String content,
+            String modelName,
+            List<String> ragSources,
+            List<ReferenceResponse> references
+    ) {
     }
 
     private record ReferenceResponse(String source, Integer page, String content) {
