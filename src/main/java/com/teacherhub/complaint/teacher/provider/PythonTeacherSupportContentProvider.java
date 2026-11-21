@@ -51,9 +51,25 @@ public class PythonTeacherSupportContentProvider
         if (response == null) {
             throw invalid("AI 답변 초안");
         }
+        List<TeacherSupportContentProvider.RagReference> references = response.references() == null
+                ? List.of()
+                : response.references().stream()
+                        .filter(ref -> ref != null && ref.source() != null && !ref.source().isBlank()
+                                && ref.content() != null && !ref.content().isBlank())
+                        .map(ref -> new TeacherSupportContentProvider.RagReference(
+                                ref.source(), ref.page(), ref.content()))
+                        .toList();
+        // Current AI response supplies references with the actual retrieved passages.
+        // Preserve older ragSources compatibility while validating legal citations against
+        // retrieved text, rather than trusting an unsupported citation.
+        List<String> sourceTexts = new java.util.ArrayList<>(
+                references.stream().map(TeacherSupportContentProvider.RagReference::content).toList());
+        if (response.ragSources() != null) {
+            sourceTexts.addAll(response.ragSources());
+        }
         boolean legalCitationWarning = GenerationOutputValidator.hasUnsupportedLegalCitation(
                 response.content(),
-                response.ragSources()
+                sourceTexts
         );
         if (legalCitationWarning) {
             log.warn(
@@ -63,7 +79,8 @@ public class PythonTeacherSupportContentProvider
         return new GeneratedResponseDraft(
                 response.content(),
                 response.modelName(),
-                legalCitationWarning
+                legalCitationWarning,
+                references
         );
     }
 
@@ -92,7 +109,11 @@ public class PythonTeacherSupportContentProvider
     private record ResponseDraftResponse(
             String content,
             String modelName,
-            List<String> ragSources
+            List<String> ragSources,
+            List<ReferenceResponse> references
     ) {
+    }
+
+    private record ReferenceResponse(String source, Integer page, String content) {
     }
 }
