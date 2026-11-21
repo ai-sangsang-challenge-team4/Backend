@@ -10,9 +10,10 @@ import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.enums.RiskTagState;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Arrays;
+import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -33,7 +34,10 @@ class LlmRiskOutputValidatorTest {
                 new LlmAnalysisMetadata("claude-test", 0.0)
         );
 
-        assertThatCode(() -> LlmRiskOutputValidator.validate(result, "마스킹된 민원"))
+        assertThatCode(() -> LlmRiskOutputValidator.validate(
+                result,
+                "마스킹된 민원: 불이익을 암시하는 문맥"
+        ))
                 .doesNotThrowAnyException();
     }
 
@@ -99,7 +103,7 @@ class LlmRiskOutputValidatorTest {
     }
 
     @Test
-    void rejectsEvidenceCoordinatesThatPointToDifferentText() {
+    void downgradesPresentWhenEvidenceIsNotInMaskedInput() {
         var result = new LlmRiskAnalysisResult(
                 List.of(new RiskTagDetectionResult(
                         RiskTagCode.THREAT,
@@ -111,8 +115,12 @@ class LlmRiskOutputValidatorTest {
                 new LlmAnalysisMetadata("claude-test", 0.0)
         );
 
-        assertThatThrownBy(() -> LlmRiskOutputValidator.validate(result, "실제 입력"))
-                .isInstanceOf(AiResponseInvalidException.class);
+        var validated = LlmRiskOutputValidator.validate(result, "실제 입력");
+
+        assertThat(validated.tags()).singleElement().satisfies(tag -> {
+            assertThat(tag.state()).isEqualTo(RiskTagState.BOUNDARY);
+            assertThat(tag.evidenceSpans()).isEmpty();
+        });
     }
 
     @Test
@@ -171,6 +179,31 @@ class LlmRiskOutputValidatorTest {
                 .doesNotThrowAnyException();
         assertThatCode(() -> LlmRiskOutputValidator.validate(unknown, "마스킹된 민원"))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void preventsRepeatPresentWhenHistoryIsUnavailable() {
+        var result = new LlmRiskAnalysisResult(
+                extendedTags(RiskTagCode.REPEAT, RiskTagState.PRESENT, 2),
+                new LlmAnalysisMetadata("claude-test", 0.0),
+                new SafetyFlags(false, false, false)
+        );
+        var noHistory = new com.teacherhub.risk.dto.llm.RepeatAnalysisContext(
+                false, 7, 3, 1, false,
+                "DRAFT_WAITING_FOR_NONE", 0, 0, 0, 0, 0, false, List.of()
+        );
+
+        var validated = LlmRiskOutputValidator.validate(result, "표현", noHistory);
+
+        assertThat(validated.tags())
+                .filteredOn(tag -> tag.code() == RiskTagCode.REPEAT)
+                .singleElement()
+                .satisfies(tag -> {
+                    assertThat(tag.state()).isEqualTo(RiskTagState.UNKNOWN);
+                    assertThat(tag.severity()).isNull();
+                    assertThat(tag.repeatCount()).isNull();
+                    assertThat(tag.evidenceSpans()).isEmpty();
+                });
     }
 
     private List<RiskTagDetectionResult> extendedTags(

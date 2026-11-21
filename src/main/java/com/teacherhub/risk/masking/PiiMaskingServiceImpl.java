@@ -36,6 +36,7 @@ public class PiiMaskingServiceImpl implements PiiMaskingService {
         masked = replaceWholeTokens(masked, safeContext.teacherIdentifiers(), "[교직원번호]");
         masked = replaceAll(masked, safeContext.studentNames(), "[학생명]");
         masked = replaceAll(masked, safeContext.teacherNames(), "[교사명]");
+        masked = replaceAll(masked, safeContext.additionalNames(), "[사용자명]");
 
         ensureNoSupportedPiiRemains(masked, safeContext);
         return masked;
@@ -90,6 +91,7 @@ public class PiiMaskingServiceImpl implements PiiMaskingService {
                 || CLASS_STUDENT.matcher(masked).find()
                 || containsAny(withoutPlaceholders, context.studentNames())
                 || containsAny(withoutPlaceholders, context.teacherNames())
+                || containsAny(withoutPlaceholders, context.additionalNames())
                 || containsWholeToken(withoutPlaceholders, context.studentIdentifiers())
                 || containsWholeToken(withoutPlaceholders, context.teacherIdentifiers())) {
             throw new IllegalStateException("지원되는 개인정보 형식이 마스킹 후에도 남아 있습니다.");
@@ -101,6 +103,7 @@ public class PiiMaskingServiceImpl implements PiiMaskingService {
                 .replace("[학생정보]", "")
                 .replace("[학생명]", "")
                 .replace("[교사명]", "")
+                .replace("[사용자명]", "")
                 .replace("[학번]", "")
                 .replace("[교직원번호]", "")
                 .replace("[전화번호]", "")

@@ -2,9 +2,14 @@ package com.teacherhub.complaint.teacher.provider;
 
 import com.teacherhub.ai.client.AiServerClient;
 import com.teacherhub.ai.exception.AiResponseInvalidException;
+import com.teacherhub.ai.validation.GenerationOutputValidator;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 @Component
+@Slf4j
 public class PythonTeacherSupportContentProvider
         implements TeacherSupportContentProvider {
 
@@ -27,6 +32,11 @@ public class PythonTeacherSupportContentProvider
         );
         validateText(response == null ? null : response.summary(), "AI 완충 요약");
         validateModelName(response.modelName());
+        GenerationOutputValidator.validateNoNovelFacts(
+                maskedContent,
+                response.summary(),
+                "AI 완충 요약"
+        );
         return response.summary();
     }
 
@@ -41,7 +51,20 @@ public class PythonTeacherSupportContentProvider
         if (response == null) {
             throw invalid("AI 답변 초안");
         }
-        return new GeneratedResponseDraft(response.content(), response.modelName());
+        boolean legalCitationWarning = GenerationOutputValidator.hasUnsupportedLegalCitation(
+                response.content(),
+                response.ragSources()
+        );
+        if (legalCitationWarning) {
+            log.warn(
+                    "AI response draft contains an unsupported legal citation. capability=response-draft"
+            );
+        }
+        return new GeneratedResponseDraft(
+                response.content(),
+                response.modelName(),
+                legalCitationWarning
+        );
     }
 
     private void validateText(String value, String capabilityName) {
@@ -66,6 +89,10 @@ public class PythonTeacherSupportContentProvider
     private record SummaryResponse(String summary, String modelName) {
     }
 
-    private record ResponseDraftResponse(String content, String modelName) {
+    private record ResponseDraftResponse(
+            String content,
+            String modelName,
+            List<String> ragSources
+    ) {
     }
 }

@@ -711,7 +711,8 @@ public class ComplaintFlowIntegrationTest {
                 .isEqualTo(com.teacherhub.risk.enums.RiskTagState.BOUNDARY);
         assertThat(threat.llm().detected()).isTrue();
         assertThat(threat.rule().evidences()).containsExactly("찾아가");
-        assertThat(threat.llm().evidences()).containsExactly("[MOCK LLM] 협박 문맥 예시");
+        assertThat(threat.llm().evidences())
+                .containsExactly("직접 찾아가겠습니다. 확인을 요청드립니다.");
         assertThat(threat.llm().confidence()).isEqualTo(0.9);
         assertThat(threat.llm().severity()).isEqualTo(1);
         assertThat(threat.llm().repeatCount()).isEqualTo(1);

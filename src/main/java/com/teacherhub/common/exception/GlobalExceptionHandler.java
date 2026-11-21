@@ -8,6 +8,8 @@ import com.teacherhub.auth.exception.SignupConflictException;
 import com.teacherhub.auth.exception.SignupReferenceNotFoundException;
 import com.teacherhub.auth.exception.SignupValidationException;
 import com.teacherhub.complaint.exception.*;
+import com.teacherhub.complaint.mediation.exception.MediationPackageConflictException;
+import com.teacherhub.complaint.mediation.exception.MediationPackageNotFoundException;
 import com.teacherhub.escalation.exception.*;
 import com.teacherhub.risk.exception.RiskAnalysisNotFoundException;
 import com.teacherhub.risk.exception.RiskReviewNotAllowedException;
@@ -237,6 +239,22 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ComplaintNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleComplaintNotFound(ComplaintNotFoundException e, HttpServletRequest request) {
         return error(HttpStatus.NOT_FOUND, "COMPLAINT_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(MediationPackageNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleMediationPackageNotFound(
+            MediationPackageNotFoundException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.NOT_FOUND, "MEDIATION_PACKAGE_NOT_FOUND", e, request);
+    }
+
+    @ExceptionHandler(MediationPackageConflictException.class)
+    public ResponseEntity<ErrorResponse> handleMediationPackageConflict(
+            MediationPackageConflictException e,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.CONFLICT, "MEDIATION_PACKAGE_CONFLICT", e, request);
     }
 
     @ExceptionHandler(StudentNotFoundException.class)

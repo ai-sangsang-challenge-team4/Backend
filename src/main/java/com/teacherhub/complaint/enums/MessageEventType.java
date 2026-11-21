@@ -13,6 +13,8 @@ public enum MessageEventType {
     RISK_REVIEWED,
     // 원문 조회
     ORIGINAL_VIEWED,
+    // 대응 기록 패키지 생성
+    MEDIATION_PACKAGE_CREATED,
     // AI 초안 생성
     AI_DRAFT_GENERATED,
     // High 위험도 정책으로 생성형 AI 초안 차단

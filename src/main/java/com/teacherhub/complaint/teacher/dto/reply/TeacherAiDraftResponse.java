@@ -9,8 +9,18 @@ public record TeacherAiDraftResponse(
         Long complaintId,
         String content,
         String modelName,
-        LocalDateTime generatedAt
+        LocalDateTime generatedAt,
+        boolean legalCitationWarning
 ) {
+    public TeacherAiDraftResponse(
+            Long complaintId,
+            String content,
+            String modelName,
+            LocalDateTime generatedAt
+    ) {
+        this(complaintId, content, modelName, generatedAt, false);
+    }
+
     public static TeacherAiDraftResponse from(
             Long complaintId,
             GeneratedResponseDraft generated,
@@ -20,7 +30,8 @@ public record TeacherAiDraftResponse(
                 complaintId,
                 generated.content(),
                 generated.modelName(),
-                generatedAt
+                generatedAt,
+                generated.legalCitationWarning()
         );
     }
 }

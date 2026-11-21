@@ -160,7 +160,7 @@ Emergency 재검토 요청은 관리자 공유와 독립적으로 생성할 수 
 - 메시지 항목은 교사 대화 응답의 `TeacherConversationResponse.Message` 구조를 재사용한다.
 - `MASKING_MESSAGES`가 선택되면 `maskedMessages`에 개인정보 마스킹 내용을 반환한다.
 - `ORIGINAL_MESSAGES`가 선택되면 `originalMessages`에 원문을 반환하고, 선택하지 않으면 빈 배열이다.
-- `MEDIATION_PACKAGE`가 선택되면 `mediationPackageIncluded=true`다. 현재는 별도 증빙 패키지 데이터 모델은 없다.
+- `MEDIATION_PACKAGE`가 선택되면 `mediationPackageIncluded=true`다. 이 값은 관리자 공유 범위 선택 여부이며 패키지 본문을 이 응답에 인라인으로 넣지는 않는다. 실제 불변 패키지는 [대응 기록 패키지 API](mediation-package-api.md)의 독립 생성·조회·다운로드 API와 `mediation_packages` 모델로 관리한다.
 - `/risk`는 교사 위험 분석 탭과 같은 `TeacherRiskResponse` 구조다.
 - `/history`는 교사 처리 기록 탭과 같은 `TeacherHistoryResponse` 구조다. 관리자 공유,
   검토 시작, 처리 완료는 각각 `ESCALATION_SHARED`, `ESCALATION_REVIEW_STARTED`,

@@ -107,7 +107,7 @@ class TeacherControllerRoutingTest {
         when(user.getId()).thenReturn(7L);
         when(users.findByEmail("teacher@test.com")).thenReturn(Optional.of(user));
         when(responseService.generateAiDraft(7L, 42L)).thenReturn(
-                new TeacherAiDraftResponse(42L, "AI 초안", "mock-model", now)
+                new TeacherAiDraftResponse(42L, "AI 초안", "mock-model", now, true)
         );
         when(responseService.findDraft(7L, 42L)).thenReturn(
                 new TeacherResponseDraftResponse(10L, 42L, "수정한 답변", now, now)
@@ -156,6 +156,7 @@ class TeacherControllerRoutingTest {
         mvc.perform(post("/teacher/complaints/42/response/ai-draft").principal(auth))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.content").value("AI 초안"))
+                .andExpect(jsonPath("$.legalCitationWarning").value(true))
                 .andExpect(jsonPath("$.aiDraftId").doesNotExist());
         mvc.perform(get("/teacher/complaints/42/response-draft").principal(auth))
                 .andExpect(status().isOk())

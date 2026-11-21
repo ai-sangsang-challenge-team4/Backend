@@ -104,4 +104,52 @@ class PythonComplaintRevisionGeneratorTest {
         assertThatThrownBy(() -> generator.parseRiskTagCode(null))
                 .isInstanceOf(AiResponseInvalidException.class);
     }
+
+    @Test
+    void rejectsRevisionThatIntroducesANewFact() throws IOException {
+        var httpGenerator = generatorReturning("""
+                {"finalRevision":{"reason":"요청 정리","content":"3일 안에 확인해 주세요."},
+                 "tagSuggestions":[]}
+                """);
+
+        assertThatThrownBy(() -> httpGenerator.generate(
+                "확인을 요청드립니다.",
+                emptyRiskEvaluation()
+        )).isInstanceOf(AiResponseInvalidException.class);
+    }
+
+    @Test
+    void rejectsRevisionThatRemovesARequestIntent() throws IOException {
+        var httpGenerator = generatorReturning("""
+                {"finalRevision":{"reason":"요청 완화","content":"사실관계를 확인해 주세요."},
+                 "tagSuggestions":[]}
+                """);
+
+        assertThatThrownBy(() -> httpGenerator.generate(
+                "사과와 사실관계 확인을 요청드립니다.",
+                emptyRiskEvaluation()
+        )).isInstanceOf(AiResponseInvalidException.class);
+    }
+
+    private PythonComplaintRevisionGenerator generatorReturning(String responseBody)
+            throws IOException {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/ai/revision", exchange -> {
+            byte[] response = responseBody.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json; charset=UTF-8");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        return new PythonComplaintRevisionGenerator(new AiServerClient(
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                1_000,
+                2_000
+        ));
+    }
+
+    private RiskEvaluation emptyRiskEvaluation() {
+        return new RiskEvaluation(42L, List.of(), 0, RiskLevel.LOW);
+    }
 }
