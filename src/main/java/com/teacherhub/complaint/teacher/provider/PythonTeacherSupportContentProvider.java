@@ -3,6 +3,7 @@ package com.teacherhub.complaint.teacher.provider;
 import com.teacherhub.ai.client.AiServerClient;
 import com.teacherhub.ai.exception.AiResponseInvalidException;
 import org.springframework.stereotype.Component;
+import java.util.List;
 
 @Component
 public class PythonTeacherSupportContentProvider
@@ -41,7 +42,12 @@ public class PythonTeacherSupportContentProvider
         if (response == null) {
             throw invalid("AI 답변 초안");
         }
-        return new GeneratedResponseDraft(response.content(), response.modelName());
+        return new GeneratedResponseDraft(response.content(), response.modelName(),
+                response.references() == null ? List.of() : response.references().stream()
+                        .filter(ref -> ref != null && ref.source() != null && ref.content() != null)
+                        .map(ref -> new TeacherSupportContentProvider.RagReference(
+                                ref.source(), ref.page(), ref.content()))
+                        .toList());
     }
 
     private void validateText(String value, String capabilityName) {
@@ -66,6 +72,10 @@ public class PythonTeacherSupportContentProvider
     private record SummaryResponse(String summary, String modelName) {
     }
 
-    private record ResponseDraftResponse(String content, String modelName) {
+    private record ResponseDraftResponse(String content, String modelName,
+                                         List<ReferenceResponse> references) {
+    }
+
+    private record ReferenceResponse(String source, Integer page, String content) {
     }
 }
