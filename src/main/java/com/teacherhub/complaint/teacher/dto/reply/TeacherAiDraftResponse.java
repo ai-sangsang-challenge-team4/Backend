@@ -12,10 +12,21 @@ public record TeacherAiDraftResponse(
         String content,
         String modelName,
         LocalDateTime generatedAt,
+        boolean legalCitationWarning,
         List<RagReference> references
 ) {
-    public TeacherAiDraftResponse(Long complaintId, String content, String modelName, LocalDateTime generatedAt) {
-        this(complaintId, content, modelName, generatedAt, List.of());
+    public TeacherAiDraftResponse(
+            Long complaintId,
+            String content,
+            String modelName,
+            LocalDateTime generatedAt
+    ) {
+        this(complaintId, content, modelName, generatedAt, false, List.of());
+    }
+
+    public TeacherAiDraftResponse(Long complaintId, String content, String modelName,
+                                 LocalDateTime generatedAt, boolean legalCitationWarning) {
+        this(complaintId, content, modelName, generatedAt, legalCitationWarning, List.of());
     }
 
     public static TeacherAiDraftResponse from(
@@ -28,6 +39,7 @@ public record TeacherAiDraftResponse(
                 generated.content(),
                 generated.modelName(),
                 generatedAt,
+                generated.legalCitationWarning(),
                 generated.references()
         );
     }
