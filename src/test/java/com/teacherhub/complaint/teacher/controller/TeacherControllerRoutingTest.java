@@ -18,6 +18,7 @@ import com.teacherhub.complaint.teacher.service.TeacherResponseService;
 import com.teacherhub.risk.service.TeacherRiskQueryService;
 import com.teacherhub.risk.service.TeacherRiskReviewService;
 import com.teacherhub.common.exception.GlobalExceptionHandler;
+import com.teacherhub.ai.ratelimit.TeacherAiDraftRateLimiter;
 import com.teacherhub.risk.dto.response.common.EmergencyOverrideResponse;
 import com.teacherhub.risk.dto.response.teacher.TeacherRiskResponse;
 import com.teacherhub.risk.enums.RiskLevel;
@@ -147,7 +148,8 @@ class TeacherControllerRoutingTest {
         );
 
         var mvc = MockMvcBuilders.standaloneSetup(
-                new TeacherResponseController(responseService, users),
+                new TeacherResponseController(responseService, users,
+                        new TeacherAiDraftRateLimiter(false, 3, 60, java.time.Clock.systemUTC())),
                 new TeacherRiskReviewController(riskQueryService, riskReviewService, users)
         ).build();
         var auth = new UsernamePasswordAuthenticationToken("teacher@test.com", null, List.of());
