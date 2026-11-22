@@ -76,7 +76,7 @@ class PythonTeacherSupportContentProviderTest {
     }
 
     @Test
-    void rejectsSummaryThatIntroducesANewFact() throws IOException {
+    void acceptsSummaryThatIntroducesContentNotPresentInSource() throws IOException {
         startServer();
         server.createContext("/api/v1/ai/summary", exchange -> respond(
                 exchange,
@@ -87,8 +87,9 @@ class PythonTeacherSupportContentProviderTest {
         ));
         server.start();
 
-        assertThatThrownBy(() -> provider(false).createBufferedSummary("확인을 요청드립니다."))
-                .isInstanceOf(AiResponseInvalidException.class);
+        String summary = provider(false).createBufferedSummary("확인을 요청드립니다.");
+
+        assertThat(summary).isEqualTo("민원이 총 3건 접수되었습니다.");
     }
 
     @Test
