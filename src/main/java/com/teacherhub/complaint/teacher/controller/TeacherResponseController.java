@@ -1,5 +1,6 @@
 package com.teacherhub.complaint.teacher.controller;
 
+import com.teacherhub.ai.ratelimit.TeacherAiDraftRateLimiter;
 import com.teacherhub.common.exception.ErrorResponse;
 import com.teacherhub.common.exception.UnauthorizedException;
 import com.teacherhub.complaint.teacher.dto.reply.TeacherAiDraftResponse;
@@ -47,6 +48,7 @@ public class TeacherResponseController {
 
     private final TeacherResponseService teacherResponseService;
     private final UserRepository userRepository;
+    private final TeacherAiDraftRateLimiter teacherAiDraftRateLimiter;
 
     @Operation(summary = "교사 AI 답변 초안 생성", description = "Low·Medium에서 FastAPI가 현재 대화 이력을 기반으로 답변 초안을 생성합니다. High는 제한형 공식 템플릿만 제공하고, Emergency 또는 safetyLock 상태에서는 답변 생성을 차단합니다.", responses = {
             @ApiResponse(responseCode = "201", description = "AI 답변 초안 생성 성공", useReturnTypeSchema = true),
@@ -59,8 +61,10 @@ public class TeacherResponseController {
     public ResponseEntity<TeacherAiDraftResponse> generateAiDraft(
             @Parameter(hidden = true) Authentication authentication,
             @Parameter(description = "민원 ID", example = "42") @PathVariable Long complaintId) {
+        Long authenticatedUserId = userId(authentication);
+        teacherAiDraftRateLimiter.checkAndConsume(authenticatedUserId);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(teacherResponseService.generateAiDraft(userId(authentication), complaintId));
+                .body(teacherResponseService.generateAiDraft(authenticatedUserId, complaintId));
     }
 
     @Operation(summary = "교사 답변 초안 조회", description = "현재 저장된 교사 답변 초안을 조회합니다.", responses = {
