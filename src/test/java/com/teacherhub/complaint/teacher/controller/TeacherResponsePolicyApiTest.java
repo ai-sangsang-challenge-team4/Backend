@@ -1,6 +1,7 @@
 package com.teacherhub.complaint.teacher.controller;
 
 import com.teacherhub.common.exception.GlobalExceptionHandler;
+import com.teacherhub.ai.ratelimit.TeacherAiDraftRateLimiter;
 import com.teacherhub.complaint.access.ComplaintAccessPolicy;
 import com.teacherhub.complaint.entity.Complaint;
 import com.teacherhub.complaint.enums.ComplaintStatus;
@@ -181,7 +182,9 @@ class TeacherResponsePolicyApiTest {
 
     private MockMvc mvc() {
         return MockMvcBuilders.standaloneSetup(
-                new TeacherResponseController(responseService, users)
+                new TeacherResponseController(responseService, users,
+                        new TeacherAiDraftRateLimiter(false, 3, 60,
+                                Clock.fixed(Instant.parse("2026-11-20T03:00:00Z"), ZoneOffset.UTC)))
         ).setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
