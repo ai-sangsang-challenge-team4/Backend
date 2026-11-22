@@ -105,16 +105,16 @@ public class ComplaintFlowIntegrationTest {
                 ));
 
         assertThat(scores).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(
-                com.teacherhub.risk.enums.RiskTagCode.PROFANITY, 4,
-                com.teacherhub.risk.enums.RiskTagCode.INSULT, 6,
-                com.teacherhub.risk.enums.RiskTagCode.THREAT, 22,
-                com.teacherhub.risk.enums.RiskTagCode.LEGAL, 4,
+                com.teacherhub.risk.enums.RiskTagCode.PROFANITY, 7,
+                com.teacherhub.risk.enums.RiskTagCode.INSULT, 8,
+                com.teacherhub.risk.enums.RiskTagCode.THREAT, 12,
+                com.teacherhub.risk.enums.RiskTagCode.LEGAL, 6,
                 com.teacherhub.risk.enums.RiskTagCode.EXPOSURE, 6,
-                com.teacherhub.risk.enums.RiskTagCode.REPEAT, 6,
-                com.teacherhub.risk.enums.RiskTagCode.UNFAIR_REQUEST, 6,
-                com.teacherhub.risk.enums.RiskTagCode.PRIVACY, 6
+                com.teacherhub.risk.enums.RiskTagCode.REPEAT, 4,
+                com.teacherhub.risk.enums.RiskTagCode.UNFAIR_REQUEST, 2,
+                com.teacherhub.risk.enums.RiskTagCode.PRIVACY, 5
         ));
-        assertThat(scores.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(60);
+        assertThat(scores.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(50);
     }
 
     @ParameterizedTest
@@ -199,8 +199,8 @@ public class ComplaintFlowIntegrationTest {
                 .findFirst()
                 .orElseThrow();
 
+        assertThat(item.complaintId()).isEqualTo(complaintId);
         verifyNoInteractions(teacherSupportContentProvider);
-        assertThat(item.aiSummary()).isNull();
     }
 
     @Test
@@ -573,15 +573,15 @@ public class ComplaintFlowIntegrationTest {
         var systemAnalysis = riskAnalysisService.analyze(parentUser.getId(), complaintId);
         parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
 
-        assertThat(systemAnalysis.riskScore()).isEqualTo(28);
+        assertThat(systemAnalysis.riskScore()).isEqualTo(14);
         assertThat(systemAnalysis.riskLevel())
-                .isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
+                .isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
                         teacherRiskReviewService.review(
                                 teacherUser.getId(),
                                 complaintId,
-                                new com.teacherhub.risk.dto.review.TeacherRiskReviewRequest(3, " ")
+                                new com.teacherhub.risk.dto.review.TeacherRiskReviewRequest(1, " ")
                         )
                 )
                 .isInstanceOf(com.teacherhub.risk.exception.RiskReviewReasonRequiredException.class);
@@ -590,7 +590,7 @@ public class ComplaintFlowIntegrationTest {
                 teacherUser.getId(),
                 complaintId,
                 new com.teacherhub.risk.dto.review.TeacherRiskReviewRequest(
-                        3,
+                        1,
                         "표현은 강하지만 즉각적인 위해 가능성은 낮다고 판단했습니다."
                 )
         );
@@ -611,15 +611,15 @@ public class ComplaintFlowIntegrationTest {
                 )
         );
 
-        assertThat(lowered.previousScale()).isEqualTo(4);
-        assertThat(lowered.previousScore()).isEqualTo(40);
-        assertThat(lowered.reviewScale()).isEqualTo(3);
-        assertThat(lowered.riskScore()).isEqualTo(30);
+        assertThat(lowered.previousScale()).isEqualTo(2);
+        assertThat(lowered.previousScore()).isEqualTo(20);
+        assertThat(lowered.reviewScale()).isEqualTo(1);
+        assertThat(lowered.riskScore()).isEqualTo(10);
         assertThat(lowered.direction())
                 .isEqualTo(com.teacherhub.risk.enums.RiskReviewDirection.LOWERED);
-        assertThat(lowered.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
-        assertThat(raised.previousScale()).isEqualTo(3);
-        assertThat(raised.previousScore()).isEqualTo(30);
+        assertThat(lowered.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
+        assertThat(raised.previousScale()).isEqualTo(1);
+        assertThat(raised.previousScore()).isEqualTo(10);
         assertThat(raised.reviewScale()).isEqualTo(4);
         assertThat(raised.riskScore()).isEqualTo(40);
         assertThat(raised.direction())
@@ -627,8 +627,8 @@ public class ComplaintFlowIntegrationTest {
         assertThat(raised.reason()).isEqualTo("새로운 위험 정황이 확인되어 상향합니다.");
 
         var currentRisk = teacherRiskQueryService.findRisk(teacherUser.getId(), complaintId);
-        assertThat(currentRisk.riskScore()).isEqualTo(28);
-        assertThat(currentRisk.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
+        assertThat(currentRisk.riskScore()).isEqualTo(14);
+        assertThat(currentRisk.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
         assertThat(currentRisk.reviewScale()).isEqualTo(4);
         assertThat(currentRisk.reviewScore()).isEqualTo(40);
         assertThat(currentRisk.currentRiskScore()).isEqualTo(40);
@@ -647,10 +647,10 @@ public class ComplaintFlowIntegrationTest {
         assertThat(reviewEvents).hasSize(2);
         assertThat(reviewEvents)
                 .extracting(TeacherHistoryResponse.HistoryEvent::previousRiskScore)
-                .containsExactlyInAnyOrder(40, 30);
+                .containsExactlyInAnyOrder(20, 10);
         assertThat(reviewEvents)
                 .extracting(TeacherHistoryResponse.HistoryEvent::riskScore)
-                .containsExactlyInAnyOrder(30, 40);
+                .containsExactlyInAnyOrder(10, 40);
         assertThat(riskReviewRepository.findByRiskAnalysisComplaintIdOrderByReviewedAtAscIdAsc(complaintId))
                 .hasSize(2);
     }
@@ -1316,9 +1316,9 @@ public class ComplaintFlowIntegrationTest {
                 .isNotNull();
 
         assertThat(reviewResponse.complaintId()).isEqualTo(complaintId);
-        assertThat(reviewResponse.riskScore()).isEqualTo(28);
+        assertThat(reviewResponse.riskScore()).isEqualTo(14);
         assertThat(reviewResponse.riskLevel())
-                .isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
+                .isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
         var findings = riskAnalysisQueryService.findFindings(parentUser.getId(), reviewResponse.analysisId());
         assertThat(findings.revisionStatus())
                 .isEqualTo(com.teacherhub.risk.enums.RevisionStatus.PENDING);
@@ -1337,7 +1337,7 @@ public class ComplaintFlowIntegrationTest {
         var savedAnalyses = riskAnalysisRepository.findByComplaintIdOrderByIdAsc(complaintId);
         assertThat(savedAnalyses).hasSize(1);
         var firstAnalysis = savedAnalyses.get(0);
-        assertThat(firstAnalysis.getRiskScore()).isEqualTo(28);
+        assertThat(firstAnalysis.getRiskScore()).isEqualTo(14);
         assertThat(firstAnalysis.getModelName()).isEqualTo("mock-llm");
         assertThat(firstAnalysis.getTemperature()).isEqualTo(0.0);
         assertThat(firstAnalysis.getContentVersion()).isEqualTo(1);
@@ -1453,7 +1453,7 @@ public class ComplaintFlowIntegrationTest {
         assertThat(teacherDetail.grade()).isEqualTo(3);
         assertThat(teacherDetail.classNo()).isEqualTo(2);
         assertThat(teacherDetail.submittedAt()).isNotNull();
-        assertThat(teacherDetail.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.MEDIUM);
+        assertThat(teacherDetail.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
 
         var teacherListItem = complaintListQueryService.findComplaints(teacherUser.getId()).stream()
                 .filter(item -> item.complaintId().equals(complaintId))
@@ -1462,7 +1462,6 @@ public class ComplaintFlowIntegrationTest {
         assertThat(teacherListItem.counterpartRole()).isEqualTo(UserRole.PARENT);
         assertThat(teacherListItem.grade()).isEqualTo(3);
         assertThat(teacherListItem.classNo()).isEqualTo(2);
-        assertThat(teacherListItem.aiSummary()).isNull();
         assertThat(teacherListItem.latestReceivedAt()).isCloseTo(
                 teacherDetail.submittedAt(),
                 org.assertj.core.api.Assertions.within(1, java.time.temporal.ChronoUnit.SECONDS)

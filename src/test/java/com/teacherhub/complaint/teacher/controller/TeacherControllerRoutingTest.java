@@ -3,6 +3,7 @@ package com.teacherhub.complaint.teacher.controller;
 import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.query.service.ComplaintListQueryService;
+import com.teacherhub.complaint.query.dto.ComplaintListResponse;
 import com.teacherhub.complaint.query.dto.ComplaintPageResponse;
 import com.teacherhub.complaint.query.dto.ComplaintListSort;
 import com.teacherhub.complaint.teacher.dto.query.TeacherComplaintDetailResponse;
@@ -64,7 +65,23 @@ class TeacherControllerRoutingTest {
                         && query.riskLevel() == RiskLevel.HIGH
                         && query.sort() == ComplaintListSort.OLDEST
         ))).thenReturn(new ComplaintPageResponse(
-                List.of(), 1, 10, 12, 2, false, true, false, true
+                List.of(new ComplaintListResponse(
+                        42L,
+                        "민원 제목",
+                        3L,
+                        "학생 이름",
+                        "학부모 이름",
+                        com.teacherhub.user.enums.UserRole.PARENT,
+                        2026,
+                        3,
+                        2,
+                        ComplaintStatus.OPEN,
+                        WaitingFor.TEACHER,
+                        9L,
+                        RiskLevel.HIGH,
+                        LocalDateTime.of(2026, 11, 23, 9, 30)
+                )),
+                1, 10, 12, 2, false, true, false, true
         ));
 
         var mvc = MockMvcBuilders.standaloneSetup(new TeacherComplaintController(
@@ -84,7 +101,8 @@ class TeacherControllerRoutingTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page").value(1))
                 .andExpect(jsonPath("$.size").value(10))
-                .andExpect(jsonPath("$.totalElements").value(12));
+                .andExpect(jsonPath("$.totalElements").value(12))
+                .andExpect(jsonPath("$.content[0].aiSummary").doesNotExist());
 
         mvc.perform(get("/teacher/complaints")
                         .principal(auth)

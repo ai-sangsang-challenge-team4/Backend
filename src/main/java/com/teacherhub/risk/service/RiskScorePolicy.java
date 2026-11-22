@@ -12,8 +12,8 @@ import org.springframework.stereotype.Component;
 public class RiskScorePolicy {
 
     public static final int MAX_SCORE = 100;
-    public static final int SEVERITY_TWO_BONUS = 17;
-    public static final int SEVERITY_THREE_BONUS = 40;
+    public static final int SEVERITY_TWO_BONUS = 19;
+    public static final int SEVERITY_THREE_BONUS = 50;
 
     public int severityBonus(Integer severity) {
         // 구형 응답의 null과 S1은 문맥 보정 없이 태그 기본점수만 반영합니다.

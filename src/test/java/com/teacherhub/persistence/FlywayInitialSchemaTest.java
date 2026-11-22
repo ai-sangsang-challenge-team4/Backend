@@ -35,11 +35,11 @@ class FlywayInitialSchemaTest {
     @Test
     void appliesInitialSchemaAndValidatesAllEntityMappings() {
         Integer appliedMigrationCount = jdbcTemplate.queryForObject(
-                "select count(*) from flyway_schema_history where version in ('1', '2', '3', '4', '5') and success = true",
+                "select count(*) from flyway_schema_history where version in ('1', '2', '3', '4', '5', '6', '7') and success = true",
                 Integer.class
         );
 
-        assertThat(appliedMigrationCount).isEqualTo(5);
+        assertThat(appliedMigrationCount).isEqualTo(7);
 
         Map<String, Integer> configuredScores = jdbcTemplate.query(
                 "select code, default_score from risk_tags",
@@ -56,27 +56,27 @@ class FlywayInitialSchemaTest {
         );
 
         assertThat(configuredScores).containsExactlyInAnyOrderEntriesOf(Map.of(
-                "PROFANITY", 4,
-                "INSULT", 6,
-                "THREAT", 22,
-                "LEGAL", 4,
+                "PROFANITY", 7,
+                "INSULT", 8,
+                "THREAT", 12,
+                "LEGAL", 6,
                 "EXPOSURE", 6,
-                "REPEAT", 6,
-                "UNFAIR_REQUEST", 6,
-                "PRIVACY", 6
+                "REPEAT", 4,
+                "UNFAIR_REQUEST", 2,
+                "PRIVACY", 5
         ));
     }
 
     @Test
-    void v2RebalancesPreExistingRiskTagScoresWithoutDataInitializer() {
-        String databaseUrl = "jdbc:h2:mem:flyway-v2-isolated-" + UUID.randomUUID()
+    void v7RebalancesPreExistingRiskTagScoresWithoutDataInitializer() {
+        String databaseUrl = "jdbc:h2:mem:flyway-v7-isolated-" + UUID.randomUUID()
                 + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1";
         var dataSource = new DriverManagerDataSource(databaseUrl, "sa", "");
 
         Flyway.configure()
                 .dataSource(dataSource)
                 .locations("classpath:db/migration")
-                .target(MigrationVersion.fromVersion("1"))
+                .target(MigrationVersion.fromVersion("6"))
                 .load()
                 .migrate();
 
@@ -84,14 +84,14 @@ class FlywayInitialSchemaTest {
         isolatedJdbcTemplate.batchUpdate(
                 "insert into risk_tags (code, name, default_score) values (?, ?, ?)",
                 List.of(
-                        new Object[]{"PROFANITY", "욕설", 6},
-                        new Object[]{"INSULT", "인격 모욕", 10},
-                        new Object[]{"THREAT", "위험·협박", 25},
+                        new Object[]{"PROFANITY", "욕설", 4},
+                        new Object[]{"INSULT", "인격 모욕", 6},
+                        new Object[]{"THREAT", "위험·협박", 22},
                         new Object[]{"LEGAL", "법적 조치 언급", 4},
-                        new Object[]{"EXPOSURE", "공개·유포 위험", 12},
+                        new Object[]{"EXPOSURE", "공개·유포 위험", 6},
                         new Object[]{"REPEAT", "반복 민원", 6},
-                        new Object[]{"UNFAIR_REQUEST", "부당 요구", 8},
-                        new Object[]{"PRIVACY", "개인정보 위험", 15}
+                        new Object[]{"UNFAIR_REQUEST", "부당 요구", 6},
+                        new Object[]{"PRIVACY", "개인정보 위험", 6}
                 )
         );
 
@@ -116,14 +116,14 @@ class FlywayInitialSchemaTest {
         );
 
         assertThat(migratedScores).containsExactlyInAnyOrderEntriesOf(Map.of(
-                "PROFANITY", 4,
-                "INSULT", 6,
-                "THREAT", 22,
-                "LEGAL", 4,
+                "PROFANITY", 7,
+                "INSULT", 8,
+                "THREAT", 12,
+                "LEGAL", 6,
                 "EXPOSURE", 6,
-                "REPEAT", 6,
-                "UNFAIR_REQUEST", 6,
-                "PRIVACY", 6
+                "REPEAT", 4,
+                "UNFAIR_REQUEST", 2,
+                "PRIVACY", 5
         ));
     }
 

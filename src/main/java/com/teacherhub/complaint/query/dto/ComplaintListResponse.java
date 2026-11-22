@@ -25,7 +25,6 @@ public record ComplaintListResponse(
         WaitingFor waitingFor,
         Long riskAnalysisId,
         RiskLevel riskLevel,
-        String aiSummary,
         LocalDateTime latestReceivedAt
 ) {
     public static ComplaintListResponse from(
@@ -33,7 +32,6 @@ public record ComplaintListResponse(
             RiskAnalysis analysis,
             RiskReview latestReview,
             SchoolClass schoolClass,
-            String aiSummary,
             LocalDateTime latestReceivedAt,
             UserRole viewerRole
     ) {
@@ -60,7 +58,6 @@ public record ComplaintListResponse(
                         : latestReview == null
                                 ? analysis.getRiskLevel()
                                 : latestReview.getReviewedLevel(),
-                aiSummary,
                 latestReceivedAt
         );
     }
