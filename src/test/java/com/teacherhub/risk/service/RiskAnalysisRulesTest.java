@@ -361,10 +361,10 @@ class RiskAnalysisRulesTest {
             "0,LOW",
             "20,LOW",
             "21,MEDIUM",
-            "51,MEDIUM",
-            "52,HIGH",
-            "79,HIGH",
-            "80,EMERGENCY",
+            "50,MEDIUM",
+            "51,HIGH",
+            "80,HIGH",
+            "81,EMERGENCY",
             "100,EMERGENCY"
     })
     void classifiesBoundaryScores(

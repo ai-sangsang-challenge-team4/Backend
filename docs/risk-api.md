@@ -117,9 +117,10 @@ POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 AP
 LLM이 `PRESENT`로 판정한 태그 중 가장 높은 Severity의 문맥 보정점수를 한 번만 더해 최대
 100점으로 제한한 값이다. 기본 태그 점수는 `PROFANITY 7`, `INSULT 8`, `THREAT 12`,
 `LEGAL 6`, `EXPOSURE 6`, `REPEAT 4`, `UNFAIR_REQUEST 2`, `PRIVACY 5`이며 합계는
-50점이다. 등급은 0~20 LOW, 21~51 MEDIUM, 52~79 HIGH, 80~100 EMERGENCY다.
-`V7__rebalance_risk_score_policy.sql`은 운영 DB의 태그 기본값을 이 값으로 갱신하지만, 이미 저장된
-위험 분석의 점수와 등급은 소급 재계산하지 않는다.
+50점이다. 등급은 0~20 LOW, 21~50 MEDIUM, 51~80 HIGH, 81~100 EMERGENCY다.
+`V7__rebalance_risk_score_policy.sql`은 운영 DB의 태그 기본값을 이 값으로 갱신하며,
+`V9__align_risk_level_boundaries.sql`은 이미 저장된 점수는 유지하고 현재 경계에 맞춰 등급만
+재분류한다.
 
 신규 LLM 응답은 전체 8개 태그에 `severity`와 `repeatCount` 필드를 반환한다. 두 값은
 `PRESENT=severity 1~3/repeatCount 0~10,000`, `ABSENT=0/0`,

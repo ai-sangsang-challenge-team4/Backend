@@ -61,10 +61,12 @@ LLM 스키마 오류는 한 번 재생성하고, 재생성 실패 또는 외부 
 시스템 분석은 최종 `PRESENT`인 중복 없는 태그의 `default_score`를 한 번씩 합산한다.
 태그 기본점수 합계는 50점이며 LLM이 `PRESENT`로 판정한 태그 중 최고 Severity에 따라
 S1 0점, S2 19점, S3 50점의 문맥 보정을 한 번만 적용한다. confidence와 repeatCount는
-점수에 직접 사용하지 않는다. 시스템 점수는 0~20점 LOW, 21~51점 MEDIUM,
-52~79점 HIGH, 80~100점 EMERGENCY다. 안전 신호 중 `credibleThreat` 또는
+점수에 직접 사용하지 않는다. 시스템 점수는 0~20점 LOW, 21~50점 MEDIUM,
+51~80점 HIGH, 81~100점 EMERGENCY다. 안전 신호 중 `credibleThreat` 또는
 `privacyExposure`가 true이면 100점 EMERGENCY로 승격한다. `studentSafetyConcern`은 원시 탐지
 결과로 보존하되 긴급 승격하지 않고 일반 위험 태그와 최고 Severity로 점수와 등급을 계산한다.
+기존 저장 분석은 `V9__align_risk_level_boundaries.sql`에서 점수를 바꾸지 않고 현재 경계에 맞춰
+등급만 재분류한다.
 
 교사는 1~7 선택 척도를 사용하고 서버는 선택값에 10을 곱해 시스템과 같은 단위의
 10~70점으로 환산한다. 최초 검토 위치는 시스템 등급을
