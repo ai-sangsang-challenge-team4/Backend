@@ -117,9 +117,10 @@ POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 AP
 LLM이 `PRESENT`로 판정한 태그 중 가장 높은 Severity의 문맥 보정점수를 한 번만 더해 최대
 100점으로 제한한 값이다. 기본 태그 점수는 `PROFANITY 7`, `INSULT 8`, `THREAT 12`,
 `LEGAL 6`, `EXPOSURE 6`, `REPEAT 4`, `UNFAIR_REQUEST 2`, `PRIVACY 5`이며 합계는
-50점이다. 등급은 0~20 LOW, 21~51 MEDIUM, 52~79 HIGH, 80~100 EMERGENCY다.
-`V7__rebalance_risk_score_policy.sql`은 운영 DB의 태그 기본값을 이 값으로 갱신하지만, 이미 저장된
-위험 분석의 점수와 등급은 소급 재계산하지 않는다.
+50점이다. 등급은 0~20 LOW, 21~50 MEDIUM, 51~80 HIGH, 81~100 EMERGENCY다.
+`V7__rebalance_risk_score_policy.sql`은 운영 DB의 태그 기본값을 이 값으로 갱신하며,
+`V9__align_risk_level_boundaries.sql`은 이미 저장된 점수는 유지하고 현재 경계에 맞춰 등급만
+재분류한다.
 
 신규 LLM 응답은 전체 8개 태그에 `severity`와 `repeatCount` 필드를 반환한다. 두 값은
 `PRESENT=severity 1~3/repeatCount 0~10,000`, `ABSENT=0/0`,
@@ -570,21 +571,21 @@ AI 초안 생성, 임시저장과 최종 전송을 차단한다. 학부모 문�
 `analysisMessage`로 프론트가 잠정 분석 배지와 직접 검토 안내를 표시할 수 있다.
 
 `GET /teacher/complaints/{complaintId}/messages`은 전송된 모든 메시지를 반환한다.
-최신 완료 분석의 현재 적용 위험등급이 HIGH 또는 EMERGENCY인 학부모 메시지만 완충 요약을
+최신 완료 분석의 현재 적용 위험등급이 MEDIUM 이상인 학부모 메시지만 완충 요약을
 우선 반환한다. 현재 적용 위험등급은 최신 교사 검토가 있으면 검토 등급을 사용하고,
 검토가 없으면 시스템 분석 등급을 사용한다.
-LOW·MEDIUM 메시지는 외부 AI에 완충 요약을 요청하지 않고 원문을 바로 반환하며,
+LOW 메시지는 외부 AI에 완충 요약을 요청하지 않고 원문을 바로 반환하며,
 `summarized=false`, `summaryStatus=null`이다. 완충 요약 생성기에는 현재 민원의 관계자
 컨텍스트로 마스킹된 입력만 전달하고 출력은 같은 컨텍스트로 다시 마스킹한다.
 정상 스키마와 길이 제한을 만족한 완충 요약은 원문에 없는 숫자·날짜·이름 포함 여부를 별도로
 판정하지 않고 저장·노출한다.
 최초 민원과 후속 문의에 동일한 규칙을 적용한다. 교사 메시지는 원문을 반환하고 임시저장
-DRAFT는 대화 내역에서 제외한다. HIGH·EMERGENCY 완충 요약 생성이 실패하거나 빈 결과를
+DRAFT는 대화 내역에서 제외한다. MEDIUM 이상 완충 요약 생성이 실패하거나 빈 결과를
 반환하면 원문을 자동 노출하지 않고 안내 문구, `summarized=false`,
 `summaryStatus=UNAVAILABLE`을 반환한다. 이 경우 원문은 별도 열람 API와 `ORIGINAL_VIEWED`
 감사 이벤트를 통해서만 제공한다.
 
-HIGH·EMERGENCY 완충 요약은 완료된 위험 분석에 귀속해 최초 조회에서 한 번만 생성한다. 생성 성공 결과와 실패
+MEDIUM 이상 완충 요약은 완료된 위험 분석에 귀속해 최초 조회에서 한 번만 생성한다. 생성 성공 결과와 실패
 상태를 `risk_analyses`에 저장하며 이후 상세 조회는 외부 AI를 호출하지 않고 저장 상태를
 재사용한다. 동시에 여러 조회가 들어오면 한 요청만 생성을 선점하고 나머지는 생성이 끝날 때까지
 `summaryStatus=UNAVAILABLE`을 반환한다. 생성 프로세스가 비정상 종료된 `GENERATING` 상태는

@@ -493,11 +493,11 @@ public class RiskEvaluator {
             return RiskLevel.LOW;
         }
 
-        if (score <= 51) {
+        if (score <= 50) {
             return RiskLevel.MEDIUM;
         }
 
-        if (score <= 79) {
+        if (score <= 80) {
             return RiskLevel.HIGH;
         }
 

@@ -212,6 +212,66 @@ class FlywayInitialSchemaTest {
     }
 
     @Test
+    void v9ReclassifiesStoredAnalysesWithCurrentRiskLevelBoundaries() {
+        String databaseUrl = "jdbc:h2:mem:flyway-v9-isolated-" + UUID.randomUUID()
+                + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1";
+        var dataSource = new DriverManagerDataSource(databaseUrl, "sa", "");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .target(MigrationVersion.fromVersion("8"))
+                .load()
+                .migrate();
+
+        var isolatedJdbcTemplate = new JdbcTemplate(dataSource);
+        isolatedJdbcTemplate.execute("set referential_integrity false");
+        isolatedJdbcTemplate.update("""
+                insert into risk_analyses (
+                    id, complaint_id, message_id, content_version, risk_score, risk_level,
+                    model_name, temperature, analysis_mode, analyzed_at, content_hash,
+                    completed, revision_status
+                ) values
+                    (
+                        1, 1, 1, 0, 51, 'MEDIUM', 'old-boundary-model', 0.0,
+                        'HYBRID', current_timestamp,
+                        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                        true, 'COMPLETED'
+                    ),
+                    (
+                        2, 1, 2, 0, 80, 'EMERGENCY', 'old-boundary-model', 0.0,
+                        'HYBRID', current_timestamp,
+                        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                        true, 'COMPLETED'
+                    ),
+                    (
+                        3, 1, 3, 0, 81, 'EMERGENCY', 'old-boundary-model', 0.0,
+                        'HYBRID', current_timestamp,
+                        'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                        true, 'COMPLETED'
+                    )
+                """);
+        isolatedJdbcTemplate.execute("set referential_integrity true");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        List<Map<String, Object>> reclassified = isolatedJdbcTemplate.queryForList(
+                "select risk_score, risk_level from risk_analyses order by id"
+        );
+
+        assertThat(reclassified)
+                .containsExactly(
+                        Map.of("risk_score", 51, "risk_level", "HIGH"),
+                        Map.of("risk_score", 80, "risk_level", "HIGH"),
+                        Map.of("risk_score", 81, "risk_level", "EMERGENCY")
+                );
+    }
+
+    @Test
     void idempotencyKeyUsesCaseSensitiveMySqlCollation() throws IOException {
         String migration = new ClassPathResource("db/migration/V1__init_schema.sql")
                 .getContentAsString(StandardCharsets.UTF_8);
