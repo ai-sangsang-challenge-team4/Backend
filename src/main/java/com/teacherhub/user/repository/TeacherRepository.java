@@ -13,6 +13,8 @@ public interface TeacherRepository extends JpaRepository<Teacher, Long> {
 
     Optional<Teacher> findByUserId(Long userId);
 
+    Optional<Teacher> findByEmployeeNo(String employeeNo);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select t from Teacher t where t.employeeNo = :employeeNo")
     Optional<Teacher> findForSignupByEmployeeNo(@Param("employeeNo") String employeeNo);
