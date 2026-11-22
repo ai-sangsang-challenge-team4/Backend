@@ -72,3 +72,17 @@ tasks.register('liveAiTest', Test) {
     }
     shouldRunAfter tasks.named('test')
 }
+
+tasks.register('evaluateRuleGoldenset', JavaExec) {
+    group = 'verification'
+    description = 'Offline 200-case Rule Detector export. No server, database or LLM.'
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.teacherhub.risk.analyzer.RuleGoldensetExportMain'
+    doFirst {
+        if (!project.hasProperty('goldInput') || !project.hasProperty('ruleOutput')) {
+            throw new GradleException('Supply -PgoldInput=<input-json> and -PruleOutput=<new-output-json>')
+        }
+        args project.property('goldInput'), project.property('ruleOutput')
+    }
+}
