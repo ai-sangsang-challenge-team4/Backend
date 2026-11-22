@@ -27,7 +27,7 @@ class RuleGoldensetExportMainTest {
     void exportsAllEightTagsWithoutInvokingAnyModel() {
         JsonNode tags = RuleGoldensetExportMain.detectAllTags(
                 productionDetector(), "교사로서 정말 무능하다고 생각합니다.");
-        assertThat(tags).hasSize(8);
+        assertThat(tags.size()).isEqualTo(8);
         assertThat(tags.findValuesAsText("code"))
                 .containsExactlyInAnyOrderElementsOf(
                         java.util.Arrays.stream(RiskTagCode.values()).map(Enum::name).toList());
