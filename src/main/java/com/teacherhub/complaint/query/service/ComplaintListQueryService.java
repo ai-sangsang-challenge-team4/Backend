@@ -111,7 +111,6 @@ public class ComplaintListQueryService {
                 analysis,
                 latestReview(analysis),
                 schoolClass,
-                null,
                 latestReceivedAt,
                 viewerRole
         );

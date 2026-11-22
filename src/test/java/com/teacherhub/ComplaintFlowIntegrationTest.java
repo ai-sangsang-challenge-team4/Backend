@@ -199,8 +199,8 @@ public class ComplaintFlowIntegrationTest {
                 .findFirst()
                 .orElseThrow();
 
+        assertThat(item.complaintId()).isEqualTo(complaintId);
         verifyNoInteractions(teacherSupportContentProvider);
-        assertThat(item.aiSummary()).isNull();
     }
 
     @Test
@@ -1462,7 +1462,6 @@ public class ComplaintFlowIntegrationTest {
         assertThat(teacherListItem.counterpartRole()).isEqualTo(UserRole.PARENT);
         assertThat(teacherListItem.grade()).isEqualTo(3);
         assertThat(teacherListItem.classNo()).isEqualTo(2);
-        assertThat(teacherListItem.aiSummary()).isNull();
         assertThat(teacherListItem.latestReceivedAt()).isCloseTo(
                 teacherDetail.submittedAt(),
                 org.assertj.core.api.Assertions.within(1, java.time.temporal.ChronoUnit.SECONDS)
