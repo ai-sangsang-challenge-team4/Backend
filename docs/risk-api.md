@@ -148,6 +148,9 @@ confidence와 repeatCount는 점수에 직접 사용하지 않는다. 같은 태
 사용하지 않으며, 최종 점수와 등급은 일반 위험 태그와 최고 Severity 정책으로 계산한다. 따라서
 일반 계산 결과가 LOW 또는 MEDIUM이면 교사 답변 초안을 생성할 수 있다. null은 정보 부족을 뜻하며
 false로 치환하지 않는다. AI가 임의 점수나 가중치를 직접 전달하는 구조는 허용하지 않는다.
+`V8__recalculate_student_safety_only_analyses.sql`은 기존에 `studentSafetyConcern`만으로
+Emergency 승격된 저장 분석을 태그 기본점수와 최고 Severity 정책으로 재계산한다. 따라서 정책 변경
+전에 생성된 동일 내용 분석을 재사용해도 과거의 100점·EMERGENCY 결과를 그대로 반환하지 않는다.
 학부모 위험 분석 요약의 `emergencyOverride`는 긴급 승격에 사용된 원시 값을 화면용 안전 신호
 코드·제목·설명으로 변환해 반환한다. 기존 위험 분석 경로와 필드는 유지되며 긴급 Safety Flag가
 적용되지 않았으면 `applied=false`, `safetySignals=[]`다.

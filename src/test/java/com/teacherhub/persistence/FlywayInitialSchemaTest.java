@@ -35,11 +35,11 @@ class FlywayInitialSchemaTest {
     @Test
     void appliesInitialSchemaAndValidatesAllEntityMappings() {
         Integer appliedMigrationCount = jdbcTemplate.queryForObject(
-                "select count(*) from flyway_schema_history where version in ('1', '2', '3', '4', '5', '6', '7') and success = true",
+                "select count(*) from flyway_schema_history where version in ('1', '2', '3', '4', '5', '6', '7', '8') and success = true",
                 Integer.class
         );
 
-        assertThat(appliedMigrationCount).isEqualTo(7);
+        assertThat(appliedMigrationCount).isEqualTo(8);
 
         Map<String, Integer> configuredScores = jdbcTemplate.query(
                 "select code, default_score from risk_tags",
@@ -125,6 +125,90 @@ class FlywayInitialSchemaTest {
                 "UNFAIR_REQUEST", 2,
                 "PRIVACY", 5
         ));
+    }
+
+    @Test
+    void v8RecalculatesStoredStudentSafetyOnlyEmergencyAnalysis() {
+        String databaseUrl = "jdbc:h2:mem:flyway-v8-isolated-" + UUID.randomUUID()
+                + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1";
+        var dataSource = new DriverManagerDataSource(databaseUrl, "sa", "");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .target(MigrationVersion.fromVersion("7"))
+                .load()
+                .migrate();
+
+        var isolatedJdbcTemplate = new JdbcTemplate(dataSource);
+        isolatedJdbcTemplate.execute("set referential_integrity false");
+        isolatedJdbcTemplate.update(
+                "insert into risk_tags (id, code, name, default_score) values (1, 'THREAT', '위험·협박', 12)"
+        );
+        isolatedJdbcTemplate.update("""
+                insert into risk_analyses (
+                    id, complaint_id, message_id, content_version, risk_score, risk_level,
+                    model_name, temperature, credible_threat, student_safety_concern,
+                    privacy_exposure, analysis_mode, analyzed_at, content_hash, completed,
+                    revision_status
+                ) values (
+                    1, 1, 1, 0, 100, 'EMERGENCY', 'old-policy-model', 0.0,
+                    false, true, false, 'HYBRID', current_timestamp,
+                    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                    true, 'COMPLETED'
+                )
+                """);
+        isolatedJdbcTemplate.update("""
+                insert into risk_analyses (
+                    id, complaint_id, message_id, content_version, risk_score, risk_level,
+                    model_name, temperature, credible_threat, student_safety_concern,
+                    privacy_exposure, analysis_mode, analyzed_at, content_hash, completed,
+                    revision_status
+                ) values
+                    (
+                        2, 1, 2, 0, 100, 'EMERGENCY', 'old-policy-model', 0.0,
+                        true, true, false, 'HYBRID', current_timestamp,
+                        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                        true, 'COMPLETED'
+                    ),
+                    (
+                        3, 1, 3, 0, 100, 'EMERGENCY', 'old-policy-model', 0.0,
+                        false, true, true, 'HYBRID', current_timestamp,
+                        'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                        true, 'COMPLETED'
+                    )
+                """);
+        isolatedJdbcTemplate.update("""
+                insert into complaint_risk_tags (
+                    id, risk_analysis_id, risk_tag_id, rule_detected, llm_detected,
+                    final_detected, rule_state, llm_state, final_state, severity, repeat_count
+                ) values (
+                    1, 1, 1, false, true, true, 'ABSENT', 'PRESENT', 'PRESENT', 2, 1
+                )
+                """);
+        isolatedJdbcTemplate.execute("set referential_integrity true");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        Map<String, Object> recalculated = isolatedJdbcTemplate.queryForMap(
+                "select risk_score, risk_level from risk_analyses where id = 1"
+        );
+
+        assertThat(recalculated)
+                .containsEntry("risk_score", 31)
+                .containsEntry("risk_level", "MEDIUM");
+
+        List<Map<String, Object>> emergencySignals = isolatedJdbcTemplate.queryForList(
+                "select risk_score, risk_level from risk_analyses where id in (2, 3) order by id"
+        );
+        assertThat(emergencySignals)
+                .allSatisfy(analysis -> assertThat(analysis)
+                        .containsEntry("risk_score", 100)
+                        .containsEntry("risk_level", "EMERGENCY"));
     }
 
     @Test
