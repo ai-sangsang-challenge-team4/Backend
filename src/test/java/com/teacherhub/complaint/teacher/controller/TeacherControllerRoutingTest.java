@@ -284,7 +284,7 @@ class TeacherControllerRoutingTest {
     }
 
     @Test
-    void returnsEmergencySafetySignalOnTeacherRiskRoute() throws Exception {
+    void returnsEmergencyThreatSignalOnTeacherRiskRoute() throws Exception {
         var queryService = mock(TeacherRiskQueryService.class);
         var riskReviewService = mock(TeacherRiskReviewService.class);
         var users = mock(UserRepository.class);
@@ -292,9 +292,9 @@ class TeacherControllerRoutingTest {
         var emergencyOverride = new EmergencyOverrideResponse(
                 true,
                 List.of(new EmergencyOverrideResponse.SafetySignalResponse(
-                        SafetySignalCode.STUDENT_SAFETY_CONCERN,
-                        "학생 안전 우려",
-                        "학생 안전 우려 신호가 확인되어 일반 위험 태그 점수와 별도로 긴급 단계로 상향되었습니다."
+                        SafetySignalCode.CREDIBLE_THREAT,
+                        "구체적 위해 위협",
+                        "구체적인 위해 위협 신호가 확인되어 일반 위험 태그 점수와 별도로 긴급 단계로 상향되었습니다."
                 ))
         );
 
@@ -333,9 +333,9 @@ class TeacherControllerRoutingTest {
                 .andExpect(jsonPath("$.detectedFactors").isEmpty())
                 .andExpect(jsonPath("$.emergencyOverride.applied").value(true))
                 .andExpect(jsonPath("$.emergencyOverride.safetySignals[0].code")
-                        .value("STUDENT_SAFETY_CONCERN"))
+                        .value("CREDIBLE_THREAT"))
                 .andExpect(jsonPath("$.emergencyOverride.safetySignals[0].title")
-                        .value("학생 안전 우려"))
+                        .value("구체적 위해 위협"))
                 .andExpect(jsonPath("$.emergencyOverride.safetySignals[0].description")
                         .value(org.hamcrest.Matchers.containsString("긴급 단계로 상향")));
     }

@@ -142,12 +142,18 @@ confidence와 repeatCount는 점수에 직접 사용하지 않는다. 같은 태
 이중 가산을 방지한다.
 
 `safetyFlags`의 `credibleThreat`, `studentSafetyConcern`, `privacyExposure`는 각각
-`true`, `false`, `null`을 허용한다. 하나라도 true이면 서버가 최종 점수를 100점
-EMERGENCY로 승격해 기존 관리자 재검토와 답변 차단 경로에 연결한다. null은 정보 부족을
-뜻하며 false로 치환하지 않는다. AI가 임의 점수나 가중치를 직접 전달하는 구조는 허용하지 않는다.
-학부모 위험 분석 요약의 `emergencyOverride`는 이 원시 값을 화면용 안전 신호 코드·제목·설명으로
-변환해 반환한다. 기존 위험 분석 경로와 필드는 유지되며 Safety Flag가 적용되지 않았으면
-`applied=false`, `safetySignals=[]`다.
+`true`, `false`, `null`을 허용한다. `credibleThreat` 또는 `privacyExposure`가 true이면 서버가
+최종 점수를 100점 EMERGENCY로 승격해 기존 관리자 재검토와 답변 차단 경로에 연결한다.
+`studentSafetyConcern`은 위험 탐지 상세의 원시 Safety Flag로 반환하되 Emergency 승격에는
+사용하지 않으며, 최종 점수와 등급은 일반 위험 태그와 최고 Severity 정책으로 계산한다. 따라서
+일반 계산 결과가 LOW 또는 MEDIUM이면 교사 답변 초안을 생성할 수 있다. null은 정보 부족을 뜻하며
+false로 치환하지 않는다. AI가 임의 점수나 가중치를 직접 전달하는 구조는 허용하지 않는다.
+`V8__recalculate_student_safety_only_analyses.sql`은 기존에 `studentSafetyConcern`만으로
+Emergency 승격된 저장 분석을 태그 기본점수와 최고 Severity 정책으로 재계산한다. 따라서 정책 변경
+전에 생성된 동일 내용 분석을 재사용해도 과거의 100점·EMERGENCY 결과를 그대로 반환하지 않는다.
+학부모 위험 분석 요약의 `emergencyOverride`는 긴급 승격에 사용된 원시 값을 화면용 안전 신호
+코드·제목·설명으로 변환해 반환한다. 기존 위험 분석 경로와 필드는 유지되며 긴급 Safety Flag가
+적용되지 않았으면 `applied=false`, `safetySignals=[]`다.
 태그별 근거를 표시하는 `GET /risk-analyses/{analysisId}/findings`도 같은 `emergencyOverride`를
 반환하므로, 일반 위험 태그가 비어 있어도 학부모 검토 화면에서 Emergency 승격 사유를 표시할 수 있다.
 
@@ -194,9 +200,10 @@ Rule·LLM 상세는 `GET /risk-analyses/{analysisId}/detector-results`로 조회
   `riskScore`다. 시스템 점수는 0~100이고 기존 교사 선택 척도의 환산 점수는 10~70이다.
 - 학부모 분석 요약과 교사 `/risk` 응답은 공통 `emergencyOverride` 구조를 사용한다. 이 구조는
   Safety Flag가 일반 위험 태그 점수와 별도로 Emergency를 강제 적용했는지와 그 원인이 된 안전
-  신호를 반환한다. `safetySignals`의 안정된 코드는 `CREDIBLE_THREAT`,
-  `STUDENT_SAFETY_CONCERN`, `PRIVACY_EXPOSURE`이며, 일반 위험 태그가 모두 미탐지여도 안전 신호가
-  있으면 교사 화면에서 승격 사유를 별도로 표시할 수 있다. 완료된 분석이 없으면
+  신호를 반환한다. `safetySignals`의 긴급 승격 코드는 `CREDIBLE_THREAT`, `PRIVACY_EXPOSURE`이며,
+  일반 위험 태그가 모두 미탐지여도 이 신호가 있으면 교사 화면에서 승격 사유를 별도로 표시할 수
+  있다. `STUDENT_SAFETY_CONCERN`은 detector-results의 `safetyFlags.studentSafetyConcern`으로만
+  반환하며 Emergency 승격 사유에는 포함하지 않는다. 완료된 분석이 없으면
   `emergencyOverride=null`, 분석은 있지만 강제 적용되지 않았으면 `applied=false`와 빈 배열이다.
 - 교사 검토 척도의 등급은 시스템 점수의 52점·80점 경계를 다시 적용하지 않고, 아래의 독립된
   1~7 척도 구간으로 판정한다.

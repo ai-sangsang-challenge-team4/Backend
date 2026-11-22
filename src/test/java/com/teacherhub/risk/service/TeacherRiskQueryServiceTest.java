@@ -6,14 +6,12 @@ import com.teacherhub.complaint.enums.ComplaintStatus;
 import com.teacherhub.complaint.enums.MessageStatus;
 import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.risk.dto.llm.SafetyFlags;
-import com.teacherhub.risk.dto.response.common.EmergencyOverrideResponse;
 import com.teacherhub.risk.entity.ComplaintRiskTag;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.enums.RiskTagState;
-import com.teacherhub.risk.enums.SafetySignalCode;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
@@ -48,7 +46,7 @@ class TeacherRiskQueryServiceTest {
     }
 
     @Test
-    void returnsDetectedFactorsAndSharedEmergencyOverride() {
+    void returnsDetectedFactorsWithoutEmergencyOverrideForStudentSafetyConcern() {
         Fixture fixture = new Fixture();
         RiskAnalysis analysis = mock(RiskAnalysis.class);
         ComplaintRiskTag result = mock(ComplaintRiskTag.class);
@@ -59,8 +57,8 @@ class TeacherRiskQueryServiceTest {
         )).thenReturn(Optional.of(analysis));
         when(analysis.getComplaint()).thenReturn(fixture.complaint);
         when(analysis.getId()).thenReturn(100L);
-        when(analysis.getRiskScore()).thenReturn(100);
-        when(analysis.getRiskLevel()).thenReturn(RiskLevel.EMERGENCY);
+        when(analysis.getRiskScore()).thenReturn(12);
+        when(analysis.getRiskLevel()).thenReturn(RiskLevel.LOW);
         when(analysis.safetyFlags()).thenReturn(new SafetyFlags(false, true, false));
         when(fixture.tags.findByRiskAnalysisId(100L)).thenReturn(List.of(result));
         when(fixture.reviews.findFirstByRiskAnalysisIdOrderByReviewedAtDescIdDesc(100L))
@@ -78,10 +76,8 @@ class TeacherRiskQueryServiceTest {
                 assertThat(factor.evidence())
                         .extracting(com.teacherhub.risk.dto.detection.EvidenceSpan::text)
                         .containsExactly("첫 번째 근거", "두 번째 근거"));
-        assertThat(response.emergencyOverride().applied()).isTrue();
-        assertThat(response.emergencyOverride().safetySignals())
-                .extracting(EmergencyOverrideResponse.SafetySignalResponse::code)
-                .containsExactly(SafetySignalCode.STUDENT_SAFETY_CONCERN);
+        assertThat(response.emergencyOverride().applied()).isFalse();
+        assertThat(response.emergencyOverride().safetySignals()).isEmpty();
     }
 
     private static class Fixture {
