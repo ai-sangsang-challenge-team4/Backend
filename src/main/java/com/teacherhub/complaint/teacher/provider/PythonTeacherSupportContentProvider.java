@@ -32,11 +32,6 @@ public class PythonTeacherSupportContentProvider
         );
         validateText(response == null ? null : response.summary(), "AI 완충 요약");
         validateModelName(response.modelName());
-        GenerationOutputValidator.validateNoNovelFacts(
-                maskedContent,
-                response.summary(),
-                "AI 완충 요약"
-        );
         return response.summary();
     }
 
