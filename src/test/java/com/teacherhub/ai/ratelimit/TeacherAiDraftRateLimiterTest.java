@@ -67,7 +67,8 @@ class TeacherAiDraftRateLimiterTest {
         var start = new CountDownLatch(1);
         var allowed = new AtomicInteger();
         var rejected = new AtomicInteger();
-        try (var pool = Executors.newFixedThreadPool(8)) {
+        var pool = Executors.newFixedThreadPool(8);
+        try {
             var tasks = new java.util.ArrayList<java.util.concurrent.Future<?>>();
             for (int i = 0; i < 20; i++) {
                 tasks.add(pool.submit(() -> {
@@ -87,6 +88,8 @@ class TeacherAiDraftRateLimiterTest {
             for (var task : tasks) {
                 task.get();
             }
+        } finally {
+            pool.shutdownNow();
         }
         assertEquals(3, allowed.get());
         assertEquals(17, rejected.get());
