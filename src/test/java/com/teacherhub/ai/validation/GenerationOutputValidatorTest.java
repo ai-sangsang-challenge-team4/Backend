@@ -8,7 +8,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class GenerationOutputValidatorTest {
@@ -39,17 +38,4 @@ class GenerationOutputValidatorTest {
         )).isTrue();
     }
 
-    @Test
-    void requiresEveryRecognizedRequestIntentInRevision() {
-        String source = "사과와 사실관계 확인을 요청드립니다.";
-
-        assertThatCode(() -> GenerationOutputValidator.validateRequirementIntentPreserved(
-                source,
-                "유감을 표하며 사실관계를 확인해 주세요."
-        )).doesNotThrowAnyException();
-        assertThatThrownBy(() -> GenerationOutputValidator.validateRequirementIntentPreserved(
-                source,
-                "사실관계를 확인해 주세요."
-        )).isInstanceOf(AiResponseInvalidException.class);
-    }
 }

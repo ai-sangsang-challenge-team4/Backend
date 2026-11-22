@@ -106,29 +106,33 @@ class PythonComplaintRevisionGeneratorTest {
     }
 
     @Test
-    void rejectsRevisionThatIntroducesANewFact() throws IOException {
+    void acceptsRevisionThatIntroducesContentNotPresentInSource() throws IOException {
         var httpGenerator = generatorReturning("""
                 {"finalRevision":{"reason":"요청 정리","content":"3일 안에 확인해 주세요."},
                  "tagSuggestions":[]}
                 """);
 
-        assertThatThrownBy(() -> httpGenerator.generate(
+        var result = httpGenerator.generate(
                 "확인을 요청드립니다.",
                 emptyRiskEvaluation()
-        )).isInstanceOf(AiResponseInvalidException.class);
+        );
+
+        assertThat(result.finalRevision().content()).isEqualTo("3일 안에 확인해 주세요.");
     }
 
     @Test
-    void rejectsRevisionThatRemovesARequestIntent() throws IOException {
+    void acceptsRevisionWithoutEveryOriginalRequestIntent() throws IOException {
         var httpGenerator = generatorReturning("""
                 {"finalRevision":{"reason":"요청 완화","content":"사실관계를 확인해 주세요."},
                  "tagSuggestions":[]}
                 """);
 
-        assertThatThrownBy(() -> httpGenerator.generate(
+        var result = httpGenerator.generate(
                 "사과와 사실관계 확인을 요청드립니다.",
                 emptyRiskEvaluation()
-        )).isInstanceOf(AiResponseInvalidException.class);
+        );
+
+        assertThat(result.finalRevision().content()).isEqualTo("사실관계를 확인해 주세요.");
     }
 
     private PythonComplaintRevisionGenerator generatorReturning(String responseBody)

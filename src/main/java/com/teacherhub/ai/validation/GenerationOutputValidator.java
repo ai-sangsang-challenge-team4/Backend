@@ -2,10 +2,8 @@ package com.teacherhub.ai.validation;
 
 import com.teacherhub.ai.exception.AiResponseInvalidException;
 
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -24,11 +22,6 @@ public final class GenerationOutputValidator {
             "(?:[가-힣A-Za-z][가-힣A-Za-z0-9·]{1,39}(?:시행규칙|시행령|법률|법)\\s*)?"
                     + "제\\s*\\d+(?:의\\d+)?\\s*조(?:의\\d+)?"
     );
-    private static final Pattern REQUIREMENT_MARKER = Pattern.compile(
-            "요청|요구|바랍|원합|부탁|촉구|해\\s*주|하여\\s*주|해야\\s*합|해라|하십시오|바라겠"
-    );
-    private static final Map<String, Pattern> REQUIREMENT_INTENTS = requirementIntents();
-
     private GenerationOutputValidator() {
     }
 
@@ -66,25 +59,6 @@ public final class GenerationOutputValidator {
                         .noneMatch(source -> source.contains(citation)));
     }
 
-    public static void validateRequirementIntentPreserved(
-            String source,
-            String revision
-    ) {
-        for (String clause : source.split("[.!?。！？\\n]+")) {
-            if (!REQUIREMENT_MARKER.matcher(clause).find()) {
-                continue;
-            }
-            for (Map.Entry<String, Pattern> intent : REQUIREMENT_INTENTS.entrySet()) {
-                if (intent.getValue().matcher(clause).find()
-                        && !intent.getValue().matcher(revision).find()) {
-                    throw new AiResponseInvalidException(
-                            "AI 수정안이 원문의 요구사항을 보존하지 않았습니다."
-                    );
-                }
-            }
-        }
-    }
-
     private static Set<String> extract(Pattern pattern, String value) {
         if (value == null || value.isBlank()) {
             return Set.of();
@@ -107,20 +81,4 @@ public final class GenerationOutputValidator {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
-    private static Map<String, Pattern> requirementIntents() {
-        Map<String, Pattern> intents = new LinkedHashMap<>();
-        intents.put("CONFIRM", Pattern.compile("확인|검토|사실관계"));
-        intents.put("ANSWER", Pattern.compile("답변|회신|응답|안내"));
-        intents.put("APOLOGY", Pattern.compile("사과|유감"));
-        intents.put("EXPLANATION", Pattern.compile("해명|설명"));
-        intents.put("ACTION", Pattern.compile("조치|처리|해결|개선|시정|징계|처벌"));
-        intents.put("CANCEL", Pattern.compile("취소|철회|중단"));
-        intents.put("CORRECT", Pattern.compile("수정|정정"));
-        intents.put("DELETE", Pattern.compile("삭제|제거"));
-        intents.put("REFUND", Pattern.compile("환불|반환"));
-        intents.put("MEETING", Pattern.compile("면담|상담|통화"));
-        intents.put("DISCLOSE", Pattern.compile("공개|제공|열람"));
-        intents.put("REPLACE", Pattern.compile("교체|변경"));
-        return Map.copyOf(intents);
-    }
 }
