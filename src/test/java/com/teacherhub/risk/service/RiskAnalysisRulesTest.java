@@ -420,7 +420,7 @@ class RiskAnalysisRulesTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"1,4", "2,21", "3,44"})
+    @CsvSource({"1,7", "2,26", "3,57"})
     void appliesSingleComplaintSeverityBonus(int severity, int expectedScore) {
         var result = new FinalRiskTagResponse(
                 PROFANITY,
@@ -436,7 +436,7 @@ class RiskAnalysisRulesTest {
 
         assertThat(evaluator.calculate(
                 List.of(result),
-                Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 4))
+                Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 7))
         )).isEqualTo(expectedScore);
     }
 
@@ -456,8 +456,8 @@ class RiskAnalysisRulesTest {
 
         assertThat(evaluator.calculate(
                 List.of(result),
-                Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 4))
-        )).isEqualTo(21);
+                Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 7))
+        )).isEqualTo(26);
     }
 
     @Test
@@ -474,10 +474,10 @@ class RiskAnalysisRulesTest {
         assertThat(evaluator.calculate(
                 List.of(profanity, insult),
                 Map.of(
-                        PROFANITY, new RiskTag(PROFANITY, "욕설", 4),
-                        INSULT, new RiskTag(INSULT, "인격 모욕", 6)
+                        PROFANITY, new RiskTag(PROFANITY, "욕설", 7),
+                        INSULT, new RiskTag(INSULT, "인격 모욕", 8)
                 )
-        )).isEqualTo(50);
+        )).isEqualTo(65);
     }
 
     @Test
@@ -503,11 +503,11 @@ class RiskAnalysisRulesTest {
                 PROFANITY, RiskTagState.PRESENT, RiskTagState.ABSENT, RiskTagState.PRESENT,
                 0.99, 2, 2, List.of(), null
         );
-        var configured = Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 4));
+        var configured = Map.of(PROFANITY, new RiskTag(PROFANITY, "욕설", 7));
 
         assertThat(evaluator.calculate(List.of(lowConfidence), configured))
                 .isEqualTo(evaluator.calculate(List.of(highConfidence), configured))
-                .isEqualTo(21);
+                .isEqualTo(26);
     }
 
     @Test

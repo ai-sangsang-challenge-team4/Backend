@@ -59,8 +59,8 @@ LLM 스키마 오류는 한 번 재생성하고, 재생성 실패 또는 외부 
 `UNAVAILABLE`로 저장한다.
 
 시스템 분석은 최종 `PRESENT`인 중복 없는 태그의 `default_score`를 한 번씩 합산한다.
-태그 기본점수 합계는 60점이며 LLM이 `PRESENT`로 판정한 태그 중 최고 Severity에 따라
-S1 0점, S2 17점, S3 40점의 문맥 보정을 한 번만 적용한다. confidence와 repeatCount는
+태그 기본점수 합계는 50점이며 LLM이 `PRESENT`로 판정한 태그 중 최고 Severity에 따라
+S1 0점, S2 19점, S3 50점의 문맥 보정을 한 번만 적용한다. confidence와 repeatCount는
 점수에 직접 사용하지 않는다. 시스템 점수는 0~20점 LOW, 21~51점 MEDIUM,
 52~79점 HIGH, 80~100점 EMERGENCY다. 세 안전 신호 중 하나라도 true이면 100점
 EMERGENCY로 승격한다.

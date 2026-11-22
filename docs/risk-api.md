@@ -115,10 +115,10 @@ POST `/complaints/{complaintId}/risk-analysis`와 추가 문의 위험 분석 AP
 
 시스템 위험 점수는 최종 상태가 `PRESENT`인 중복 없는 태그의 기본점수를 한 번씩 합산하고,
 LLM이 `PRESENT`로 판정한 태그 중 가장 높은 Severity의 문맥 보정점수를 한 번만 더해 최대
-100점으로 제한한 값이다. 기본 태그 점수는 `PROFANITY 4`, `INSULT 6`, `THREAT 22`,
-`LEGAL 4`, `EXPOSURE 6`, `REPEAT 6`, `UNFAIR_REQUEST 6`, `PRIVACY 6`이며 합계는
-60점이다. 등급은 0~20 LOW, 21~51 MEDIUM, 52~79 HIGH, 80~100 EMERGENCY다.
-`V2__rebalance_risk_tag_scores.sql`은 운영 DB의 태그 기본값을 이 값으로 갱신하지만, 이미 저장된
+100점으로 제한한 값이다. 기본 태그 점수는 `PROFANITY 7`, `INSULT 8`, `THREAT 12`,
+`LEGAL 6`, `EXPOSURE 6`, `REPEAT 4`, `UNFAIR_REQUEST 2`, `PRIVACY 5`이며 합계는
+50점이다. 등급은 0~20 LOW, 21~51 MEDIUM, 52~79 HIGH, 80~100 EMERGENCY다.
+`V7__rebalance_risk_score_policy.sql`은 운영 DB의 태그 기본값을 이 값으로 갱신하지만, 이미 저장된
 위험 분석의 점수와 등급은 소급 재계산하지 않는다.
 
 신규 LLM 응답은 전체 8개 태그에 `severity`와 `repeatCount` 필드를 반환한다. 두 값은
@@ -133,8 +133,8 @@ confidence와 repeatCount는 점수에 직접 사용하지 않는다. 같은 태
 |---|---:|
 | 0 또는 없음 | 0 |
 | 1 | 0 |
-| 2 | 17 |
-| 3 | 40 |
+| 2 | 19 |
+| 3 | 50 |
 
 `repeatCount`는 현재 민원 원문에서 확인한 위험 표현 횟수이며 점수에 직접 곱하지 않는다.
 반복 횟수·강도·대상 특정 여부를 종합한 Severity를 통해 현재 문장 점수에 반영하고, 과거 민원
