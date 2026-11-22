@@ -577,10 +577,9 @@ class RiskAnalysisRulesTest {
     @ParameterizedTest
     @CsvSource({
             "true,false,false",
-            "false,true,false",
             "false,false,true"
     })
-    void everySafetyFlagOverridesCalculatedScoreToOneHundred(
+    void emergencySafetyFlagOverridesCalculatedScoreToOneHundred(
             boolean credibleThreat,
             boolean studentSafetyConcern,
             boolean privacyExposure
@@ -592,6 +591,13 @@ class RiskAnalysisRulesTest {
         );
 
         assertThat(evaluator.applySafetyFlags(12, flags)).isEqualTo(100);
+    }
+
+    @Test
+    void studentSafetyConcernUsesCalculatedRiskTagScore() {
+        var flags = new SafetyFlags(false, true, false);
+
+        assertThat(evaluator.applySafetyFlags(12, flags)).isEqualTo(12);
     }
 
     @Test

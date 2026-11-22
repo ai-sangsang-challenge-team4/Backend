@@ -117,15 +117,9 @@ public class ComplaintFlowIntegrationTest {
         assertThat(scores.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(50);
     }
 
-    @ParameterizedTest
-    @CsvSource(value = {
-            "교사를 찾아가 다치게 하겠다고 구체적으로 위협했습니다.|CREDIBLE_THREAT",
-            "학생이 지금 다칠 위험이 있어 즉시 안전 조치가 필요합니다.|STUDENT_SAFETY_CONCERN"
-    }, delimiter = '|')
-    void emergencySafetySentenceForcesEmergencyWithoutAutomaticShareOrTeacherResponse(
-            String content,
-            com.teacherhub.risk.enums.SafetySignalCode expectedSignal
-    ) {
+    @Test
+    void credibleThreatForcesEmergencyWithoutAutomaticShareOrTeacherResponse() {
+        String content = "교사를 찾아가 다치게 하겠다고 구체적으로 위협했습니다.";
         MockLlmRiskAnalyzer baseAnalyzer = new MockLlmRiskAnalyzer();
         when(llmRiskAnalyzer.analyze(anyString(), anyList(), any()))
                 .thenAnswer(invocation -> {
@@ -138,8 +132,8 @@ public class ComplaintFlowIntegrationTest {
                             base.tags(),
                             base.metadata(),
                             new com.teacherhub.risk.dto.llm.SafetyFlags(
-                                    expectedSignal == com.teacherhub.risk.enums.SafetySignalCode.CREDIBLE_THREAT,
-                                    expectedSignal == com.teacherhub.risk.enums.SafetySignalCode.STUDENT_SAFETY_CONCERN,
+                                    true,
+                                    false,
                                     false
                             )
                     );
@@ -157,7 +151,7 @@ public class ComplaintFlowIntegrationTest {
         assertThat(analysis.emergencyOverride().applied()).isTrue();
         assertThat(analysis.emergencyOverride().safetySignals())
                 .extracting(com.teacherhub.risk.dto.response.common.EmergencyOverrideResponse.SafetySignalResponse::code)
-                .containsExactly(expectedSignal);
+                .containsExactly(com.teacherhub.risk.enums.SafetySignalCode.CREDIBLE_THREAT);
         assertThat(complaintEscalationRepository.findByComplaintId(complaintId)).isEmpty();
         assertThat(messageRepository.findByComplaintIdOrderByIdAsc(complaintId))
                 .filteredOn(message -> message.getType() == MessageType.TEACHER_REPLY)
@@ -165,6 +159,43 @@ public class ComplaintFlowIntegrationTest {
         assertThat(eventRepository.findByComplaintIdOrderByOccurredAtDescIdDesc(complaintId))
                 .extracting(com.teacherhub.complaint.entity.ComplaintEvent::getEventType)
                 .doesNotContain(MessageEventType.ESCALATION_SHARED);
+    }
+
+    @Test
+    void studentSafetyConcernUsesTagScoreAndAllowsTeacherAiDraft() {
+        MockLlmRiskAnalyzer baseAnalyzer = new MockLlmRiskAnalyzer();
+        when(llmRiskAnalyzer.analyze(anyString(), anyList(), any()))
+                .thenAnswer(invocation -> {
+                    var base = baseAnalyzer.analyze(
+                            invocation.getArgument(0),
+                            invocation.getArgument(1),
+                            invocation.getArgument(2)
+                    );
+                    return new com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult(
+                            base.tags(),
+                            base.metadata(),
+                            new com.teacherhub.risk.dto.llm.SafetyFlags(false, true, false)
+                    );
+                });
+        Long complaintId = parentComplaintService.createDraft(
+                parentUser.getId(),
+                createRequest("학생의 안전 상태가 걱정되어 확인을 요청드립니다.")
+        ).getComplaintId();
+
+        var analysis = riskAnalysisService.analyze(parentUser.getId(), complaintId);
+        var detectorResults = riskAnalysisQueryService.findDetectorResults(
+                parentUser.getId(),
+                analysis.analysisId()
+        );
+        parentComplaintService.submitComplaint(parentUser.getId(), complaintId);
+        var aiDraft = teacherResponseService.generateAiDraft(teacherUser.getId(), complaintId);
+
+        assertThat(analysis.riskScore()).isEqualTo(14);
+        assertThat(analysis.riskLevel()).isEqualTo(com.teacherhub.risk.enums.RiskLevel.LOW);
+        assertThat(analysis.emergencyOverride().applied()).isFalse();
+        assertThat(analysis.emergencyOverride().safetySignals()).isEmpty();
+        assertThat(detectorResults.safetyFlags().studentSafetyConcern()).isTrue();
+        assertThat(aiDraft.content()).isEqualTo("안녕하세요, 학부모님. 확인 후 안내드리겠습니다.");
     }
 
     @Test

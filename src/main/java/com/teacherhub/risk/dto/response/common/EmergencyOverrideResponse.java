@@ -27,13 +27,6 @@ public record EmergencyOverrideResponse(
                     "구체적인 위해 위협 신호가 확인되어 일반 위험 태그 점수와 별도로 긴급 단계로 상향되었습니다."
             ));
         }
-        if (Boolean.TRUE.equals(flags.studentSafetyConcern())) {
-            signals.add(new SafetySignalResponse(
-                    SafetySignalCode.STUDENT_SAFETY_CONCERN,
-                    "학생 안전 우려",
-                    "학생 안전 우려 신호가 확인되어 일반 위험 태그 점수와 별도로 긴급 단계로 상향되었습니다."
-            ));
-        }
         if (Boolean.TRUE.equals(flags.privacyExposure())) {
             signals.add(new SafetySignalResponse(
                     SafetySignalCode.PRIVACY_EXPOSURE,
