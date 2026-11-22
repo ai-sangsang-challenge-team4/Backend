@@ -1,5 +1,6 @@
 package com.teacherhub.common.exception;
 
+import com.teacherhub.ai.ratelimit.TeacherAiDraftRateLimitException;
 import com.teacherhub.ai.exception.AiRequestPreparationException;
 import com.teacherhub.ai.exception.AiResponseInvalidException;
 import com.teacherhub.ai.exception.AiServiceUnavailableException;
@@ -43,6 +44,20 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
+    @ExceptionHandler(TeacherAiDraftRateLimitException.class)
+    public ResponseEntity<ErrorResponse> handleTeacherAiDraftRateLimit(
+            TeacherAiDraftRateLimitException e,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", Long.toString(e.getRetryAfterSeconds()))
+                .body(ErrorResponse.of(
+                        "AI_DRAFT_RATE_LIMITED",
+                        "AI 답변 초안 생성 요청이 많습니다. 잠시 후 다시 시도해주세요.",
+                        request.getRequestURI()
+                ));
+    }
+
     @ExceptionHandler(SignupValidationException.class)
     public ResponseEntity<ErrorResponse> handleSignupValidation(
             SignupValidationException e,
