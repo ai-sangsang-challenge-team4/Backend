@@ -428,7 +428,7 @@ public class ComplaintFlowIntegrationTest {
     }
 
     @Test
-    void showsBufferedSummaryForHighRiskParentMessage() {
+    void showsBufferedSummaryForMediumRiskParentMessage() {
         String content = "학교생활에 관해 확인하고 싶습니다.";
         Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
@@ -436,11 +436,11 @@ public class ComplaintFlowIntegrationTest {
         ).getComplaintId();
         var summary = riskAnalysisService.analyze(parentUser.getId(), complaintId);
         var analysis = riskAnalysisRepository.findById(summary.analysisId()).orElseThrow();
-        org.springframework.test.util.ReflectionTestUtils.setField(analysis, "riskScore", 52);
+        org.springframework.test.util.ReflectionTestUtils.setField(analysis, "riskScore", 21);
         org.springframework.test.util.ReflectionTestUtils.setField(
                 analysis,
                 "riskLevel",
-                com.teacherhub.risk.enums.RiskLevel.HIGH
+                com.teacherhub.risk.enums.RiskLevel.MEDIUM
         );
         entityManager.flush();
 
@@ -482,7 +482,7 @@ public class ComplaintFlowIntegrationTest {
                 teacherUser.getId(),
                 raisedComplaintId,
                 new com.teacherhub.risk.dto.review.TeacherRiskReviewRequest(
-                        5,
+                        3,
                         "추가 정황을 확인해 위험도를 상향합니다."
                 )
         );

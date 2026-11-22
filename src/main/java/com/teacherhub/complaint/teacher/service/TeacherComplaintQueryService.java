@@ -153,7 +153,9 @@ public class TeacherComplaintQueryService {
     }
 
     private boolean requiresBufferedSummary(RiskLevel riskLevel) {
-        return riskLevel == RiskLevel.HIGH || riskLevel == RiskLevel.EMERGENCY;
+        return riskLevel == RiskLevel.MEDIUM
+                || riskLevel == RiskLevel.HIGH
+                || riskLevel == RiskLevel.EMERGENCY;
     }
 
     private RiskLevel currentRiskLevel(RiskAnalysis analysis, RiskReview latestReview) {
