@@ -4,6 +4,8 @@ import com.teacherhub.common.exception.ErrorResponse;
 import com.teacherhub.risk.service.RiskAnalysisService;
 import com.teacherhub.risk.service.ParentRiskAnalysisQueryService;
 import com.teacherhub.risk.dto.response.parent.ParentRiskFindingsResponse;
+import com.teacherhub.risk.dto.request.MaskingPreviewRequest;
+import com.teacherhub.risk.dto.response.MaskingPreviewResponse;
 import com.teacherhub.risk.dto.response.MaskingResponse;
 import com.teacherhub.risk.dto.response.parent.ParentRiskSummaryResponse;
 import com.teacherhub.risk.dto.response.parent.ParentRiskDetectorResponse;
@@ -18,6 +20,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.security.core.Authentication;
@@ -42,6 +45,15 @@ public class RiskAnalysisController {
     private final RiskAnalysisService analysisService;
     private final ParentRiskAnalysisQueryService queryService;
     private final UserRepository users;
+
+    @PostMapping("/complaints/mask-preview")
+    @Operation(summary = "작성 중인 문의의 개인정보 마스킹 미리보기",
+            description = "선택한 자녀와 담당 교사 또는 본인 문의를 기준으로 제목과 내용의 개인정보를 가립니다. 문의를 저장하거나 AI를 호출하지 않습니다.")
+    public MaskingPreviewResponse previewMasking(
+            @Parameter(hidden = true) Authentication authentication,
+            @Valid @RequestBody MaskingPreviewRequest request) {
+        return maskingService.preview(userId(authentication), request);
+    }
 
     @PostMapping("/complaints/{complaintId}/mask")
     @Operation(summary = "규칙 기반 개인정보 마스킹",
