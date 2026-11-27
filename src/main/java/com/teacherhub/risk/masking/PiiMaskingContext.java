@@ -1,8 +1,6 @@
 package com.teacherhub.risk.masking;
 
 import com.teacherhub.complaint.entity.Complaint;
-import com.teacherhub.user.entity.Student;
-import com.teacherhub.user.entity.Teacher;
 
 import java.util.List;
 import java.util.Objects;
@@ -53,10 +51,8 @@ public record PiiMaskingContext(
         if (complaint == null) {
             return empty();
         }
-        return from(complaint.getStudent(), complaint.getTeacher());
-    }
-
-    static PiiMaskingContext from(Student student, Teacher teacher) {
+        var student = complaint.getStudent();
+        var teacher = complaint.getTeacher();
         return new PiiMaskingContext(
                 student == null ? List.of() : nullableValue(student.getName()),
                 teacher == null

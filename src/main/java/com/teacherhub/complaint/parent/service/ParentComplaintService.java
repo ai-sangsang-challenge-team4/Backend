@@ -75,20 +75,49 @@ public class ParentComplaintService {
             ParentComplaintCreateRequest request
     ) {
 
-        DraftRecipient recipient = findDraftRecipient(userId, request.studentId(), request.teacherId());
+        // 작성할 때는 studentId가 반드시 필요
+        // 로그인한 User와 연결된 Parent 조회
+        Parent parent = parentRepository.findByUserId(userId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "학부모 정보를 찾을 수 없습니다."
+                        )
+                );
+
+
+        // 학생 조회
+        Student student = studentRepository.findById(request.studentId())
+                .orElseThrow(() -> new StudentNotFoundException("학생 정보를 찾을 수 없습니다."));
+
+
+        // 해당 학생이 로그인한 학부모의 자녀인지 확인
+        boolean isMyChild =
+                parentStudentRepository.existsByParentAndStudent(
+                        parent,
+                        student
+                );
+
+        if (!isMyChild) {
+            throw new IllegalArgumentException(
+                    "해당 학부모와 연결된 학생이 아닙니다."
+            );
+        }
+
+        Teacher teacher = findAvailableTeacher(student, request.teacherId());
+
 
         // Complaint 생성
         Complaint complaint = new Complaint(
-                recipient.parent(),
-                recipient.student(),
-                recipient.teacher(),
+                parent,
+                student,
+                teacher,
                 request.title().trim(),
                 request.content()
         );
 
         complaintRepository.save(complaint);
         eventRepository.save(ComplaintEvent.statusChanged(
-                complaint, recipient.parent().getUser(), null, ComplaintStatus.DRAFT));
+                complaint, parent.getUser(), null, ComplaintStatus.DRAFT));
 
         return ParentComplaintStateResponse.builder()
                 .complaintId(complaint.getId())
@@ -97,20 +126,6 @@ public class ParentComplaintService {
                 .build();
     }
 
-
-    public DraftRecipient findDraftRecipient(Long userId, Long studentId, Long teacherId) {
-        Parent parent = parentRepository.findByUserId(userId)
-                .orElseThrow(() -> new IllegalArgumentException("학부모 정보를 찾을 수 없습니다."));
-        Student student = studentRepository.findById(studentId)
-                .orElseThrow(() -> new StudentNotFoundException("학생 정보를 찾을 수 없습니다."));
-        if (!parentStudentRepository.existsByParentAndStudent(parent, student)) {
-            throw new IllegalArgumentException("해당 학부모와 연결된 학생이 아닙니다.");
-        }
-        return new DraftRecipient(parent, student, findAvailableTeacher(student, teacherId));
-    }
-
-    public record DraftRecipient(Parent parent, Student student, Teacher teacher) {
-    }
 
     public ParentComplaintStateResponse findStatus(Long userId, Long complaintId) {
         Complaint complaint = complaintRepository.findById(complaintId)
