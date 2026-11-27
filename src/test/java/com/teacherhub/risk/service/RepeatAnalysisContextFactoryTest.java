@@ -8,6 +8,8 @@ import com.teacherhub.complaint.enums.MessageType;
 import com.teacherhub.complaint.enums.WaitingFor;
 import com.teacherhub.complaint.repository.ComplaintMessageRepository;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.masking.PiiMaskingContext;
+import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -35,6 +37,8 @@ class RepeatAnalysisContextFactoryTest {
 
     private final ComplaintMessageRepository messages = mock(ComplaintMessageRepository.class);
     private final PiiMaskingService masking = mock(PiiMaskingService.class);
+    private final ComplaintPiiMaskingContextFactory maskingContextFactory =
+            mock(ComplaintPiiMaskingContextFactory.class);
 
     @Test
     void sendsMaskedHistoryInChronologicalOrderWithServerCalculatedState() {
@@ -191,9 +195,11 @@ class RepeatAnalysisContextFactoryTest {
             int maxMessages,
             int maxCharacters
     ) {
+        when(maskingContextFactory.create(any())).thenReturn(PiiMaskingContext.empty());
         return new RepeatAnalysisContextFactory(
                 messages,
                 masking,
+                maskingContextFactory,
                 windowDays,
                 repeatThreshold,
                 maxMessages,

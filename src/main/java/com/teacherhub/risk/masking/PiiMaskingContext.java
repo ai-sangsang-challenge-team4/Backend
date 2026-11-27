@@ -6,19 +6,25 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
 
+// 마스킹에 사용되는 개인정보 컨텍스트
 public record PiiMaskingContext(
         List<String> studentNames,
         List<String> teacherNames,
         List<String> studentIdentifiers,
         List<String> teacherIdentifiers,
-        List<String> additionalNames
+        List<String> additionalNames,
+        List<String> thirdPartyStudentNames
 ) {
     public PiiMaskingContext {
-        studentNames = normalize(studentNames, 2);
+        List<String> normalizedStudentNames = normalize(studentNames, 2);
+        studentNames = normalizedStudentNames;
         teacherNames = normalize(teacherNames, 2);
         studentIdentifiers = normalize(studentIdentifiers, 1);
         teacherIdentifiers = normalize(teacherIdentifiers, 1);
         additionalNames = normalize(additionalNames, 2);
+        thirdPartyStudentNames = normalize(thirdPartyStudentNames, 2).stream()
+                .filter(name -> !normalizedStudentNames.contains(name))
+                .toList();
     }
 
     public PiiMaskingContext(
@@ -32,6 +38,7 @@ public record PiiMaskingContext(
                 teacherNames,
                 studentIdentifiers,
                 teacherIdentifiers,
+                List.of(),
                 List.of()
         );
     }
@@ -72,7 +79,19 @@ public record PiiMaskingContext(
                 teacherNames,
                 studentIdentifiers,
                 teacherIdentifiers,
-                Stream.concat(additionalNames.stream(), newNames.stream()).toList()
+                Stream.concat(additionalNames.stream(), newNames.stream()).toList(),
+                thirdPartyStudentNames
+        );
+    }
+
+    public PiiMaskingContext withThirdPartyStudentNames(List<String> names) {
+        return new PiiMaskingContext(
+                studentNames,
+                teacherNames,
+                studentIdentifiers,
+                teacherIdentifiers,
+                additionalNames,
+                names
         );
     }
 
@@ -80,6 +99,7 @@ public record PiiMaskingContext(
         return value == null ? List.of() : List.of(value);
     }
 
+    // 최소 길이 이상인 값만 남기고, 중복 제거 후 길이 내림차순으로 정렬
     private static List<String> normalize(List<String> values, int minimumLength) {
         if (values == null) {
             return List.of();
@@ -89,7 +109,10 @@ public record PiiMaskingContext(
                 .map(String::trim)
                 .filter(value -> value.length() >= minimumLength)
                 .distinct()
-                .sorted((left, right) -> Integer.compare(right.length(), left.length()))
+                .sorted((left, right) -> {
+                    int lengthOrder = Integer.compare(right.length(), left.length());
+                    return lengthOrder != 0 ? lengthOrder : left.compareTo(right);
+                })
                 .toList();
     }
 }

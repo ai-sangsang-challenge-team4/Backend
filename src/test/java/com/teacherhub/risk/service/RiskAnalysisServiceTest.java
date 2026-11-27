@@ -10,6 +10,10 @@ import com.teacherhub.complaint.repository.ComplaintEventRepository;
 import com.teacherhub.complaint.enums.MessageEventType;
 import com.teacherhub.complaint.exception.ContentVersionConflictException;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.masking.PiiMaskingServiceImpl;
+import com.teacherhub.risk.masking.PiiMaskingContext;
+import com.teacherhub.risk.masking.PiiMaskingResult;
+import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
 import com.teacherhub.risk.analyzer.LlmRiskAnalyzer;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
@@ -24,6 +28,7 @@ import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.enums.RiskAnalysisMode;
 import com.teacherhub.risk.enums.RiskTagCode;
+import com.teacherhub.risk.policy.RiskScorePolicy;
 import com.teacherhub.risk.repository.RiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
@@ -60,6 +65,9 @@ class RiskAnalysisServiceTest {
     private final PiiMaskingService masking =
             mock(PiiMaskingService.class);
 
+    private final ComplaintPiiMaskingContextFactory maskingContextFactory =
+            mock(ComplaintPiiMaskingContextFactory.class);
+
     private final RuleBasedRiskDetector rules =
             mock(RuleBasedRiskDetector.class);
 
@@ -92,6 +100,7 @@ class RiskAnalysisServiceTest {
                     messages,
                     events,
                     masking,
+                    maskingContextFactory,
                     rules,
                     llm,
                     tags,
@@ -130,11 +139,18 @@ class RiskAnalysisServiceTest {
                 );
         when(repository.findDetailById(42L))
                 .thenReturn(Optional.of(complaint));
+        when(maskingContextFactory.create(complaint)).thenReturn(PiiMaskingContext.empty());
+        when(masking.maskReversibly(eq(complaint.getContent()), any()))
+                .thenReturn(reversible(complaint.getContent()));
 
         when(repeatContexts.create(any(), any()))
                 .thenReturn(emptyRepeatContext());
 
         return complaint;
+    }
+
+    private PiiMaskingResult reversible(String content) {
+        return new PiiMaskingServiceImpl().maskReversibly(content, PiiMaskingContext.empty());
     }
 
     private RepeatAnalysisContext emptyRepeatContext() {
@@ -179,8 +195,8 @@ class RiskAnalysisServiceTest {
                                 invocation.getArgument(0)
                 );
 
-        when(masking.mask(eq(complaint.getContent()), any()))
-                .thenReturn("masked");
+        when(masking.maskReversibly(eq(complaint.getContent()), any()))
+                .thenReturn(reversible("masked"));
 
         var ruleResults = List.of(
                 new RiskTagDetectionResult(
@@ -255,7 +271,7 @@ class RiskAnalysisServiceTest {
                 );
 
         verify(masking)
-                .mask(
+                .maskReversibly(
                         eq("original private content"),
                         any()
                 );
@@ -283,6 +299,7 @@ class RiskAnalysisServiceTest {
                 eq(99L),
                 eq("masked"),
                 evaluation.capture(),
+                any(),
                 any()
         );
 
@@ -505,11 +522,11 @@ class RiskAnalysisServiceTest {
                 List.of()
         );
 
-        when(masking.mask(
+        when(masking.maskReversibly(
                 eq(complaint.getContent()),
                 any()
         )).thenReturn(
-                "masked"
+                reversible("masked")
         );
 
         when(llm.analyze(
@@ -548,7 +565,7 @@ class RiskAnalysisServiceTest {
     void reportsInvalidAiResponseSeparatelyWhileSubmissionContinues() {
         Complaint complaint = draft();
         stubRuleOnlyPersistence();
-        when(masking.mask(eq(complaint.getContent()), any())).thenReturn("masked");
+        when(masking.maskReversibly(eq(complaint.getContent()), any())).thenReturn(reversible("masked"));
         when(rules.detect(complaint.getContent())).thenReturn(List.of());
         when(llm.analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class)))
                 .thenThrow(new AiResponseInvalidException("invalid response"));
@@ -568,7 +585,7 @@ class RiskAnalysisServiceTest {
     void retriesMalformedEvidenceCoordinatesThenUsesRuleOnlyFallback() {
         Complaint complaint = draft();
         stubRuleOnlyPersistence();
-        when(masking.mask(eq(complaint.getContent()), any())).thenReturn("masked");
+        when(masking.maskReversibly(eq(complaint.getContent()), any())).thenReturn(reversible("masked"));
         when(rules.detect(complaint.getContent())).thenReturn(List.of());
         com.teacherhub.risk.dto.detection.EvidenceSpan invalidSpan =
                 mock(com.teacherhub.risk.dto.detection.EvidenceSpan.class);
@@ -599,7 +616,7 @@ class RiskAnalysisServiceTest {
     void completesHybridAnalysisWhenSchemaRetrySucceeds() {
         Complaint complaint = draft();
         stubRuleOnlyPersistence();
-        when(masking.mask(eq(complaint.getContent()), any())).thenReturn("masked");
+        when(masking.maskReversibly(eq(complaint.getContent()), any())).thenReturn(reversible("masked"));
         when(rules.detect(complaint.getContent())).thenReturn(List.of());
         when(llm.analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class)))
                 .thenThrow(new AiResponseInvalidException("invalid response"))
@@ -622,7 +639,7 @@ class RiskAnalysisServiceTest {
     void returnsRuleOnlySummaryAfterSchemaRetryAlsoFails() {
         Complaint complaint = draft();
         stubRuleOnlyPersistence();
-        when(masking.mask(eq(complaint.getContent()), any())).thenReturn("masked");
+        when(masking.maskReversibly(eq(complaint.getContent()), any())).thenReturn(reversible("masked"));
         when(rules.detect(complaint.getContent())).thenReturn(List.of());
         when(llm.analyze(eq("masked"), anyList(), any(RepeatAnalysisContext.class)))
                 .thenThrow(new AiResponseInvalidException("invalid response"));
@@ -670,7 +687,7 @@ class RiskAnalysisServiceTest {
     void rejectsSubmissionWhenDeterministicRuleGuardrailFails() {
         Complaint complaint = draft();
 
-        when(masking.mask(eq(complaint.getContent()), any())).thenReturn("masked");
+        when(masking.maskReversibly(eq(complaint.getContent()), any())).thenReturn(reversible("masked"));
         when(rules.detect(complaint.getContent()))
                 .thenThrow(new IllegalStateException("rule configuration failure"));
 
@@ -693,7 +710,7 @@ class RiskAnalysisServiceTest {
     void rejectsSubmissionWithoutSendingOriginalToLlmWhenMaskingFails() {
         Complaint complaint = draft();
 
-        when(masking.mask(
+        when(masking.maskReversibly(
                 eq(complaint.getContent()),
                 any()
         )).thenThrow(
@@ -727,6 +744,23 @@ class RiskAnalysisServiceTest {
                 analyses,
                 never()
         ).save(any());
+    }
+
+    @Test
+    void rejectsAnalysisWhenClassmateMaskingContextLookupFails() {
+        Complaint complaint = draft();
+        when(maskingContextFactory.create(complaint))
+                .thenThrow(new DataAccessResourceFailureException("class roster unavailable"));
+
+        assertThatThrownBy(() -> service.analyze(1L, 42L))
+                .isInstanceOfSatisfying(
+                        RiskAnalysisProcessingException.class,
+                        exception -> assertThat(exception.failureStage()).isEqualTo(
+                                RiskAnalysisProcessingException.FailureStage.PRIVACY_MASKING
+                        )
+                );
+
+        verifyNoInteractions(rules, llm, revisions);
     }
 
     @Test

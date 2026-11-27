@@ -58,6 +58,8 @@ class TeacherResponsePolicyApiTest {
     private final RiskAnalysisRepository riskAnalyses = mock(RiskAnalysisRepository.class);
     private final RiskReviewRepository riskReviews = mock(RiskReviewRepository.class);
     private final PiiMaskingService masking = mock(PiiMaskingService.class);
+    private final com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory maskingContextFactory =
+            mock(com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory.class);
     private final ResponseTemplateAdoptionRepository templateAdoptions =
             mock(ResponseTemplateAdoptionRepository.class);
     private final TeacherResponseService responseService = new TeacherResponseService(
@@ -71,6 +73,7 @@ class TeacherResponsePolicyApiTest {
             riskAnalyses,
             riskReviews,
             masking,
+            maskingContextFactory,
             templateAdoptions,
             Clock.fixed(Instant.parse("2026-11-20T03:00:00Z"), ZoneOffset.UTC)
     );

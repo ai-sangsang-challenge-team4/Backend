@@ -9,6 +9,7 @@ import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import com.teacherhub.risk.dto.llm.RepeatAnalysisContext.HistoryMessage;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.masking.PiiMaskingContext;
+import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
 import com.teacherhub.risk.exception.RiskAnalysisProcessingException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,10 +22,12 @@ import java.util.Collections;
 import java.util.List;
 
 @Component
+// 반복 민원에 대한 계산
 public class RepeatAnalysisContextFactory {
 
     private final ComplaintMessageRepository messageRepository;
     private final PiiMaskingService piiMaskingService;
+    private final ComplaintPiiMaskingContextFactory maskingContextFactory;
     private final int windowDays;
     private final int repeatThreshold;
     private final int maxMessages;
@@ -35,6 +38,7 @@ public class RepeatAnalysisContextFactory {
     public RepeatAnalysisContextFactory(
             ComplaintMessageRepository messageRepository,
             PiiMaskingService piiMaskingService,
+            ComplaintPiiMaskingContextFactory maskingContextFactory,
             @Value("${risk.repeat.window-days:7}") int windowDays,
             @Value("${risk.repeat.threshold:3}") int repeatThreshold,
             @Value("${risk.repeat.max-messages:20}") int maxMessages,
@@ -43,6 +47,7 @@ public class RepeatAnalysisContextFactory {
         this(
                 messageRepository,
                 piiMaskingService,
+                maskingContextFactory,
                 windowDays,
                 repeatThreshold,
                 maxMessages,
@@ -54,6 +59,7 @@ public class RepeatAnalysisContextFactory {
     RepeatAnalysisContextFactory(
             ComplaintMessageRepository messageRepository,
             PiiMaskingService piiMaskingService,
+            ComplaintPiiMaskingContextFactory maskingContextFactory,
             int windowDays,
             int repeatThreshold,
             int maxMessages,
@@ -75,6 +81,7 @@ public class RepeatAnalysisContextFactory {
 
         this.messageRepository = messageRepository;
         this.piiMaskingService = piiMaskingService;
+        this.maskingContextFactory = maskingContextFactory;
         this.windowDays = windowDays;
         this.repeatThreshold = repeatThreshold;
         this.maxMessages = maxMessages;
@@ -105,7 +112,7 @@ public class RepeatAnalysisContextFactory {
 
         List<SelectedMessage> selectedNewestFirst = selectWithinLimits(
                 history,
-                PiiMaskingContext.from(complaint)
+                maskingContextFactory.create(complaint)
         );
         boolean historyTruncated = selectedNewestFirst.size() < history.size()
                 || selectedNewestFirst.stream().anyMatch(SelectedMessage::contentTruncated);

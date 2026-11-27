@@ -30,7 +30,7 @@ import com.teacherhub.risk.enums.RiskReviewStatus;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.entity.EmergencyRiskReviewRequest;
 import com.teacherhub.risk.masking.PiiMaskingService;
-import com.teacherhub.risk.masking.PiiMaskingContext;
+import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
@@ -57,6 +57,7 @@ public class AdminEscalationService {
     private final RiskReviewRepository riskReviewRepository;
     private final EmergencyRiskReviewRequestRepository emergencyReviewRequestRepository;
     private final PiiMaskingService piiMaskingService;
+    private final ComplaintPiiMaskingContextFactory maskingContextFactory;
     private final ComplaintHistoryService complaintHistoryService;
 
     public List<AdminEscalationSummaryResponse> findAll(
@@ -265,7 +266,7 @@ public class AdminEscalationService {
     private String maskedContent(ComplaintMessage message, Complaint complaint) {
         return piiMaskingService.mask(
                 message.getContent(),
-                PiiMaskingContext.from(complaint)
+                maskingContextFactory.create(complaint)
         );
     }
 

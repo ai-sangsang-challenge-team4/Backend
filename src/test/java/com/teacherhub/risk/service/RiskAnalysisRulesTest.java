@@ -9,6 +9,7 @@ import com.teacherhub.risk.dto.llm.LlmAnalysisMetadata;
 import com.teacherhub.risk.dto.llm.LlmRiskAnalysisResult;
 import com.teacherhub.risk.dto.llm.RepeatAnalysisContext;
 import com.teacherhub.risk.dto.llm.SafetyFlags;
+import com.teacherhub.risk.policy.RiskScorePolicy;
 import com.teacherhub.risk.service.RiskEvaluator.FinalRiskTagResponse;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 import com.teacherhub.complaint.entity.Complaint;
@@ -22,6 +23,8 @@ import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.FinalRevision;
 import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.enums.*;
 import com.teacherhub.risk.masking.PiiMaskingServiceImpl;
+import com.teacherhub.risk.masking.PiiMaskingContext;
+import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
 import com.teacherhub.risk.repository.*;
 import com.teacherhub.user.entity.Parent;
 import com.teacherhub.user.entity.User;
@@ -53,12 +56,15 @@ class RiskAnalysisRulesTest {
     private final RiskEvaluator evaluator = new RiskEvaluator(new RiskScorePolicy());
     private final RepeatAnalysisContextFactory repeatContexts = mock(RepeatAnalysisContextFactory.class);
     private final RiskRevisionService revisionService = mock(RiskRevisionService.class);
+    private final ComplaintPiiMaskingContextFactory maskingContextFactory =
+            mock(ComplaintPiiMaskingContextFactory.class);
 
     private final RiskAnalysisService service = new RiskAnalysisService(
             complaints,
             messages,
             events,
             new PiiMaskingServiceImpl(),
+            maskingContextFactory,
             rules,
             llm,
             definitions,
@@ -72,6 +78,7 @@ class RiskAnalysisRulesTest {
 
     @BeforeEach
     void setUp() {
+        when(maskingContextFactory.create(any())).thenReturn(PiiMaskingContext.empty());
         User user = mock(User.class);
         when(user.getId()).thenReturn(1L);
 
@@ -155,6 +162,7 @@ class RiskAnalysisRulesTest {
                 eq(99L),
                 anyString(),
                 captured.capture(),
+                any(),
                 any()
         );
 
@@ -691,7 +699,7 @@ class RiskAnalysisRulesTest {
         assertThat(captured.getValue().getAnalysisMode()).isEqualTo(RiskAnalysisMode.HYBRID);
         assertThat(captured.getValue().getAiRevision()).isNull();
         assertThat(captured.getValue().getRevisionStatus()).isEqualTo(RevisionStatus.PENDING);
-        verify(revisionService).scheduleAfterCommit(eq(99L), anyString(), any(), any());
+        verify(revisionService).scheduleAfterCommit(eq(99L), anyString(), any(), any(), any());
         verify(events, never()).save(argThat(event ->
                 event.getEventType() == MessageEventType.AI_ANALYSIS_RULE_FALLBACK));
     }
@@ -729,7 +737,7 @@ class RiskAnalysisRulesTest {
                         "연락처 [전화번호]"
                 );
 
-        verify(revisionService).scheduleAfterCommit(eq(99L), eq("민원 내용"), eq(result), any());
+        verify(revisionService).scheduleAfterCommit(eq(99L), eq("민원 내용"), eq(result), any(), any());
     }
 
     @Test

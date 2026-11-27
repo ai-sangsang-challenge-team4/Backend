@@ -14,6 +14,8 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
+import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
@@ -31,6 +33,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class TeacherComplaintQueryServiceTest {
@@ -49,10 +52,12 @@ class TeacherComplaintQueryServiceTest {
         ComplaintHistoryService historyService = mock(ComplaintHistoryService.class);
         TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
         BufferedSummaryService bufferedSummaryService = mock(BufferedSummaryService.class);
+        ComplaintPiiMaskingContextFactory maskingContextFactory = mock(ComplaintPiiMaskingContextFactory.class);
+        when(maskingContextFactory.create(any())).thenReturn(PiiMaskingContext.empty());
         TeacherComplaintQueryService service = new TeacherComplaintQueryService(
                 complaints, events, messages, analyses, reviews, emergencyReviews,
                 studentClasses, users, accessPolicy, historyService, supportPolicy,
-                bufferedSummaryService);
+                bufferedSummaryService, maskingContextFactory);
 
         User teacher = mock(User.class);
         User parent = mock(User.class);
@@ -111,6 +116,80 @@ class TeacherComplaintQueryServiceTest {
     }
 
     @Test
+    void keepsConversationReadableWhenMediumRiskMaskingContextCreationFails() {
+        ComplaintRepository complaints = mock(ComplaintRepository.class);
+        ComplaintEventRepository events = mock(ComplaintEventRepository.class);
+        ComplaintMessageRepository messages = mock(ComplaintMessageRepository.class);
+        RiskAnalysisRepository analyses = mock(RiskAnalysisRepository.class);
+        RiskReviewRepository reviews = mock(RiskReviewRepository.class);
+        EmergencyRiskReviewRequestRepository emergencyReviews = mock(EmergencyRiskReviewRequestRepository.class);
+        StudentClassRepository studentClasses = mock(StudentClassRepository.class);
+        UserRepository users = mock(UserRepository.class);
+        ComplaintAccessPolicy accessPolicy = mock(ComplaintAccessPolicy.class);
+        ComplaintHistoryService historyService = mock(ComplaintHistoryService.class);
+        TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
+        BufferedSummaryService bufferedSummaryService = mock(BufferedSummaryService.class);
+        ComplaintPiiMaskingContextFactory maskingContextFactory = mock(ComplaintPiiMaskingContextFactory.class);
+        TeacherComplaintQueryService service = new TeacherComplaintQueryService(
+                complaints, events, messages, analyses, reviews, emergencyReviews,
+                studentClasses, users, accessPolicy, historyService, supportPolicy,
+                bufferedSummaryService, maskingContextFactory);
+
+        User teacher = mock(User.class);
+        User parent = mock(User.class);
+        Complaint complaint = mock(Complaint.class);
+        ComplaintMessage message = mock(ComplaintMessage.class);
+        RiskAnalysis analysis = mock(RiskAnalysis.class);
+        ComplaintEvent submitted = mock(ComplaintEvent.class);
+        when(users.findById(7L)).thenReturn(Optional.of(teacher));
+        when(complaints.findDetailById(42L)).thenReturn(Optional.of(complaint));
+        when(complaint.getId()).thenReturn(42L);
+        when(complaint.getStatus()).thenReturn(ComplaintStatus.OPEN);
+        when(analyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                42L, MessageStatus.DRAFT)).thenReturn(Optional.of(analysis));
+        when(analyses.findByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdAsc(
+                42L, MessageStatus.DRAFT)).thenReturn(List.of(analysis));
+        when(analysis.getId()).thenReturn(100L);
+        when(analysis.getRiskLevel()).thenReturn(RiskLevel.MEDIUM);
+        when(analysis.getMessage()).thenReturn(message);
+        when(reviews.findByRiskAnalysisComplaintIdOrderByReviewedAtAscIdAsc(42L))
+                .thenReturn(List.of());
+        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.empty());
+        when(messages.findFirstByComplaintIdAndTypeAndStatusNotOrderByIdDesc(
+                42L, MessageType.PARENT_INQUIRY, MessageStatus.DRAFT))
+                .thenReturn(Optional.of(message));
+        when(messages.findByComplaintIdAndStatusNotOrderByIdAsc(42L, MessageStatus.DRAFT))
+                .thenReturn(List.of(message));
+        when(events.findFirstByComplaintIdAndEventTypeAndNewStatusOrderByOccurredAtDescIdDesc(
+                42L, com.teacherhub.complaint.enums.MessageEventType.STATUS_CHANGED, ComplaintStatus.OPEN))
+                .thenReturn(Optional.of(submitted));
+        when(submitted.getOccurredAt()).thenReturn(LocalDateTime.of(2026, 10, 29, 10, 0));
+        when(message.getId()).thenReturn(11L);
+        when(message.getType()).thenReturn(MessageType.PARENT_INQUIRY);
+        when(message.getStatus()).thenReturn(MessageStatus.SENT);
+        when(message.getContent()).thenReturn("원문 요청과 사실 정보");
+        when(message.getSender()).thenReturn(parent);
+        when(message.markRead()).thenReturn(true);
+        when(parent.getName()).thenReturn("학부모");
+        when(events.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(maskingContextFactory.create(complaint))
+                .thenThrow(new IllegalStateException("학급 명부 조회 실패"));
+        when(supportPolicy.allowedActions(RiskLevel.MEDIUM)).thenReturn(List.of());
+
+        var response = service.findConversation(7L, 42L);
+
+        assertThat(response.messages()).singleElement().satisfies(item -> {
+            assertThat(item.content()).isEqualTo("완충 요약을 생성하지 못했습니다. 원문 열람 버튼을 사용해주세요.");
+            assertThat(item.summarized()).isFalse();
+            assertThat(item.summaryStatus())
+                    .isEqualTo(com.teacherhub.complaint.teacher.dto.query.TeacherConversationResponse.SummaryStatus.UNAVAILABLE);
+        });
+        verify(events).save(any(ComplaintEvent.class));
+        verifyNoInteractions(bufferedSummaryService);
+    }
+
+    @Test
     void allowsTeacherReadsWhenSubmissionHasNoCompletedAnalysis() {
         ComplaintRepository complaints = mock(ComplaintRepository.class);
         ComplaintEventRepository events = mock(ComplaintEventRepository.class);
@@ -124,10 +203,12 @@ class TeacherComplaintQueryServiceTest {
         ComplaintHistoryService historyService = mock(ComplaintHistoryService.class);
         TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
         BufferedSummaryService bufferedSummaryService = mock(BufferedSummaryService.class);
+        ComplaintPiiMaskingContextFactory maskingContextFactory = mock(ComplaintPiiMaskingContextFactory.class);
+        when(maskingContextFactory.create(any())).thenReturn(PiiMaskingContext.empty());
         TeacherComplaintQueryService service = new TeacherComplaintQueryService(
                 complaints, events, messages, analyses, reviews, emergencyReviews,
                 studentClasses, users, accessPolicy, historyService, supportPolicy,
-                bufferedSummaryService);
+                bufferedSummaryService, maskingContextFactory);
 
         User teacher = mock(User.class);
         Complaint complaint = mock(Complaint.class);
@@ -155,6 +236,72 @@ class TeacherComplaintQueryServiceTest {
 
         assertThat(conversation.allowedActions())
                 .containsExactly(com.teacherhub.complaint.teacher.dto.TeacherAllowedAction.REQUEST_MANUAL_REVIEW);
+        verifyNoInteractions(maskingContextFactory, bufferedSummaryService);
+    }
+
+    @Test
+    void lowRiskConversationDoesNotDependOnRosterLookup() {
+        ComplaintRepository complaints = mock(ComplaintRepository.class);
+        ComplaintEventRepository events = mock(ComplaintEventRepository.class);
+        ComplaintMessageRepository messages = mock(ComplaintMessageRepository.class);
+        RiskAnalysisRepository analyses = mock(RiskAnalysisRepository.class);
+        RiskReviewRepository reviews = mock(RiskReviewRepository.class);
+        EmergencyRiskReviewRequestRepository emergencyReviews = mock(EmergencyRiskReviewRequestRepository.class);
+        StudentClassRepository studentClasses = mock(StudentClassRepository.class);
+        UserRepository users = mock(UserRepository.class);
+        ComplaintAccessPolicy accessPolicy = mock(ComplaintAccessPolicy.class);
+        ComplaintHistoryService historyService = mock(ComplaintHistoryService.class);
+        TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
+        BufferedSummaryService bufferedSummaryService = mock(BufferedSummaryService.class);
+        ComplaintPiiMaskingContextFactory maskingContextFactory = mock(ComplaintPiiMaskingContextFactory.class);
+        TeacherComplaintQueryService service = new TeacherComplaintQueryService(
+                complaints, events, messages, analyses, reviews, emergencyReviews,
+                studentClasses, users, accessPolicy, historyService, supportPolicy,
+                bufferedSummaryService, maskingContextFactory);
+
+        User teacher = mock(User.class);
+        User parent = mock(User.class);
+        Complaint complaint = mock(Complaint.class);
+        ComplaintMessage message = mock(ComplaintMessage.class);
+        RiskAnalysis analysis = mock(RiskAnalysis.class);
+        ComplaintEvent submitted = mock(ComplaintEvent.class);
+        when(users.findById(7L)).thenReturn(Optional.of(teacher));
+        when(complaints.findDetailById(42L)).thenReturn(Optional.of(complaint));
+        when(complaint.getId()).thenReturn(42L);
+        when(complaint.getStatus()).thenReturn(ComplaintStatus.OPEN);
+        when(analyses.findFirstByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdDesc(
+                42L, MessageStatus.DRAFT)).thenReturn(Optional.of(analysis));
+        when(analyses.findByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdAsc(
+                42L, MessageStatus.DRAFT)).thenReturn(List.of(analysis));
+        when(analysis.getId()).thenReturn(100L);
+        when(analysis.getRiskLevel()).thenReturn(RiskLevel.LOW);
+        when(analysis.getMessage()).thenReturn(message);
+        when(reviews.findByRiskAnalysisComplaintIdOrderByReviewedAtAscIdAsc(42L))
+                .thenReturn(List.of());
+        when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
+                .thenReturn(Optional.empty());
+        when(messages.findByComplaintIdAndStatusNotOrderByIdAsc(42L, MessageStatus.DRAFT))
+                .thenReturn(List.of(message));
+        when(message.getId()).thenReturn(11L);
+        when(message.getType()).thenReturn(MessageType.PARENT_INQUIRY);
+        when(message.getStatus()).thenReturn(MessageStatus.SENT);
+        when(message.getContent()).thenReturn("일정 문의입니다.");
+        when(message.getSender()).thenReturn(parent);
+        when(parent.getName()).thenReturn("학부모");
+        when(supportPolicy.allowedActions(RiskLevel.LOW)).thenReturn(List.of());
+        when(events.findFirstByComplaintIdAndEventTypeAndNewStatusOrderByOccurredAtDescIdDesc(
+                42L, com.teacherhub.complaint.enums.MessageEventType.STATUS_CHANGED, ComplaintStatus.OPEN))
+                .thenReturn(Optional.of(submitted));
+        when(submitted.getOccurredAt()).thenReturn(LocalDateTime.of(2026, 10, 29, 10, 0));
+
+        var response = service.findConversation(7L, 42L);
+
+        assertThat(response.messages()).singleElement().satisfies(item -> {
+            assertThat(item.content()).isEqualTo("일정 문의입니다.");
+            assertThat(item.summarized()).isFalse();
+            assertThat(item.summaryStatus()).isNull();
+        });
+        verifyNoInteractions(maskingContextFactory, bufferedSummaryService);
     }
 
 }

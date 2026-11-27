@@ -200,8 +200,14 @@ public class ComplaintFlowIntegrationTest {
 
     @Test
     void masksComplaintIdentityContextBeforeRiskLlmCall() {
+        var schoolClass = studentClassRepository
+                .findTopByStudent_IdOrderBySchoolClass_AcademicYearDesc(student.getId())
+                .orElseThrow()
+                .getSchoolClass();
+        Student thirdPartyStudent = studentRepository.save(new Student("박민수", "20260002"));
+        studentClassRepository.save(new StudentClass(thirdPartyStudent, schoolClass));
         String original = "3학년 2반 홍길동 학생과 김선생 선생님, "
-                + "학번 20260001, 교번 T-2026-001에게 직접 찾아가겠습니다.";
+                + "같은 반 박민수 학생, 학번 20260001, 교번 T-2026-001에게 직접 찾아가겠습니다.";
         Long complaintId = parentComplaintService.createDraft(
                 parentUser.getId(),
                 createRequest(original)
@@ -212,8 +218,14 @@ public class ComplaintFlowIntegrationTest {
         ArgumentCaptor<String> maskedContent = ArgumentCaptor.forClass(String.class);
         verify(llmRiskAnalyzer).analyze(maskedContent.capture(), anyList(), any());
         assertThat(maskedContent.getValue())
-                .contains("[학생정보]", "[교사명]", "[학번]", "[교직원번호]")
-                .doesNotContain("홍길동", "김선생", "20260001", "T-2026-001");
+                .contains(
+                        "[개인정보:STUDENT_NAME:1]",
+                        "[개인정보:TEACHER_NAME:1]",
+                        "[개인정보:THIRD_PARTY_STUDENT_NAME:1]",
+                        "[개인정보:STUDENT_ID:1]",
+                        "[개인정보:TEACHER_ID:1]"
+                )
+                .doesNotContain("홍길동", "김선생", "박민수", "20260001", "T-2026-001");
         assertThat(complaintRepository.findById(complaintId).orElseThrow().getMaskedContent())
                 .isEqualTo(maskedContent.getValue());
     }

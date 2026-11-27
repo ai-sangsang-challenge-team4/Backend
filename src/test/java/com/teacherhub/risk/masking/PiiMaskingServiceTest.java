@@ -78,6 +78,101 @@ class PiiMaskingServiceTest {
     }
 
     @Test
+    void masksThirdPartyStudentNamesFromTheComplaintClass() {
+        PiiMaskingContext context = new PiiMaskingContext(
+                List.of("김서윤"),
+                List.of(),
+                List.of(),
+                List.of()
+        ).withThirdPartyStudentNames(List.of("박민수"));
+
+        assertThat(service.mask("김서윤 학생과 박민수 학생을 확인해 주세요.", context))
+                .isEqualTo("[학생명] 학생과 [제3자 학생명] 학생을 확인해 주세요.");
+    }
+
+    @Test
+    void masksStudentGivenNameAndRestoresTheFormUsedInTheOriginal() {
+        PiiMaskingContext context = new PiiMaskingContext(
+                List.of("이도윤"),
+                List.of(),
+                List.of(),
+                List.of()
+        );
+
+        assertThat(service.mask("이도윤 학생과 도윤 학생", context))
+                .isEqualTo("[학생명] 학생과 [학생명] 학생");
+
+        PiiMaskingResult reversible = service.maskReversibly("도윤 학생을 확인해 주세요.", context);
+        assertThat(reversible.maskedContent()).isEqualTo("[개인정보:STUDENT_NAME:1] 학생을 확인해 주세요.");
+        assertThat(reversible.restore(reversible.maskedContent())).isEqualTo("도윤 학생을 확인해 주세요.");
+    }
+
+    @Test
+    void reversibleMaskingDoesNotReplaceNamesOrIdentifiersInsideEmittedTokens() {
+        PiiMaskingContext context = new PiiMaskingContext(
+                List.of("김인정"),
+                List.of(),
+                List.of("1"),
+                List.of()
+        );
+        String original = "김인정 학생과 인정 학생, 2반 박민수 학생, 학번 1";
+
+        PiiMaskingResult result = service.maskReversibly(original, context);
+
+        assertThat(result.maskedContent())
+                .contains(
+                        "[개인정보:STUDENT_NAME:1]",
+                        "[개인정보:STUDENT_NAME:2]",
+                        "[개인정보:CLASS_STUDENT:1]",
+                        "[개인정보:STUDENT_ID:1]"
+                )
+                .doesNotContain("[개인정보:STUDENT_NAME:[개인정보");
+        assertThat(result.restore(result.maskedContent())).isEqualTo(original);
+    }
+
+    @Test
+    void reversiblyMasksAndRestoresOnlyOriginalPersonalInformation() {
+        PiiMaskingContext context = new PiiMaskingContext(
+                List.of("김서윤"),
+                List.of("김민지"),
+                List.of("S-2026-001"),
+                List.of("T-2026-001")
+        ).withThirdPartyStudentNames(List.of("박민수"));
+        String original = "김서윤 학생과 박민수 학생을 김민지 선생님께 알립니다. "
+                + "010-3143-1234, parent@example.com, 900101-1234567, "
+                + "S-2026-001, T-2026-001";
+
+        PiiMaskingResult result = service.maskReversibly(original, context);
+
+        assertThat(result.maskedContent())
+                .contains(
+                        "[개인정보:STUDENT_NAME:1]",
+                        "[개인정보:THIRD_PARTY_STUDENT_NAME:1]",
+                        "[개인정보:TEACHER_NAME:1]",
+                        "[개인정보:PHONE:1]",
+                        "[개인정보:EMAIL:1]",
+                        "[개인정보:RESIDENT_ID:1]",
+                        "[개인정보:STUDENT_ID:1]",
+                        "[개인정보:TEACHER_ID:1]"
+                )
+                .doesNotContain(
+                        "김서윤", "박민수", "김민지", "010-3143-1234",
+                        "parent@example.com", "900101-1234567", "S-2026-001", "T-2026-001"
+                );
+        assertThat(result.restore(result.maskedContent())).isEqualTo(original);
+        assertThat(result.mask("박민수 학생의 연락처는 010-3143-1234입니다."))
+                .isEqualTo("[개인정보:THIRD_PARTY_STUDENT_NAME:1] 학생의 연락처는 [개인정보:PHONE:1]입니다.");
+        assertThatThrownBy(() -> result.restore("[개인정보:PHONE:2]"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> result.restore("[전화번호]"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> result.restore("[개인정보:PHONE:1] [개인정보:PHONE:1]"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> result.restore("[개인정보:PHONE:1"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void rejectsEmptyText() {
         assertThatThrownBy(() -> service.mask(null)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> service.mask("  ")).isInstanceOf(IllegalArgumentException.class);

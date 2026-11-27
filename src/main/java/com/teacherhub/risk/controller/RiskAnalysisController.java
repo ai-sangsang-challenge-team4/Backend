@@ -45,7 +45,7 @@ public class RiskAnalysisController {
 
     @PostMapping("/complaints/{complaintId}/mask")
     @Operation(summary = "규칙 기반 개인정보 마스킹",
-            description = "저장된 원문에서 전화번호·이메일·주민등록번호 형태를 마스킹합니다. 이름·주소의 완전한 비식별화는 지원하지 않습니다.",
+            description = "저장된 원문에서 전화번호·이메일·주민등록번호와 민원 관계자 및 같은 최신 학급 학생의 이름을 마스킹합니다. 자유 형식 주소의 완전한 비식별화는 지원하지 않습니다.",
             responses = {
                     @ApiResponse(responseCode = "200", description = "마스킹 성공", useReturnTypeSchema = true),
                     @ApiResponse(responseCode = "400", description = "마스킹할 내용이 없음",

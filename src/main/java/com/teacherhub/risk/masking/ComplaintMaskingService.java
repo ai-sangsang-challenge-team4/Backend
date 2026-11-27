@@ -19,6 +19,7 @@ public class ComplaintMaskingService {
 
     private final ComplaintRepository complaints;
     private final PiiMaskingService masking;
+    private final ComplaintPiiMaskingContextFactory maskingContextFactory;
 
     @Transactional
     public MaskingResponse mask(Long userId, Long complaintId) {
@@ -38,7 +39,7 @@ public class ComplaintMaskingService {
 
         String masked = masking.mask(
                 complaint.getContent(),
-                PiiMaskingContext.from(complaint)
+                maskingContextFactory.create(complaint)
         );
         complaint.updateMaskedContent(masked);
 

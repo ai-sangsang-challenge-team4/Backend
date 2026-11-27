@@ -7,6 +7,8 @@ import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RevisionResult;
 import com.teacherhub.risk.analyzer.ComplaintRevisionGenerator.RiskEvaluation;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.masking.PiiMaskingContext;
+import com.teacherhub.risk.masking.PiiMaskingResult;
+import com.teacherhub.risk.masking.PiiMaskingServiceImpl;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -21,6 +23,8 @@ class RiskRevisionServiceTest {
     private final RiskRevisionService service = new RiskRevisionService(generator, persistence, Runnable::run);
     private final RiskEvaluation evaluation = new RiskEvaluation(42L, List.of(), 0, RiskLevel.LOW);
     private final PiiMaskingContext maskingContext = PiiMaskingContext.empty();
+    private final PiiMaskingResult reversibleMasking =
+            new PiiMaskingServiceImpl().maskReversibly("masked", maskingContext);
 
     @Test
     void storesRevisionWithoutChangingCompletedRiskAnalysis() {
@@ -30,9 +34,9 @@ class RiskRevisionServiceTest {
         );
         when(generator.generate("masked", evaluation)).thenReturn(revision);
 
-        service.schedule(10L, "masked", evaluation, maskingContext);
+        service.schedule(10L, "masked", evaluation, maskingContext, reversibleMasking);
 
-        verify(persistence).complete(10L, revision, maskingContext);
+        verify(persistence).complete(10L, revision, maskingContext, reversibleMasking);
         verify(persistence, never()).markUnavailable(anyLong());
     }
 
@@ -41,9 +45,9 @@ class RiskRevisionServiceTest {
         when(generator.generate("masked", evaluation))
                 .thenThrow(new AiServiceUnavailableException("timeout"));
 
-        service.schedule(10L, "masked", evaluation, maskingContext);
+        service.schedule(10L, "masked", evaluation, maskingContext, reversibleMasking);
 
         verify(persistence).markUnavailable(10L);
-        verify(persistence, never()).complete(anyLong(), any(), any());
+        verify(persistence, never()).complete(anyLong(), any(), any(), any());
     }
 }
