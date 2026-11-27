@@ -82,4 +82,22 @@ class RiskRevisionPersistenceServiceTest {
                 anyList()
         );
     }
+
+    @Test
+    void rejectsIncompletePersonalInformationTokenBeforeSavingRevision() {
+        PiiMaskingResult reversible = masking.maskReversibly("김서윤 학생을 확인해 주세요.", context);
+        RevisionResult revision = new RevisionResult(
+                new FinalRevision("수정 이유", "[개인정보:STUDENT_NAME:1 학생을 확인해 주세요."),
+                List.of()
+        );
+        when(analyses.findForUpdate(10L)).thenReturn(Optional.of(analysis));
+
+        assertThatThrownBy(() -> service.complete(10L, revision, context, reversible))
+                .isInstanceOf(AiResponseInvalidException.class);
+        verify(analysis, never()).completeRevision(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                anyList()
+        );
+    }
 }

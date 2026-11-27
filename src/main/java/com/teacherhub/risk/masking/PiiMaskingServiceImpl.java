@@ -6,6 +6,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.ToIntFunction;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -60,7 +62,7 @@ public class PiiMaskingServiceImpl implements PiiMaskingService {
         }
         masker.replacePattern(CLASS_STUDENT, "CLASS_STUDENT");
 
-        ensureNoSupportedPiiRemains(masker.value(), safeContext);
+        ensureNoSupportedPiiRemains(masker.valueWithoutTokens(), safeContext);
         return masker.result();
     }
 
@@ -227,21 +229,92 @@ public class PiiMaskingServiceImpl implements PiiMaskingService {
         }
 
         private void replaceLiteral(String original, String category) {
-            int occurrences = countOccurrences(value, original);
+            Set<String> protectedTokens = Set.copyOf(restorations.keySet());
+            int occurrences = countOutsideTokens(
+                    protectedTokens,
+                    content -> countOccurrences(content, original)
+            );
             if (occurrences == 0) {
                 return;
             }
-            value = value.replace(original, token(category, original, occurrences));
+            String replacement = token(category, original, occurrences);
+            value = replaceOutsideTokens(
+                    protectedTokens,
+                    content -> content.replace(original, replacement)
+            );
         }
 
         private void replaceWholeTokens(List<String> originals, String category) {
             for (String original : originals) {
-                int occurrences = wholeTokenOccurrences(value, original);
+                Set<String> protectedTokens = Set.copyOf(restorations.keySet());
+                int occurrences = countOutsideTokens(
+                        protectedTokens,
+                        content -> wholeTokenOccurrences(content, original)
+                );
                 if (occurrences == 0) {
                     continue;
                 }
-                value = replaceWholeToken(value, original, token(category, original, occurrences));
+                String replacement = token(category, original, occurrences);
+                value = replaceOutsideTokens(
+                        protectedTokens,
+                        content -> replaceWholeToken(content, original, replacement)
+                );
             }
+        }
+
+        private int countOutsideTokens(Set<String> protectedTokens, ToIntFunction<String> counter) {
+            return transformOutsideTokens(
+                    protectedTokens,
+                    content -> content,
+                    counter
+            ).count();
+        }
+
+        private String replaceOutsideTokens(
+                Set<String> protectedTokens,
+                UnaryOperator<String> replacement
+        ) {
+            return transformOutsideTokens(protectedTokens, replacement, content -> 0).value();
+        }
+
+        private TransformedValue transformOutsideTokens(
+                Set<String> protectedTokens,
+                UnaryOperator<String> replacement,
+                ToIntFunction<String> counter
+        ) {
+            if (protectedTokens.isEmpty()) {
+                return new TransformedValue(replacement.apply(value), counter.applyAsInt(value));
+            }
+
+            StringBuilder transformed = new StringBuilder(value.length());
+            int count = 0;
+            int cursor = 0;
+            while (cursor < value.length()) {
+                TokenPosition nextToken = nextProtectedToken(protectedTokens, cursor);
+                if (nextToken == null) {
+                    String remainder = value.substring(cursor);
+                    transformed.append(replacement.apply(remainder));
+                    count += counter.applyAsInt(remainder);
+                    break;
+                }
+                String unprotected = value.substring(cursor, nextToken.start());
+                transformed.append(replacement.apply(unprotected));
+                transformed.append(nextToken.token());
+                count += counter.applyAsInt(unprotected);
+                cursor = nextToken.start() + nextToken.token().length();
+            }
+            return new TransformedValue(transformed.toString(), count);
+        }
+
+        private TokenPosition nextProtectedToken(Set<String> protectedTokens, int cursor) {
+            TokenPosition next = null;
+            for (String token : protectedTokens) {
+                int position = value.indexOf(token, cursor);
+                if (position >= 0 && (next == null || position < next.start())) {
+                    next = new TokenPosition(position, token);
+                }
+            }
+            return next;
         }
 
         private String token(String category, String original, int occurrences) {
@@ -292,6 +365,20 @@ public class PiiMaskingServiceImpl implements PiiMaskingService {
 
         private PiiMaskingResult result() {
             return new PiiMaskingResult(value, restorations);
+        }
+
+        private String valueWithoutTokens() {
+            String withoutTokens = value;
+            for (String token : restorations.keySet()) {
+                withoutTokens = withoutTokens.replace(token, "");
+            }
+            return withoutTokens;
+        }
+
+        private record TransformedValue(String value, int count) {
+        }
+
+        private record TokenPosition(int start, String token) {
         }
     }
 }

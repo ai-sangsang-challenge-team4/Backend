@@ -98,8 +98,7 @@ public class TeacherComplaintQueryService {
                 .findByComplaintIdAndStatusNotOrderByIdAsc(complaintId, MessageStatus.DRAFT);
         Map<Long, RiskAnalysis> latestAnalysisByMessage = latestAnalysisByMessage(complaintId);
         Map<Long, BufferedSummary> bufferedSummaries = createBufferedSummaries(
-                complaintId,
-                maskingContextFactory.create(complaint),
+                complaint,
                 messages,
                 latestAnalysisByMessage,
                 latestReviewByAnalysis
@@ -121,14 +120,12 @@ public class TeacherComplaintQueryService {
     }
 
     private Map<Long, BufferedSummary> createBufferedSummaries(
-            Long complaintId,
-            PiiMaskingContext maskingContext,
+            Complaint complaint,
             List<ComplaintMessage> messages,
             Map<Long, RiskAnalysis> latestAnalysisByMessage,
             Map<Long, RiskReview> latestReviewByAnalysis
     ) {
-        Map<Long, BufferedSummary> summaries = new HashMap<>();
-        messages.stream()
+        List<ComplaintMessage> messagesRequiringSummary = messages.stream()
                 .filter(message -> message.getType() == MessageType.PARENT_INQUIRY)
                 .filter(message -> latestAnalysisByMessage.get(message.getId()) != null)
                 .filter(message -> {
@@ -138,10 +135,26 @@ public class TeacherComplaintQueryService {
                             latestReviewByAnalysis.get(analysis.getId())
                     ));
                 })
+                .toList();
+        if (messagesRequiringSummary.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, BufferedSummary> summaries = new HashMap<>();
+        PiiMaskingContext maskingContext;
+        try {
+            maskingContext = maskingContextFactory.create(complaint);
+        } catch (RuntimeException exception) {
+            messagesRequiringSummary.forEach(message ->
+                    summaries.put(message.getId(), BufferedSummary.unavailable()));
+            return summaries;
+        }
+
+        messagesRequiringSummary
                 .forEach(message -> {
                     RiskAnalysis analysis = latestAnalysisByMessage.get(message.getId());
                     BufferedSummary summary = bufferedSummaryService.findOrGenerate(
-                                    complaintId,
+                                    complaint.getId(),
                                     message.getId(),
                                     analysis,
                                     message.getContent(),

@@ -61,6 +61,9 @@ public final class PiiMaskingResult {
                 throw new IllegalArgumentException("개인정보 토큰이 원문보다 많이 반복되었습니다.");
             }
         }
+        if (PII_TOKEN.matcher(generatedContent).replaceAll("").contains("[개인정보:")) {
+            throw new IllegalArgumentException("완전하지 않은 개인정보 토큰이 포함되어 있습니다.");
+        }
 
         String restored = generatedContent;
         for (Map.Entry<String, Restoration> entry : restorations.entrySet()) {

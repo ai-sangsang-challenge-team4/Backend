@@ -21,6 +21,7 @@ import com.teacherhub.risk.entity.EmergencyRiskReviewRequest;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
@@ -44,6 +45,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -351,6 +353,7 @@ class TeacherResponseServiceTest {
         Complaint complaint = editableComplaint();
         RiskAnalysis analysis = mock(RiskAnalysis.class);
         ComplaintMessage message = mock(ComplaintMessage.class);
+        PiiMaskingContext maskingContext = PiiMaskingContext.empty();
         when(users.findById(7L)).thenReturn(Optional.of(teacher));
         when(complaints.findForUpdate(42L)).thenReturn(Optional.of(complaint));
         when(emergencyReviews.findFirstByComplaintIdOrderByRequestedAtDescIdDesc(42L))
@@ -363,6 +366,7 @@ class TeacherResponseServiceTest {
                 .thenReturn(Optional.empty());
         when(messages.findByComplaintIdAndStatusNotOrderByIdAsc(42L, MessageStatus.DRAFT))
                 .thenReturn(java.util.List.of(message));
+        when(maskingContextFactory.create(complaint)).thenReturn(maskingContext);
         when(message.getType()).thenReturn(MessageType.PARENT_INQUIRY);
         when(message.getContent()).thenReturn("연락처 010-1234-5678");
         when(masking.mask(eq("연락처 010-1234-5678"), any())).thenReturn("연락처 [전화번호]");
@@ -379,6 +383,8 @@ class TeacherResponseServiceTest {
 
         verify(contentProvider).createResponseDraft("PARENT_INQUIRY: 연락처 [전화번호]");
         verify(contentProvider, never()).createResponseDraft(contains("010-1234-5678"));
+        verify(maskingContextFactory).create(complaint);
+        verify(masking, times(2)).mask(any(), same(maskingContext));
         assertThat(response.legalCitationWarning()).isTrue();
     }
 

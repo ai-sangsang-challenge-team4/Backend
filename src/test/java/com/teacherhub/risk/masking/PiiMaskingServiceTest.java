@@ -108,6 +108,29 @@ class PiiMaskingServiceTest {
     }
 
     @Test
+    void reversibleMaskingDoesNotReplaceNamesOrIdentifiersInsideEmittedTokens() {
+        PiiMaskingContext context = new PiiMaskingContext(
+                List.of("김인정"),
+                List.of(),
+                List.of("1"),
+                List.of()
+        );
+        String original = "김인정 학생과 인정 학생, 2반 박민수 학생, 학번 1";
+
+        PiiMaskingResult result = service.maskReversibly(original, context);
+
+        assertThat(result.maskedContent())
+                .contains(
+                        "[개인정보:STUDENT_NAME:1]",
+                        "[개인정보:STUDENT_NAME:2]",
+                        "[개인정보:CLASS_STUDENT:1]",
+                        "[개인정보:STUDENT_ID:1]"
+                )
+                .doesNotContain("[개인정보:STUDENT_NAME:[개인정보");
+        assertThat(result.restore(result.maskedContent())).isEqualTo(original);
+    }
+
+    @Test
     void reversiblyMasksAndRestoresOnlyOriginalPersonalInformation() {
         PiiMaskingContext context = new PiiMaskingContext(
                 List.of("김서윤"),
@@ -144,6 +167,8 @@ class PiiMaskingServiceTest {
         assertThatThrownBy(() -> result.restore("[전화번호]"))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> result.restore("[개인정보:PHONE:1] [개인정보:PHONE:1]"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> result.restore("[개인정보:PHONE:1"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

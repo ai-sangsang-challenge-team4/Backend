@@ -26,6 +26,7 @@ import com.teacherhub.complaint.template.repository.ResponseTemplateAdoptionRepo
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
+import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
@@ -65,12 +66,15 @@ public class TeacherResponseService {
         User user = findUser(userId);
         Complaint complaint = findEditableComplaintForUpdate(user, complaintId, "AI 초안 생성");
         ensureAiDraftAllowed(complaint, user);
-        var generated = supportContentProvider.createResponseDraft(conversationContext(complaint));
+        PiiMaskingContext maskingContext = createMaskingContext(complaint);
+        var generated = supportContentProvider.createResponseDraft(
+                conversationContext(complaint, maskingContext)
+        );
         if (generated == null) {
             throw new AiResponseInvalidException("AI 답변 초안이 비어 있습니다.");
         }
         var safeGenerated = new TeacherSupportContentProvider.GeneratedResponseDraft(
-                maskForAi(generated.content(), complaint),
+                maskForAi(generated.content(), maskingContext),
                 generated.modelName(),
                 generated.legalCitationWarning()
         );
@@ -331,20 +335,25 @@ public class TeacherResponseService {
                 .orElseThrow(() -> new UnauthorizedException("사용자를 찾을 수 없습니다."));
     }
 
-    private String conversationContext(Complaint complaint) {
+    private String conversationContext(Complaint complaint, PiiMaskingContext maskingContext) {
         return messageRepository
                 .findByComplaintIdAndStatusNotOrderByIdAsc(complaint.getId(), MessageStatus.DRAFT)
                 .stream()
-                .map(message -> message.getType() + ": " + maskForAi(message.getContent(), complaint))
+                .map(message -> message.getType() + ": " + maskForAi(message.getContent(), maskingContext))
                 .collect(Collectors.joining("\n\n"));
     }
 
-    private String maskForAi(String content, Complaint complaint) {
+    private PiiMaskingContext createMaskingContext(Complaint complaint) {
         try {
-            String masked = piiMaskingService.mask(
-                    content,
-                    maskingContextFactory.create(complaint)
-            );
+            return maskingContextFactory.create(complaint);
+        } catch (RuntimeException exception) {
+            throw new InternalSystemException("개인정보 보호 처리 중 오류가 발생했습니다.", exception);
+        }
+    }
+
+    private String maskForAi(String content, PiiMaskingContext maskingContext) {
+        try {
+            String masked = piiMaskingService.mask(content, maskingContext);
             if (masked == null) {
                 throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
             }
