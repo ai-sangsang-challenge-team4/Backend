@@ -34,6 +34,7 @@ import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
@@ -76,6 +77,7 @@ public class MediationPackageService {
     private final ComplaintAccessPolicy complaintAccessPolicy;
     private final ComplaintHistoryService complaintHistoryService;
     private final PiiMaskingService piiMaskingService;
+    private final ComplaintPiiMaskingContextFactory maskingContextFactory;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -164,7 +166,7 @@ public class MediationPackageService {
         Long complaintId = complaint.getId();
         List<ComplaintMessage> messages = messageRepository
                 .findByComplaintIdAndStatusNotOrderByIdAsc(complaintId, MessageStatus.DRAFT);
-        PiiMaskingContext maskingContext = PiiMaskingContext.from(complaint)
+        PiiMaskingContext maskingContext = maskingContextFactory.create(complaint)
                 .withAdditionalNames(packageActorNames(complaint, messages));
         List<RiskAnalysis> analyses = riskAnalysisRepository
                 .findByComplaintIdAndCompletedTrueAndMessage_StatusNotOrderByIdAsc(

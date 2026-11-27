@@ -27,6 +27,7 @@ import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.entity.RiskReview;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.masking.PiiMaskingContext;
+import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
@@ -60,6 +61,7 @@ public class TeacherComplaintQueryService {
     private final ComplaintHistoryService complaintHistoryService;
     private final TeacherSupportPolicy supportPolicy;
     private final BufferedSummaryService bufferedSummaryService;
+    private final ComplaintPiiMaskingContextFactory maskingContextFactory;
 
     public TeacherComplaintDetailResponse findDetail(Long userId, Long complaintId) {
         User user = findUser(userId);
@@ -97,7 +99,7 @@ public class TeacherComplaintQueryService {
         Map<Long, RiskAnalysis> latestAnalysisByMessage = latestAnalysisByMessage(complaintId);
         Map<Long, BufferedSummary> bufferedSummaries = createBufferedSummaries(
                 complaintId,
-                PiiMaskingContext.from(complaint),
+                maskingContextFactory.create(complaint),
                 messages,
                 latestAnalysisByMessage,
                 latestReviewByAnalysis

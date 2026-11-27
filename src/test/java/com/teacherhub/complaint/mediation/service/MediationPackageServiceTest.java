@@ -19,6 +19,7 @@ import com.teacherhub.complaint.teacher.dto.query.TeacherHistoryResponse;
 import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.masking.PiiMaskingServiceImpl;
+import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
 import com.teacherhub.risk.repository.ComplaintRiskTagRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
@@ -61,6 +62,7 @@ class MediationPackageServiceTest {
     @Mock ComplaintAccessPolicy complaintAccessPolicy;
     @Mock ComplaintHistoryService complaintHistoryService;
     @Mock PiiMaskingService piiMaskingService;
+    @Mock ComplaintPiiMaskingContextFactory maskingContextFactory;
 
     private final ObjectMapper objectMapper = JsonMapper.builder().findAndAddModules().build();
     private MediationPackageService service;
@@ -83,6 +85,7 @@ class MediationPackageServiceTest {
                 complaintAccessPolicy,
                 complaintHistoryService,
                 piiMaskingService,
+                maskingContextFactory,
                 objectMapper
         );
         teacher = org.mockito.Mockito.mock(User.class);
@@ -91,6 +94,9 @@ class MediationPackageServiceTest {
         parent = org.mockito.Mockito.mock(User.class);
 
         when(userRepository.findById(7L)).thenReturn(Optional.of(teacher));
+        org.mockito.Mockito.lenient()
+                .when(maskingContextFactory.create(any()))
+                .thenReturn(PiiMaskingContext.empty());
         when(complaintRepository.findForUpdate(42L)).thenReturn(Optional.of(complaint));
         when(complaint.getStatus()).thenReturn(ComplaintStatus.OPEN);
     }
@@ -224,6 +230,7 @@ class MediationPackageServiceTest {
                 complaintAccessPolicy,
                 complaintHistoryService,
                 new PiiMaskingServiceImpl(),
+                maskingContextFactory,
                 objectMapper
         );
 

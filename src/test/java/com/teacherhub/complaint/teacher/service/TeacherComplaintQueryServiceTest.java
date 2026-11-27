@@ -14,6 +14,8 @@ import com.teacherhub.complaint.repository.ComplaintRepository;
 import com.teacherhub.complaint.teacher.policy.TeacherSupportPolicy;
 import com.teacherhub.risk.entity.RiskAnalysis;
 import com.teacherhub.risk.enums.RiskLevel;
+import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
+import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
@@ -49,10 +51,12 @@ class TeacherComplaintQueryServiceTest {
         ComplaintHistoryService historyService = mock(ComplaintHistoryService.class);
         TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
         BufferedSummaryService bufferedSummaryService = mock(BufferedSummaryService.class);
+        ComplaintPiiMaskingContextFactory maskingContextFactory = mock(ComplaintPiiMaskingContextFactory.class);
+        when(maskingContextFactory.create(any())).thenReturn(PiiMaskingContext.empty());
         TeacherComplaintQueryService service = new TeacherComplaintQueryService(
                 complaints, events, messages, analyses, reviews, emergencyReviews,
                 studentClasses, users, accessPolicy, historyService, supportPolicy,
-                bufferedSummaryService);
+                bufferedSummaryService, maskingContextFactory);
 
         User teacher = mock(User.class);
         User parent = mock(User.class);
@@ -124,10 +128,12 @@ class TeacherComplaintQueryServiceTest {
         ComplaintHistoryService historyService = mock(ComplaintHistoryService.class);
         TeacherSupportPolicy supportPolicy = mock(TeacherSupportPolicy.class);
         BufferedSummaryService bufferedSummaryService = mock(BufferedSummaryService.class);
+        ComplaintPiiMaskingContextFactory maskingContextFactory = mock(ComplaintPiiMaskingContextFactory.class);
+        when(maskingContextFactory.create(any())).thenReturn(PiiMaskingContext.empty());
         TeacherComplaintQueryService service = new TeacherComplaintQueryService(
                 complaints, events, messages, analyses, reviews, emergencyReviews,
                 studentClasses, users, accessPolicy, historyService, supportPolicy,
-                bufferedSummaryService);
+                bufferedSummaryService, maskingContextFactory);
 
         User teacher = mock(User.class);
         Complaint complaint = mock(Complaint.class);

@@ -3,10 +3,12 @@ package com.teacherhub.risk.service;
 import com.teacherhub.common.exception.InternalSystemException;
 import com.teacherhub.risk.dto.detection.EvidenceSpan;
 import com.teacherhub.risk.dto.detection.RiskTagDetectionResult;
+import com.teacherhub.risk.dto.llm.SafetyFlags;
 import com.teacherhub.risk.entity.RiskTag;
 import com.teacherhub.risk.enums.RiskLevel;
 import com.teacherhub.risk.enums.RiskTagCode;
 import com.teacherhub.risk.enums.RiskTagState;
+import com.teacherhub.risk.policy.RiskScorePolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -62,25 +64,6 @@ public class RiskEvaluator {
                     null,
                     evidenceSpans,
                     reason
-            );
-        }
-
-        public FinalRiskTagResponse(
-                RiskTagCode code,
-                boolean detected,
-                boolean ruleDetected,
-                boolean llmDetected,
-                Double confidence,
-                String evidence
-        ) {
-            this(
-                    code,
-                    detected,
-                    ruleDetected,
-                    llmDetected,
-                    confidence,
-                    evidence,
-                    null
             );
         }
 
@@ -239,6 +222,7 @@ public class RiskEvaluator {
                 .toList();
     }
 
+    // Rule만으로 탐지된 태그를 LLM이 검증하지 않은 경우, LLM은 UNKNOWN으로 간주합니다.
     public List<FinalRiskTagResponse> mergeRuleOnly(
             List<RiskTagDetectionResult> ruleResults
     ) {
@@ -473,8 +457,7 @@ public class RiskEvaluator {
     }
 
     public int applySafetyFlags(
-            int calculatedScore,
-            com.teacherhub.risk.dto.llm.SafetyFlags safetyFlags
+            int calculatedScore, SafetyFlags safetyFlags
     ) {
         return scorePolicy.applySafetyFlags(calculatedScore, safetyFlags);
     }

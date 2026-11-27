@@ -24,8 +24,8 @@ import com.teacherhub.complaint.teacher.dto.reply.TeacherResponseSubmissionRespo
 import com.teacherhub.complaint.teacher.provider.TeacherSupportContentProvider;
 import com.teacherhub.complaint.template.repository.ResponseTemplateAdoptionRepository;
 import com.teacherhub.risk.enums.RiskLevel;
-import com.teacherhub.risk.masking.PiiMaskingContext;
 import com.teacherhub.risk.masking.PiiMaskingService;
+import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
 import com.teacherhub.risk.repository.EmergencyRiskReviewRequestRepository;
 import com.teacherhub.risk.repository.RiskAnalysisRepository;
 import com.teacherhub.risk.repository.RiskReviewRepository;
@@ -55,6 +55,7 @@ public class TeacherResponseService {
     private final RiskAnalysisRepository riskAnalysisRepository;
     private final RiskReviewRepository riskReviewRepository;
     private final PiiMaskingService piiMaskingService;
+    private final ComplaintPiiMaskingContextFactory maskingContextFactory;
     private final ResponseTemplateAdoptionRepository templateAdoptionRepository;
     private final Clock clock;
 
@@ -342,7 +343,7 @@ public class TeacherResponseService {
         try {
             String masked = piiMaskingService.mask(
                     content,
-                    PiiMaskingContext.from(complaint)
+                    maskingContextFactory.create(complaint)
             );
             if (masked == null) {
                 throw new IllegalStateException("마스킹 결과가 비어 있습니다.");

@@ -63,6 +63,8 @@ class TeacherResponseServiceTest {
     private final RiskAnalysisRepository riskAnalyses = mock(RiskAnalysisRepository.class);
     private final RiskReviewRepository riskReviews = mock(RiskReviewRepository.class);
     private final PiiMaskingService masking = mock(PiiMaskingService.class);
+    private final com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory maskingContextFactory =
+            mock(com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory.class);
     private final ResponseTemplateAdoptionRepository templateAdoptions =
             mock(ResponseTemplateAdoptionRepository.class);
     private final Clock clock = Clock.fixed(
@@ -71,7 +73,7 @@ class TeacherResponseServiceTest {
     );
     private final TeacherResponseService service = new TeacherResponseService(
             complaints, messages, events, users, accessPolicy, contentProvider, emergencyReviews,
-            riskAnalyses, riskReviews, masking, templateAdoptions, clock
+            riskAnalyses, riskReviews, masking, maskingContextFactory, templateAdoptions, clock
     );
 
     @ParameterizedTest

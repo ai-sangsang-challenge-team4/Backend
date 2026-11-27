@@ -1,4 +1,4 @@
-package com.teacherhub.risk.service;
+package com.teacherhub.risk.policy;
 
 import com.teacherhub.risk.dto.llm.SafetyFlags;
 import org.springframework.stereotype.Component;
@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
  * 태그 기준점은 risk_tags.default_score를 중복 없이 합산하고,
  * 문맥 보정은 검증된 최고 severity를 민원 전체에 한 번만 적용합니다.
  */
+// Rule과 LLM의 분석 결과를 가반으로 점수 계산을 위한 정책을 정의
 @Component
 public class RiskScorePolicy {
 
@@ -29,10 +30,12 @@ public class RiskScorePolicy {
         throw new IllegalArgumentException("Severity는 0~3이어야 합니다.");
     }
 
+    // 점수 계산 후 100점 초과를 방지합니다.
     public int cap(int score) {
         return Math.min(MAX_SCORE, score);
     }
 
+    // SafetyFlags가 Emergency Review를 요구하면 점수를 100점으로 고정합니다.
     public int applySafetyFlags(int calculatedScore, SafetyFlags safetyFlags) {
         return safetyFlags != null && safetyFlags.requiresEmergencyReview()
                 ? MAX_SCORE

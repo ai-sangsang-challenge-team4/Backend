@@ -32,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
+// 교사의 위험도 검토
 public class TeacherRiskReviewService {
 
     private final ComplaintRepository complaintRepository;

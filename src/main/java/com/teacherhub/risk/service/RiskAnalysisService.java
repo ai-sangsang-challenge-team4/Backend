@@ -35,6 +35,8 @@ import com.teacherhub.risk.analyzer.*;
 import com.teacherhub.risk.entity.*;
 import com.teacherhub.risk.masking.PiiMaskingService;
 import com.teacherhub.risk.masking.PiiMaskingContext;
+import com.teacherhub.risk.masking.PiiMaskingResult;
+import com.teacherhub.risk.masking.ComplaintPiiMaskingContextFactory;
 import com.teacherhub.risk.repository.*;
 import com.teacherhub.risk.util.ContentFingerprint;
 
@@ -51,6 +53,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 // 민원 위험 분석
+// 위험 분석 전체 오케스트레이션
 public class RiskAnalysisService {
 
     private record AnalysisExecutionResult(
@@ -96,6 +99,7 @@ public class RiskAnalysisService {
             long contentVersion,
             String contentHash,
             PiiMaskingContext maskingContext,
+            PiiMaskingResult reversibleMasking,
             String maskedContent,
             List<RiskTagDetectionResult> ruleResults,
             List<RiskTagDetectionResult> maskedRuleResults,
@@ -145,6 +149,7 @@ public class RiskAnalysisService {
     private final ComplaintMessageRepository messageRepository;
     private final ComplaintEventRepository eventRepository;
     private final PiiMaskingService piiMaskingService;
+    private final ComplaintPiiMaskingContextFactory maskingContextFactory;
     private final RuleBasedRiskDetector ruleBasedRiskDetector;
     private final LlmRiskAnalyzer llmRiskAnalyzer;
     private final RiskTagRepository tagRepository;
@@ -352,8 +357,9 @@ public class RiskAnalysisService {
         }
 
         // 개인정보 가드레일 실패는 외부 AI 장애와 다르게 fail-closed로 처리합니다.
-        PiiMaskingContext maskingContext = PiiMaskingContext.from(complaint);
-        String maskedContent = maskForAi(originalContent, maskingContext);
+        PiiMaskingContext maskingContext = createMaskingContext(complaint);
+        PiiMaskingResult reversibleMasking = maskReversiblyForAi(originalContent, maskingContext);
+        String maskedContent = reversibleMasking.maskedContent();
 
         RuleExecutionResult ruleExecution = analyzeRules(
                 complaint,
@@ -366,7 +372,8 @@ public class RiskAnalysisService {
         // evidence와 reason에 포함될 수 있는 개인정보를 마스킹합니다.
         List<RiskTagDetectionResult> maskedRuleResults = maskRuleResultsForLlm(
                 ruleResults,
-                maskingContext
+                maskingContext,
+                reversibleMasking
         );
 
         return new AnalysisRequest(
@@ -376,6 +383,7 @@ public class RiskAnalysisService {
                 message.getContentVersion(),
                 ContentFingerprint.sha256(originalContent),
                 maskingContext,
+                reversibleMasking,
                 maskedContent,
                 ruleResults,
                 maskedRuleResults,
@@ -396,7 +404,8 @@ public class RiskAnalysisService {
             PreparedAnalysis prepared = prepareAnalysis(
                     request.ruleResults(),
                     llmExecution,
-                    request.maskingContext()
+                    request.maskingContext(),
+                    request.reversibleMasking()
             );
             PersistedAnalysis persisted = transactionRunner.write(() -> persist(request, prepared));
             if (persisted.revisionAnalysisId() != null) {
@@ -409,7 +418,8 @@ public class RiskAnalysisService {
                                 prepared.calculation().score(),
                                 prepared.calculation().level()
                         ),
-                        request.maskingContext()
+                        request.maskingContext(),
+                        request.reversibleMasking()
                 );
             }
             return persisted.result();
@@ -578,12 +588,14 @@ public class RiskAnalysisService {
     private PreparedAnalysis prepareAnalysis(
             List<RiskTagDetectionResult> ruleResults,
             LlmExecutionResult llmExecution,
-            PiiMaskingContext maskingContext
+            PiiMaskingContext maskingContext,
+            PiiMaskingResult reversibleMasking
     ) {
         List<FinalRiskTagResponse> finalTags = mergeAndMaskFinalTags(
                 ruleResults,
                 llmExecution,
-                maskingContext
+                maskingContext,
+                reversibleMasking
         );
         RiskCalculation calculation = calculateRisk(
                 finalTags,
@@ -595,7 +607,8 @@ public class RiskAnalysisService {
     private List<FinalRiskTagResponse> mergeAndMaskFinalTags(
             List<RiskTagDetectionResult> ruleResults,
             LlmExecutionResult llmExecution,
-            PiiMaskingContext maskingContext
+            PiiMaskingContext maskingContext,
+            PiiMaskingResult reversibleMasking
     ) {
         // 룰 근거는 원문에서 추출될 수 있으므로 저장·수정안 생성 전에 다시 마스킹합니다.
         return (llmExecution.ruleOnly()
@@ -612,14 +625,14 @@ public class RiskAnalysisService {
                         tag.repeatCount(),
                         tag.evidenceSpans().stream()
                                 .map(span -> new EvidenceSpan(
-                                        maskForAi(span.text(), maskingContext),
+                                        maskForRevision(span.text(), maskingContext, reversibleMasking),
                                         span.start(),
                                         span.end()
                                 ))
                                 .toList(),
                         tag.reason() == null || tag.reason().isBlank()
                                 ? tag.reason()
-                                : maskForAi(tag.reason(), maskingContext)
+                                : maskForRevision(tag.reason(), maskingContext, reversibleMasking)
                 ))
                 .toList();
     }
@@ -734,7 +747,8 @@ public class RiskAnalysisService {
 
     private List<RiskTagDetectionResult> maskRuleResultsForLlm(
             List<RiskTagDetectionResult> ruleResults,
-            PiiMaskingContext maskingContext
+            PiiMaskingContext maskingContext,
+            PiiMaskingResult reversibleMasking
     ) {
         return ruleResults.stream()
                 .map(result ->
@@ -750,7 +764,8 @@ public class RiskAnalysisService {
                                                 new EvidenceSpan(
                                                         maskEvidence(
                                                                 span.text(),
-                                                                maskingContext
+                                                                maskingContext,
+                                                                reversibleMasking
                                                         ),
                                                         null,
                                                         null
@@ -759,7 +774,8 @@ public class RiskAnalysisService {
                                         .toList(),
                                 maskEvidence(
                                         result.reason(),
-                                        maskingContext
+                                        maskingContext,
+                                        reversibleMasking
                                 )
                         )
                 )
@@ -810,10 +826,52 @@ public class RiskAnalysisService {
                 : maskForAi(value, maskingContext);
     }
 
+    private String maskEvidence(
+            String value,
+            PiiMaskingContext maskingContext,
+            PiiMaskingResult reversibleMasking
+    ) {
+        return value == null || value.isBlank()
+                ? value
+                : maskForRevision(value, maskingContext, reversibleMasking);
+    }
+
+    private String maskForRevision(
+            String value,
+            PiiMaskingContext maskingContext,
+            PiiMaskingResult reversibleMasking
+    ) {
+        return maskForAi(reversibleMasking.mask(value), maskingContext);
+    }
+
+    private PiiMaskingContext createMaskingContext(Complaint complaint) {
+        try {
+            return maskingContextFactory.create(complaint);
+        } catch (RiskAnalysisProcessingException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw RiskAnalysisProcessingException.privacyMasking(exception);
+        }
+    }
+
     private String maskForAi(String value, PiiMaskingContext maskingContext) {
         try {
             String masked = piiMaskingService.mask(value, maskingContext);
             if (masked == null) {
+                throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
+            }
+            return masked;
+        } catch (RiskAnalysisProcessingException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw RiskAnalysisProcessingException.privacyMasking(exception);
+        }
+    }
+
+    private PiiMaskingResult maskReversiblyForAi(String value, PiiMaskingContext maskingContext) {
+        try {
+            PiiMaskingResult masked = piiMaskingService.maskReversibly(value, maskingContext);
+            if (masked == null || masked.maskedContent() == null || masked.maskedContent().isBlank()) {
                 throw new IllegalStateException("마스킹 결과가 비어 있습니다.");
             }
             return masked;

@@ -10,6 +10,7 @@ import java.util.Optional;
 
 public interface StudentClassRepository extends JpaRepository<StudentClass, Long> {
     Optional<StudentClass> findTopByStudent_IdOrderBySchoolClass_AcademicYearDesc(Long studentId);
+    Optional<StudentClass> findTopByStudent_IdOrderBySchoolClass_AcademicYearDescIdDesc(Long studentId);
     Optional<StudentClass> findTopByStudentOrderBySchoolClass_AcademicYearDesc(Student student);
 
     Optional<StudentClass> findBySchoolClass_School_IdAndSchoolClass_IdAndStudent_Id(
